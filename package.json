@@ -4,20 +4,47 @@
   "description": "Get AI code reviews from a local Ollama instance before you commit.",
   "version": "0.0.1",
   "engines": {
-    "vscode": "^1.103.0"
+    "vscode": "^1.102.0"
   },
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onView:workbench.view.scm"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "ollama-code-review.helloWorld",
-        "title": "Hello World"
+        "command": "ollama-code-review.reviewChanges",
+        "title": "Ollama: Review Staged Changes",
+        "icon": "$(comment-discussion)"
       }
-    ]
+    ],
+    "menus": {
+      "scm/title": [
+        {
+          "command": "ollama-code-review.reviewChanges",
+          "when": "scmProvider == 'git'",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Ollama Code Review",
+      "properties": {
+        "ollama-code-review.model": {
+          "type": "string",
+          "default": "qwen2.5-coder:14b-instruct-q4_0",
+          "description": "The Ollama model to use for code reviews (e.g., qwen2.5-coder:14b-instruct-q4_0, ...)."
+        },
+        "ollama-code-review.endpoint": {
+          "type": "string",
+          "default": "http://localhost:11434/api/generate",
+          "description": "The API endpoint for your local Ollama instance."
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "yarn run compile",
@@ -28,14 +55,17 @@
     "test": "vscode-test"
   },
   "devDependencies": {
-    "@types/vscode": "^1.103.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "22.x",
+    "@types/vscode": "^1.103.0",
     "@typescript-eslint/eslint-plugin": "^8.39.0",
     "@typescript-eslint/parser": "^8.39.0",
-    "eslint": "^9.32.0",
-    "typescript": "^5.9.2",
     "@vscode/test-cli": "^0.0.11",
-    "@vscode/test-electron": "^2.5.2"
+    "@vscode/test-electron": "^2.5.2",
+    "eslint": "^9.32.0",
+    "typescript": "^5.9.2"
+  },
+  "dependencies": {
+    "axios": "^1.11.0"
   }
 }
