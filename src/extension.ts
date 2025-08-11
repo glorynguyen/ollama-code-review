@@ -4,7 +4,6 @@ import { exec } from 'child_process';
 
 let outputChannel: vscode.OutputChannel;
 
-// We need a detailed interface to access parent hashes
 interface GitCommitDetails {
 	hash: string;
 	message: string;
@@ -13,15 +12,10 @@ interface GitCommitDetails {
 	commitDate?: Date;
 }
 
-// Custom QuickPickItem that holds the full commit hash
 interface CommitQuickPickItem extends vscode.QuickPickItem {
 	hash: string;
 }
 
-/**
- * Runs a git command with arguments in the given repo path.
- * Returns stdout string or throws on error.
- */
 function runGitCommand(repoPath: string, args: string[]): Promise<string> {
 	return new Promise((resolve, reject) => {
 		const cmd = `git ${args.join(' ')}`;
@@ -38,7 +32,6 @@ function runGitCommand(repoPath: string, args: string[]): Promise<string> {
 export function activate(context: vscode.ExtensionContext) {
 	outputChannel = vscode.window.createOutputChannel("Ollama Code Review");
 
-	// Command 1: Review STAGED changes
 	const reviewStagedChangesCommand = vscode.commands.registerCommand('ollama-code-review.reviewChanges', async () => {
 		try {
 			const gitAPI = getGitAPI();
@@ -51,13 +44,11 @@ export function activate(context: vscode.ExtensionContext) {
 			const repoPath = repo.rootUri.fsPath;
 			const diffResult = await runGitCommand(repoPath, ['diff', '--staged']);
 			await runReview(diffResult);
-
 		} catch (error) {
 			handleError(error, "Failed to review staged changes.");
 		}
 	});
 
-	// Command 2: Interactively select a commit range to review
 	const reviewCommitRangeCommand = vscode.commands.registerCommand('ollama-code-review.reviewCommitRange', async () => {
 		try {
 			const gitAPI = getGitAPI();
@@ -69,7 +60,6 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 			const repoPath = repo.rootUri.fsPath;
 
-			// 1. Prompt for the "end" commit (the newer one)
 			const commitToRef = (await vscode.window.showInputBox({
 				prompt: "Enter the newest commit or branch to include in the review (e.g., HEAD)",
 				placeHolder: "Default: HEAD",
@@ -105,21 +95,27 @@ export function activate(context: vscode.ExtensionContext) {
 
 				const startCommitDetails = await repo.getCommit(selectedStartCommit.hash);
 
-				let diffResult: string;
-
 				progress.report({ message: 'Generating diff using git...' });
 
+				let diffResult: string;
+				let parentHashOrEmptyTree: string;
+
 				if (startCommitDetails.parents.length > 0) {
-					// Standard case: the commit has a parent. Diff from the parent to the end ref.
-					const parentHash = startCommitDetails.parents[0];
-					diffResult = await runGitCommand(repoPath, ['diff', parentHash, commitToRef]);
+					parentHashOrEmptyTree = startCommitDetails.parents[0];
+					diffResult = await runGitCommand(repoPath, ['diff', parentHashOrEmptyTree, commitToRef]);
 				} else {
-					// Edge case: the selected commit is the initial commit (no parents).
-					// We diff the entire history up to the end ref against git's "empty tree" hash.
-					const emptyTreeHash = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
+					parentHashOrEmptyTree = '4b825dc642cb6eb9a060e54bf8d69288fbee4904'; // empty tree hash
 					outputChannel.appendLine(`Info: Initial commit selected. Diffing all changes up to ${commitToRef}.`);
-					diffResult = await runGitCommand(repoPath, ['diff', emptyTreeHash, commitToRef]);
+					diffResult = await runGitCommand(repoPath, ['diff', parentHashOrEmptyTree, commitToRef]);
 				}
+
+				// Get changed files list and show in output channel
+				const filesList = await runGitCommand(repoPath, ['diff', '--name-only', parentHashOrEmptyTree, commitToRef]);
+				const filesArray = filesList.trim().split('\n').filter(Boolean);
+
+				outputChannel.appendLine(`\n--- Changed files in selected range (${filesArray.length}) ---`);
+				filesArray.forEach(f => outputChannel.appendLine(f));
+				outputChannel.appendLine('---------------------------------------');
 
 				await runReview(diffResult);
 			});
@@ -132,9 +128,6 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(reviewStagedChangesCommand, reviewCommitRangeCommand);
 }
 
-/**
- * A helper function to get the Git extension API.
- */
 function getGitAPI() {
 	const gitExtension = vscode.extensions.getExtension('vscode.git')?.exports;
 	if (!gitExtension) {
@@ -144,9 +137,6 @@ function getGitAPI() {
 	return gitExtension.getAPI(1);
 }
 
-/**
- * This function takes a diff string and handles the review process.
- */
 async function runReview(diff: string) {
 	if (!diff || !diff.trim()) {
 		vscode.window.showInformationMessage('No code changes found to review in the selected range.');
@@ -169,9 +159,6 @@ async function runReview(diff: string) {
 	});
 }
 
-/**
- * Sends the diff to Ollama and returns the review.
- */
 async function getOllamaReview(diff: string): Promise<string> {
 	const config = vscode.workspace.getConfiguration('ollama-code-review');
 	const model = config.get<string>('model', 'llama3');
@@ -202,12 +189,8 @@ async function getOllamaReview(diff: string): Promise<string> {
 	}
 }
 
-/**
- * A centralized error handler.
- */
 function handleError(error: unknown, contextMessage: string) {
 	let errorMessage = `${contextMessage}\n`;
-	// `repo.run` can throw an error object that contains stderr for git failures.
 	if (error && typeof error === 'object' && 'stderr' in error && (error as any).stderr) {
 		errorMessage += `Git Error: ${(error as any).stderr}`;
 	} else if (axios.isAxiosError(error)) {
