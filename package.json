@@ -10,7 +10,7 @@
     "Other"
   ],
   "activationEvents": [
-    "onView:workbench.view.scm"
+    "*"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -19,6 +19,10 @@
         "command": "ollama-code-review.reviewChanges",
         "title": "Ollama: Review Staged Changes",
         "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "ollama-code-review.reviewCommitRange",
+        "title": "Ollama: Review Commit Changes"
       }
     ],
     "menus": {
@@ -27,6 +31,25 @@
           "command": "ollama-code-review.reviewChanges",
           "when": "scmProvider == 'git'",
           "group": "navigation"
+        }
+      ],
+      "scm/commit/context": [
+        {
+          "command": "ollama-code-review.reviewCommit",
+          "when": "scmProvider == 'git'",
+          "group": "2_review@1"
+        }
+      ],
+      "git-graph.commitsView.commit.context": [
+        {
+          "command": "ollama-code-review.reviewCommit",
+          "group": "2_review@1"
+        }
+      ],
+      "gitlens.commit.context": [
+        {
+          "command": "ollama-code-review.reviewCommit",
+          "group": "2_review@1"
         }
       ]
     },
@@ -67,5 +90,8 @@
   },
   "dependencies": {
     "axios": "^1.11.0"
-  }
+  },
+  "extensionDependencies": [
+    "eamodio.gitlens"
+  ]
 }
