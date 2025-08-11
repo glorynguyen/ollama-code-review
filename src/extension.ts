@@ -125,7 +125,55 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
-	context.subscriptions.push(reviewStagedChangesCommand, reviewCommitRangeCommand);
+	const reviewChangesBetweenTwoBranchesCommand = vscode.commands.registerCommand('ollama-code-review.reviewChangesBetweenTwoBranches', async () => {
+		try {
+			const gitAPI = getGitAPI();
+			if (!gitAPI) return;
+			const repo = gitAPI.repositories[0];
+			if (!repo) {
+				vscode.window.showInformationMessage('No Git repository found.');
+				return;
+			}
+			const repoPath = repo.rootUri.fsPath;
+
+			const fromRef = await vscode.window.showInputBox({
+				prompt: 'Enter the base branch/ref to compare from (e.g., main)',
+				placeHolder: 'main',
+				value: 'main'
+			});
+			if (!fromRef) return;
+
+			const toRef = await vscode.window.showInputBox({
+				prompt: 'Enter the target branch/ref to compare to (e.g., feature-branch)',
+				placeHolder: 'feature-branch',
+			});
+			if (!toRef) return;
+
+			await vscode.window.withProgress({
+				location: vscode.ProgressLocation.Notification,
+				title: 'Ollama Code Review',
+				cancellable: true
+			}, async (progress, token) => {
+				progress.report({ message: `Generating diff between ${fromRef} and ${toRef}...` });
+
+				const diffResult = await runGitCommand(repoPath, ['diff', fromRef, toRef]);
+				if (token.isCancellationRequested) return;
+
+				const filesList = await runGitCommand(repoPath, ['diff', '--name-only', fromRef, toRef]);
+				const filesArray = filesList.trim().split('\n').filter(Boolean);
+
+				outputChannel.appendLine(`\n--- Changed files between ${fromRef} and ${toRef} (${filesArray.length}) ---`);
+				filesArray.forEach(f => outputChannel.appendLine(f));
+				outputChannel.appendLine('---------------------------------------');
+
+				await runReview(diffResult);
+			});
+		} catch (error) {
+			handleError(error, 'Failed to review changes between branches.');
+		}
+	});
+
+	context.subscriptions.push(reviewStagedChangesCommand, reviewCommitRangeCommand, reviewChangesBetweenTwoBranchesCommand);
 }
 
 function getGitAPI() {
@@ -165,16 +213,29 @@ async function getOllamaReview(diff: string): Promise<string> {
 	const endpoint = config.get<string>('endpoint', 'http://localhost:11434/api/generate');
 
 	const prompt = `
-        You are an expert code reviewer. Your task is to analyze the following code changes (in git diff format) and provide constructive feedback.
-        Focus on potential bugs, performance issues, style inconsistencies, and best practices.
-        Do not comment on minor stylistic choices unless they significantly impact readability.
-        Provide your feedback in a clear, concise, and actionable list format. If there are no issues, simply say "No issues found.".
+		You are an expert software engineer and code reviewer. Your task is to analyze the following code changes (in git diff format) and provide constructive, actionable feedback.
 
-        Here is the code diff to review:
-        ---
-        ${diff}
-        ---
-    `;
+		Focus on:
+		- Potential bugs or logical errors.
+		- Performance optimizations.
+		- Code style inconsistencies or best practices.
+		- Security concerns.
+		- Maintainability and readability improvements.
+
+		If you identify any issues, please:
+		1. Explain the problem clearly.
+		2. Suggest specific code changes or improvements, including example code snippets if appropriate.
+
+		Do not comment on minor stylistic preferences unless they significantly affect readability or correctness.
+
+		If no issues are found, respond with "No issues found."
+
+		Here is the code diff to review:
+		---
+		${diff}
+		---
+		`;
+
 
 	try {
 		const response = await axios.post(endpoint, {

@@ -10,7 +10,11 @@
     "Other"
   ],
   "activationEvents": [
-    "*"
+    "onCommand:ollama-code-review.reviewChanges",
+    "onCommand:ollama-code-review.reviewCommitRange",
+    "onCommand:ollama-code-review.reviewChangesBetweenTwoBranches",
+    "onView:scm",
+    "onExtension:eamodio.gitlens"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -23,6 +27,10 @@
       {
         "command": "ollama-code-review.reviewCommitRange",
         "title": "Ollama: Review Commit Changes"
+      },
+      {
+        "command": "ollama-code-review.reviewChangesBetweenTwoBranches",
+        "title": "Ollama: Review Changes Between Two Branches"
       }
     ],
     "menus": {
