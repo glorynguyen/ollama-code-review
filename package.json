@@ -4,11 +4,15 @@
   "description": "Get AI code reviews from a local Ollama instance before you commit.",
   "version": "1.0.1",
   "author": "Vinh Nguyen (vincent)",
-  "license": "MIT",
+  "publisher": "VinhNguyen-Vincent",
+  "icon": "images/icon.png",
+  "license": "SEE LICENSE IN LICENSE.md",
   "engines": {
     "vscode": "^1.102.0"
   },
   "categories": [
+    "Machine Learning",
+    "Linters",
     "Other"
   ],
   "activationEvents": [
