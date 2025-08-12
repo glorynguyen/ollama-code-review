@@ -2,7 +2,9 @@
   "name": "ollama-code-review",
   "displayName": "Ollama Code Review",
   "description": "Get AI code reviews from a local Ollama instance before you commit.",
-  "version": "0.0.1",
+  "version": "1.0.0",
+  "author": "Vinh Nguyen (vincent)",
+  "license": "MIT",
   "engines": {
     "vscode": "^1.102.0"
   },
@@ -81,7 +83,7 @@
     "vscode:prepublish": "yarn run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "pretest": "yarn run compile && yarn run lint",
+    "pretest": "yarn run compile && yarn run lint --fix",
     "lint": "eslint src",
     "test": "vscode-test"
   },

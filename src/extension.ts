@@ -35,7 +35,7 @@ export function activate(context: vscode.ExtensionContext) {
 	const reviewStagedChangesCommand = vscode.commands.registerCommand('ollama-code-review.reviewChanges', async () => {
 		try {
 			const gitAPI = getGitAPI();
-			if (!gitAPI) return;
+			if (!gitAPI) { return; }
 			const repo = gitAPI.repositories[0];
 			if (!repo) {
 				vscode.window.showInformationMessage('No Git repository found.');
@@ -52,7 +52,7 @@ export function activate(context: vscode.ExtensionContext) {
 	const reviewCommitRangeCommand = vscode.commands.registerCommand('ollama-code-review.reviewCommitRange', async () => {
 		try {
 			const gitAPI = getGitAPI();
-			if (!gitAPI) return;
+			if (!gitAPI) { return; }
 			const repo = gitAPI.repositories[0];
 			if (!repo) {
 				vscode.window.showInformationMessage('No Git repository found.');
@@ -66,7 +66,7 @@ export function activate(context: vscode.ExtensionContext) {
 				value: "HEAD"
 			}))?.trim();
 
-			if (!commitToRef) return;
+			if (!commitToRef) { return; }
 
 			await vscode.window.withProgress({
 				location: vscode.ProgressLocation.Notification,
@@ -75,7 +75,7 @@ export function activate(context: vscode.ExtensionContext) {
 			}, async (progress, token) => {
 				progress.report({ message: "Fetching commit history..." });
 				const log = await repo.log({ maxEntries: 100, range: commitToRef }) as GitCommitDetails[];
-				if (token.isCancellationRequested) return;
+				if (token.isCancellationRequested) { return; }
 
 				const quickPickItems: CommitQuickPickItem[] = log.map(commit => ({
 					label: `$(git-commit) ${commit.message.split('\n')[0]}`,
@@ -91,7 +91,7 @@ export function activate(context: vscode.ExtensionContext) {
 					matchOnDescription: true
 				});
 
-				if (!selectedStartCommit || token.isCancellationRequested) return;
+				if (!selectedStartCommit || token.isCancellationRequested) { return; }
 
 				const startCommitDetails = await repo.getCommit(selectedStartCommit.hash);
 
@@ -128,7 +128,7 @@ export function activate(context: vscode.ExtensionContext) {
 	const reviewChangesBetweenTwoBranchesCommand = vscode.commands.registerCommand('ollama-code-review.reviewChangesBetweenTwoBranches', async () => {
 		try {
 			const gitAPI = getGitAPI();
-			if (!gitAPI) return;
+			if (!gitAPI) { return; }
 			const repo = gitAPI.repositories[0];
 			if (!repo) {
 				vscode.window.showInformationMessage('No Git repository found.');
@@ -141,13 +141,13 @@ export function activate(context: vscode.ExtensionContext) {
 				placeHolder: 'main',
 				value: 'main'
 			});
-			if (!fromRef) return;
+			if (!fromRef) { return; }
 
 			const toRef = await vscode.window.showInputBox({
 				prompt: 'Enter the target branch/ref to compare to (e.g., feature-branch)',
 				placeHolder: 'feature-branch',
 			});
-			if (!toRef) return;
+			if (!toRef) { return; }
 
 			await vscode.window.withProgress({
 				location: vscode.ProgressLocation.Notification,
@@ -157,7 +157,7 @@ export function activate(context: vscode.ExtensionContext) {
 				progress.report({ message: `Generating diff between ${fromRef} and ${toRef}...` });
 
 				const diffResult = await runGitCommand(repoPath, ['diff', fromRef, toRef]);
-				if (token.isCancellationRequested) return;
+				if (token.isCancellationRequested) { return; }
 
 				const filesList = await runGitCommand(repoPath, ['diff', '--name-only', fromRef, toRef]);
 				const filesArray = filesList.trim().split('\n').filter(Boolean);
@@ -213,28 +213,34 @@ async function getOllamaReview(diff: string): Promise<string> {
 	const endpoint = config.get<string>('endpoint', 'http://localhost:11434/api/generate');
 
 	const prompt = `
-		You are an expert software engineer and code reviewer. Your task is to analyze the following code changes (in git diff format) and provide constructive, actionable feedback.
+        Bạn là một kỹ sư phần mềm chuyên gia và người đánh giá code (code reviewer). Nhiệm vụ của bạn là phân tích các thay đổi về code sau đây (theo định dạng git diff) và cung cấp phản hồi mang tính xây dựng, có thể hành động.
 
-		Focus on:
-		- Potential bugs or logical errors.
-		- Performance optimizations.
-		- Code style inconsistencies or best practices.
-		- Security concerns.
-		- Maintainability and readability improvements.
+        **Cách đọc định dạng Git Diff:**
+        - Các dòng bắt đầu bằng \`---\` và \`+++\` chỉ tên file trước và sau khi thay đổi.
+        - Các dòng bắt đầu bằng \`@@\` (ví dụ: \`@@ -15,7 +15,9 @@\`) cho biết vị trí của thay đổi trong file.
+        - Các dòng bắt đầu bằng dấu \`-\` là những dòng đã bị XÓA.
+        - Các dòng bắt đầu bằng dấu \`+\` là những dòng mới được THÊM vào.
+        - Các dòng không có tiền tố (bắt đầu bằng dấu cách) là các dòng ngữ cảnh, không thay đổi. **Hãy tập trung vào các dòng \`+\` và \`-\`**.
 
-		If you identify any issues, please:
-		1. Explain the problem clearly.
-		2. Suggest specific code changes or improvements, including example code snippets if appropriate.
+        **Trọng tâm đánh giá:**
+        - Lỗi tiềm ẩn hoặc lỗi logic.
+        - Tối ưu hóa hiệu suất.
+        - Sự không nhất quán về kiểu code hoặc các phương pháp hay nhất (best practices).
+        - Các vấn đề về bảo mật.
+        - Cải thiện về khả năng bảo trì và dễ đọc.
 
-		Do not comment on minor stylistic preferences unless they significantly affect readability or correctness.
+        **Yêu cầu về phản hồi:**
+        1.  Giải thích vấn đề một cách rõ ràng và súc tích.
+        2.  Đề xuất các thay đổi hoặc cải tiến cụ thể. Nếu có thể, hãy bao gồm các đoạn code ví dụ.
+        3.  Sử dụng định dạng Markdown để có cấu trúc rõ ràng.
 
-		If no issues are found, respond with "No issues found."
+        Nếu không tìm thấy vấn đề nào, hãy trả lời bằng một câu duy nhất: "Tôi đã xem qua các thay đổi và không tìm thấy vấn đề nào đáng kể."
 
-		Here is the code diff to review:
-		---
-		${diff}
-		---
-		`;
+        Đây là đoạn code diff cần đánh giá:
+        ---
+        ${diff}
+        ---
+        `;
 
 
 	try {
