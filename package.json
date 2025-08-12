@@ -2,7 +2,7 @@
   "name": "ollama-code-review",
   "displayName": "Ollama Code Review",
   "description": "Get AI code reviews from a local Ollama instance before you commit.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": "Vinh Nguyen (vincent)",
   "license": "MIT",
   "engines": {
