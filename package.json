@@ -82,6 +82,8 @@
   "scripts": {
     "vscode:prepublish": "yarn run compile",
     "compile": "tsc -p ./",
+    "build": "yarn run lint --fix && yarn run compile",
+    "package": "yarn run build && vsce package",
     "watch": "tsc -watch -p ./",
     "pretest": "yarn run compile && yarn run lint --fix",
     "lint": "eslint src",
