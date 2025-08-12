@@ -43,6 +43,10 @@ You must have the following software installed and configured for this extension
     ```bash
     ollama pull qwen2.5-coder:14b-instruct-q4_0
     ```
+    To verify your setup, you can run the model from your terminal. This command will also pull the model if it doesn't exist and start an interactive session:
+    ```bash
+    ollama run qwen2.5-coder:14b-instruct-q4_0
+    ```
 3.  **[Git](https://git-scm.com/)**: Git must be installed and available in your system's PATH.
 4.  **VS Code Built-in Git Extension**: This extension must be enabled (it is by default).
 5.  **[GitLens Extension](https://marketplace.visualstudio.com/items?itemName=eamodio.gitlens)**: This extension is listed as a dependency to enable some context menu integrations.
@@ -66,27 +70,13 @@ You can configure these by opening the Command Palette (`Ctrl+Shift+P`) and sear
 
 ## Release Notes
 
-### 0.0.1
+### 1.0.1
 
-Initial release of Ollama Code Review.
 * Added feature: Review all staged changes.
 * Added feature: Review a range of commits.
 * Added feature: Review the diff between two branches.
 * Configurable Ollama model and endpoint.
 
 ---
-
-## Working with Markdown
-
-You can author your README using Visual Studio Code. Here are some useful editor keyboard shortcuts:
-
-* Split the editor (`Ctrl+\` on Windows and Linux or `Cmd+\` on macOS).
-* Toggle preview (`Shift+Ctrl+V` on Windows and Linux or `Shift+Cmd+V` on macOS).
-* Press `Ctrl+Space` (Windows, Linux, macOS) to see a list of Markdown snippets.
-
-## For more information
-
-* [Visual Studio Code's Markdown Support](http://code.visualstudio.com/docs/languages/markdown)
-* [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
 
 **Enjoy!**
