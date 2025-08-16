@@ -211,6 +211,7 @@ async function getOllamaReview(diff: string): Promise<string> {
 	const config = vscode.workspace.getConfiguration('ollama-code-review');
 	const model = config.get<string>('model', 'llama3');
 	const endpoint = config.get<string>('endpoint', 'http://localhost:11434/api/generate');
+	const temperature = config.get<number>('temperature', 0);
 
 	const prompt = `
         You are an expert software engineer and code reviewer. Your task is to analyze the following code changes (in git diff format) and provide constructive, actionable feedback.
@@ -248,7 +249,7 @@ async function getOllamaReview(diff: string): Promise<string> {
 			model: model,
 			prompt: prompt,
 			stream: false,
-			options: { temperature: 0.2 }
+			options: { temperature }
 		});
 		return response.data.response.trim();
 	} catch (error) {
