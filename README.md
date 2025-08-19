@@ -1,6 +1,6 @@
 # Ollama Code Review
 
-Get lightning-fast, expert code reviews directly in your editor using your local Ollama instance. This extension analyzes your code changes before you commit, helping you catch bugs, improve quality, and maintain high standards, all while keeping your code private on your own machine.
+Get lightning-fast, expert code reviews and AI-generated commit messages directly in your editor using your local Ollama instance. This extension analyzes your code changes before you commit, helping you catch bugs, improve code quality, and write consistent, informative commit messages, all while keeping your code private on your own machine.
 
 It leverages the power of local large language models to provide feedback on:
 - Potential bugs and logical errors
@@ -14,8 +14,8 @@ It leverages the power of local large language models to provide feedback on:
 The primary way to use this extension is through the VS Code Command Palette.
 
 1.  Press `Ctrl+Shift+P` (or `Cmd+Shift+P` on Mac) to open the Command Palette.
-2.  Type `Ollama` to see all available code review commands.
-3.  Select the desired review action from the list.
+2.  Type `Ollama` to see all available commands.
+3.  Select the desired review or generation action from the list.
 
 ![Ollama Commands in the Command Palette](images/commands.png)
 
@@ -27,18 +27,24 @@ The primary way to use this extension is through the VS Code Command Palette.
 - **Command**: `Ollama: Review Staged Changes`
 - Get an AI review of all your currently staged changes.
 - **Quick Access**: A convenient button `$(comment-discussion)` is also available in the Source Control panel's title bar.
+![Review Staged Changes Buttons](images/feature-scm-button.png)
 
-![Review Staged Changes Button](images/feature-scm-button.png)
+### 2. Generate Commit Message
+- **Command**: `Ollama: Generate Commit Message`
+- Automatically generates a descriptive, conventional commit message based on your staged changes. The generated message is then populated directly into the Source Control input box.
+- **Quick Access**: A `$(sparkle)` icon is available in the Source Control panel's title bar for one-click generation.
 
-### 2. Review Commit Changes
+![Review and Generate Buttons](images/generate-commit-message.png)
+
+### 3. Review Commit Changes
 - **Command**: `Ollama: Review Commit Changes`
 - Analyze a series of commits. The extension will prompt you to select a starting commit from your history, and it will generate a review for all changes from that point up to `HEAD`.
 
-### 3. Review Changes Between Two Branches
+### 4. Review Changes Between Two Branches
 - **Command**: `Ollama: Review Changes Between Two Branches`
 - Ideal for pull requests. Compare any two branches or git refs (like tags or commit hashes) to get a comprehensive review of the differences.
 
-### 4. Detailed Review Output
+### 5. Detailed Review Output
 All feedback from Ollama is displayed in a dedicated "Ollama Code Review" output channel, keeping your editor clean. The output includes a list of the files that were analyzed in the review.
 
 ![Code Review Output](images/feature-output-panel.png)
@@ -64,12 +70,15 @@ You must have the following software installed and configured for this extension
 
 This extension contributes the following settings to your VS Code `settings.json`:
 
-* `ollama-code-review.model`: The Ollama model to use for code reviews.
+* `ollama-code-review.model`: The Ollama model to use.
     * **Type**: `string`
     * **Default**: `"qwen2.5-coder:14b-instruct-q4_0"`
 * `ollama-code-review.endpoint`: The API endpoint for your local Ollama instance's generate API.
     * **Type**: `string`
     * **Default**: `"http://localhost:11434/api/generate"`
+* `ollama-code-review.temperature`: The creativity of the AI's response (0.0 for deterministic, 1.0 for very creative).
+    * **Type**: `number`
+    * **Default**: `0`
 
 You can configure these by opening the Command Palette (`Ctrl+Shift+P`) and searching for `Preferences: Open User Settings (JSON)`.
 
@@ -78,6 +87,11 @@ You can configure these by opening the Command Palette (`Ctrl+Shift+P`) and sear
 * The context menu item "Ollama: Review Commit" that appears when right-clicking a commit in the SCM panel or in GitLens views is currently non-functional. It references a command that has been replaced by the more flexible `reviewCommitRange` command. **Please use the commands from the Command Palette for now.**
 
 ## Release Notes
+
+### 1.0.4
+*   **New Feature**: Generate a conventional commit message from staged changes using the `Ollama: Generate Commit Message` command.
+*   Added a `$(sparkle)` icon to the Source Control title bar for quick access to commit message generation.
+*   Updated SCM title bar to show both review and generate icons.
 
 ### 1.0.1
 

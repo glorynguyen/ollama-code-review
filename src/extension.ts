@@ -173,7 +173,49 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
-	context.subscriptions.push(reviewStagedChangesCommand, reviewCommitRangeCommand, reviewChangesBetweenTwoBranchesCommand);
+	const generateCommitMessageCommand = vscode.commands.registerCommand('ollama-code-review.generateCommitMessage', async () => {
+		try {
+			const gitAPI = getGitAPI();
+			if (!gitAPI) { return; }
+			const repo = gitAPI.repositories[0];
+			if (!repo) {
+				vscode.window.showInformationMessage('No Git repository found.');
+				return;
+			}
+
+			const repoPath = repo.rootUri.fsPath;
+			const diffResult = await runGitCommand(repoPath, ['diff', '--staged']);
+
+			if (!diffResult || !diffResult.trim()) {
+				vscode.window.showInformationMessage('No staged changes to create a commit message from.');
+				return;
+			}
+
+			await vscode.window.withProgress({
+				location: vscode.ProgressLocation.Notification,
+				title: "Ollama",
+				cancellable: true
+			}, async (progress, token) => {
+				progress.report({ message: "Generating commit message..." });
+
+				const commitMessage = await getOllamaCommitMessage(diffResult);
+				if (token.isCancellationRequested) { return; }
+
+				if (commitMessage) {
+					repo.inputBox.value = commitMessage;
+					vscode.window.showInformationMessage('Commit message generated and populated!');
+				} else {
+					vscode.window.showErrorMessage('Failed to generate commit message.');
+				}
+			});
+
+		} catch (error) {
+			handleError(error, "Failed to generate commit message.");
+		}
+	});
+
+
+	context.subscriptions.push(reviewStagedChangesCommand, reviewCommitRangeCommand, reviewChangesBetweenTwoBranchesCommand, generateCommitMessageCommand);
 }
 
 function getGitAPI() {
@@ -256,6 +298,53 @@ async function getOllamaReview(diff: string): Promise<string> {
 		throw error;
 	}
 }
+
+async function getOllamaCommitMessage(diff: string): Promise<string> {
+	const config = vscode.workspace.getConfiguration('ollama-code-review');
+	const model = config.get<string>('model', 'llama3');
+	const endpoint = config.get<string>('endpoint', 'http://localhost:11434/api/generate');
+	const temperature = config.get<number>('temperature', 0.2); // Slightly more creative for commit messages
+
+	const prompt = `
+		You are an expert at writing concise and informative git commit messages.
+		Based on the following git diff, generate a commit message that follows the Conventional Commits specification.
+
+		The commit message should have a short, imperative-style subject line (less than 50 characters).
+		The subject line should be in the format: <type>(<scope>): <subject>
+		- <type> can be one of: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert.
+		- <scope> is optional and indicates the part of the codebase affected.
+
+		After the subject line, there should be a blank line, followed by a longer body that explains the 'what' and 'why' of the changes. Use bullet points for clarity if needed.
+
+		Do not include the "---" markdown separators, or any other preamble or explanation in your response. Just provide the raw commit message text, ready to be used.
+
+		Here is the code diff:
+		---
+		${diff}
+		---
+		`;
+
+	try {
+		const response = await axios.post(endpoint, {
+			model: model,
+			prompt: prompt,
+			stream: false,
+			options: { temperature }
+		});
+		// Sometimes models add quotes or markdown blocks around the message, so we trim them.
+		let message = response.data.response.trim();
+		if (message.startsWith('```') && message.endsWith('```')) {
+			message = message.substring(3, message.length - 3).trim();
+		}
+		if ((message.startsWith('"') && message.endsWith('"')) || (message.startsWith("'") && message.endsWith("'"))) {
+			message = message.substring(1, message.length - 1);
+		}
+		return message;
+	} catch (error) {
+		throw error;
+	}
+}
+
 
 function handleError(error: unknown, contextMessage: string) {
 	let errorMessage = `${contextMessage}\n`;
