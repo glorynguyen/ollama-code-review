@@ -2,7 +2,7 @@
   "name": "ollama-code-review",
   "displayName": "Ollama Code Review",
   "description": "Get AI code reviews and generate commit messages from a local Ollama instance before you commit.",
-  "version": "1.0.4",
+  "version": "1.1.0",
   "author": "Vinh Nguyen (vincent)",
   "publisher": "VinhNguyen-Vincent",
   "icon": "images/icon.png",
@@ -16,10 +16,6 @@
     "Other"
   ],
   "activationEvents": [
-    "onCommand:ollama-code-review.reviewChanges",
-    "onCommand:ollama-code-review.reviewCommitRange",
-    "onCommand:ollama-code-review.reviewChangesBetweenTwoBranches",
-    "onCommand:ollama-code-review.generateCommitMessage",
     "onView:scm",
     "onExtension:eamodio.gitlens"
   ],
@@ -43,9 +39,20 @@
         "command": "ollama-code-review.generateCommitMessage",
         "title": "Ollama: Generate Commit Message",
         "icon": "$(sparkle)"
+      },
+      {
+        "command": "ollama-code-review.suggestRefactoring",
+        "title": "Ollama: Suggestion"
       }
     ],
     "menus": {
+      "editor/context": [
+        {
+          "when": "editorHasSelection && (editorLangId == javascript || editorLangId == typescript || editorLangId == javascriptreact || editorLangId == typescriptreact)",
+          "command": "ollama-code-review.suggestRefactoring",
+          "group": "1_modification"
+        }
+      ],
       "scm/title": [
         {
           "command": "ollama-code-review.reviewChanges",

@@ -11,11 +11,10 @@ It leverages the power of local large language models to provide feedback on:
 
 ## Usage
 
-The primary way to use this extension is through the VS Code Command Palette.
+You can interact with this extension in two primary ways:
 
-1.  Press `Ctrl+Shift+P` (or `Cmd+Shift+P` on Mac) to open the Command Palette.
-2.  Type `Ollama` to see all available commands.
-3.  Select the desired review or generation action from the list.
+1.  **Command Palette**: Press `Ctrl+Shift+P` (or `Cmd+Shift+P` on Mac), type `Ollama`, and select the desired action from the list.
+2.  **Context Menus**: Use the right-click menu in the editor for selected code or access quick-action buttons in the Source Control panel.
 
 ![Ollama Commands in the Command Palette](images/commands.png)
 
@@ -36,15 +35,21 @@ The primary way to use this extension is through the VS Code Command Palette.
 
 ![Review and Generate Buttons](images/generate-commit-message.png)
 
-### 3. Review Commit Changes
-- **Command**: `Ollama: Review Commit Changes`
+### 3. Suggest Code Improvements
+- **Command**: `Ollama: Suggestion`
+- Select any block of code in your editor, right-click, and choose this command to get an instant refactoring suggestion from Ollama. The extension presents the suggested code and an explanation in a pop-up, allowing you to apply the changes with a single click.
+
+![Suggest Improvements](images/feature-suggestion.png)
+
+### 4. Review a Commit Range
+- **Command**: `Ollama: Review Commit Range`
 - Analyze a series of commits. The extension will prompt you to select a starting commit from your history, and it will generate a review for all changes from that point up to `HEAD`.
 
-### 4. Review Changes Between Two Branches
+### 5. Review Changes Between Two Branches
 - **Command**: `Ollama: Review Changes Between Two Branches`
 - Ideal for pull requests. Compare any two branches or git refs (like tags or commit hashes) to get a comprehensive review of the differences.
 
-### 5. Detailed Review Output
+### 6. Detailed Review Output
 All feedback from Ollama is displayed in a dedicated "Ollama Code Review" output channel, keeping your editor clean. The output includes a list of the files that were analyzed in the review.
 
 ![Code Review Output](images/feature-output-panel.png)
@@ -87,6 +92,10 @@ You can configure these by opening the Command Palette (`Ctrl+Shift+P`) and sear
 * The context menu item "Ollama: Review Commit" that appears when right-clicking a commit in the SCM panel or in GitLens views is currently non-functional. It references a command that has been replaced by the more flexible `reviewCommitRange` command. **Please use the commands from the Command Palette for now.**
 
 ## Release Notes
+
+### 1.1.0
+*   **New Feature**: **Suggest Code Improvements**. Right-click on any selected code in the editor and choose `Ollama: Suggestion` to get instant refactoring ideas.
+*   The suggestion is presented in an interactive pop-up, allowing you to review the explanation and apply the new code with a single click.
 
 ### 1.0.4
 *   **New Feature**: Generate a conventional commit message from staged changes using the `Ollama: Generate Commit Message` command.

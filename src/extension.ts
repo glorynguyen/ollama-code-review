@@ -16,6 +16,29 @@ interface CommitQuickPickItem extends vscode.QuickPickItem {
 	hash: string;
 }
 
+/**
+ * Parses the suggestion from Ollama's response.
+ * Expects a Markdown code block followed by an explanation.
+ * @param response The raw string response from the Ollama API.
+ * @returns An object with the extracted code and explanation, or null if parsing fails.
+ */
+function parseSuggestion(response: string): { code: string; explanation: string } | null {
+	const codeBlockRegex = /```(?:[a-zA-Z0-9]+)?\s*\n([\s\S]+?)\n```/;
+	const match = response.match(codeBlockRegex);
+
+	if (match && match[1]) {
+		const code = match[1];
+		const explanation = response.substring(match[0].length).trim();
+		return { code, explanation };
+	}
+	// Fallback if no code block is found, maybe the whole response is the code
+	if (!response.includes('```')) {
+		return { code: response, explanation: "Suggestion provided as raw code." };
+	}
+
+	return null;
+}
+
 function runGitCommand(repoPath: string, args: string[]): Promise<string> {
 	return new Promise((resolve, reject) => {
 		const cmd = `git ${args.join(' ')}`;
@@ -214,8 +237,68 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
+	const suggestRefactoringCommand = vscode.commands.registerCommand('ollama-code-review.suggestRefactoring', async () => {
+		const editor = vscode.window.activeTextEditor;
+		if (!editor) {
+			vscode.window.showInformationMessage('No active editor found.');
+			return;
+		}
 
-	context.subscriptions.push(reviewStagedChangesCommand, reviewCommitRangeCommand, reviewChangesBetweenTwoBranchesCommand, generateCommitMessageCommand);
+		const selection = editor.selection;
+		const selectedText = editor.document.getText(selection);
+
+		if (!selectedText) {
+			vscode.window.showInformationMessage('Please select a code snippet to get a suggestion.');
+			return;
+		}
+
+		try {
+			await vscode.window.withProgress({
+				location: vscode.ProgressLocation.Window,
+				title: "Ollama: Getting suggestion...",
+				cancellable: true
+			}, async (progress, token) => {
+				const languageId = editor.document.languageId;
+				const rawSuggestion = await getOllamaSuggestion(selectedText, languageId);
+				if (token.isCancellationRequested) { return; }
+
+				const parsed = parseSuggestion(rawSuggestion);
+
+				if (!parsed) {
+					vscode.window.showErrorMessage('Ollama returned a response in an unexpected format.');
+					outputChannel.appendLine("--- Unexpected Ollama Response ---");
+					outputChannel.appendLine(rawSuggestion);
+					outputChannel.show();
+					return;
+				}
+
+				const { code: suggestedCode, explanation } = parsed;
+				const userChoice = await vscode.window.showInformationMessage(
+					explanation || "Ollama has a suggestion. Apply it?",
+					{ modal: true },
+					"Apply Suggestion",
+					"Cancel"
+				);
+				
+				if (userChoice === "Apply Suggestion") {
+					editor.edit(editBuilder => {
+						editBuilder.replace(selection, suggestedCode);
+					});
+					vscode.window.showInformationMessage('Suggestion applied!');
+				}
+			});
+		} catch (error) {
+			handleError(error, "Failed to get suggestion.");
+		}
+	});
+
+	context.subscriptions.push(
+		reviewStagedChangesCommand, 
+		reviewCommitRangeCommand, 
+		reviewChangesBetweenTwoBranchesCommand, 
+		generateCommitMessageCommand,
+		suggestRefactoringCommand
+	);
 }
 
 function getGitAPI() {
@@ -345,6 +428,40 @@ async function getOllamaCommitMessage(diff: string): Promise<string> {
 	}
 }
 
+async function getOllamaSuggestion(codeSnippet: string, languageId: string): Promise<string> {
+	const config = vscode.workspace.getConfiguration('ollama-code-review');
+	const model = config.get<string>('model', 'llama3');
+	const endpoint = config.get<string>('endpoint', 'http://localhost:11434/api/generate');
+	const temperature = config.get<number>('temperature', 0.3);
+
+	const prompt = `
+		You are an expert software engineer specializing in writing clean, efficient, and maintainable code.
+		Your task is to analyze the following ${languageId} code snippet and provide a refactored or improved version.
+
+		**IMPORTANT:** Your response MUST follow this structure exactly:
+		1.  Start your response with the refactored code inside a markdown code block (e.g., \`\`\`${languageId}\n...\n\`\`\`).
+		2.  IMMEDIATELY after the code block, provide a clear, bulleted list explaining the key improvements you made.
+
+		If the code is already well-written and you have no suggestions, respond with the single sentence: "The selected code is well-written and I have no suggestions for improvement."
+
+		Here is the code to refactor:
+		---
+		${codeSnippet}
+		---
+	`;
+
+	try {
+		const response = await axios.post(endpoint, {
+			model: model,
+			prompt: prompt,
+			stream: false,
+			options: { temperature }
+		});
+		return response.data.response.trim();
+	} catch (error) {
+		throw error;
+	}
+}
 
 function handleError(error: unknown, contextMessage: string) {
 	let errorMessage = `${contextMessage}\n`;
