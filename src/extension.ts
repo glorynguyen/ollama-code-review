@@ -395,9 +395,16 @@ async function getOllamaReview(diff: string): Promise<string> {
 	const model = config.get<string>('model', 'llama3');
 	const endpoint = config.get<string>('endpoint', 'http://localhost:11434/api/generate');
 	const temperature = config.get<number>('temperature', 0);
+	const frameworks = config.get<string[] | string>('frameworks', ['React']);
+	const frameworksList = Array.isArray(frameworks)
+		? frameworks.join(', ')
+		: typeof frameworks === 'string'
+		? frameworks
+		: 'React';
 
 	const prompt = `
-        You are an expert software engineer and code reviewer. Your task is to analyze the following code changes (in git diff format) and provide constructive, actionable feedback.
+        You are an expert software engineer and code reviewer with deep knowledge of the following frameworks and libraries: **${frameworksList}**.
+        Your task is to analyze the following code changes (in git diff format) and provide constructive, actionable feedback tailored to the conventions, best practices, and common pitfalls of these technologies.
 
         **How to Read the Git Diff Format:**
         - Lines starting with \`---\` and \`+++\` indicate the file names before and after the changes.
@@ -407,16 +414,16 @@ async function getOllamaReview(diff: string): Promise<string> {
         - Lines without a prefix (starting with a space) are for context and have not been changed. **Please focus your review on the added (\`+\`) and deleted (\`-\`) lines.**
 
         **Review Focus:**
-        - Potential bugs or logical errors.
-        - Performance optimizations.
-        - Code style inconsistencies or best practices.
-        - Security vulnerabilities.
-        - Improvements to maintainability and readability.
+        - Potential bugs or logical errors specific to the frameworks/libraries (${frameworksList}).
+        - Performance optimizations, considering framework-specific patterns.
+        - Code style inconsistencies or deviations from ${frameworksList} best practices.
+        - Security vulnerabilities, especially those common in ${frameworksList}.
+        - Improvements to maintainability and readability, aligned with ${frameworksList} conventions.
 
         **Feedback Requirements:**
-        1.  Explain any issues clearly and concisely.
-        2.  Suggest specific code changes or improvements. Include code snippets for examples where appropriate.
-        3.  Use Markdown for clear formatting.
+        1. Explain any issues clearly and concisely, referencing ${frameworksList} where relevant.
+        2. Suggest specific code changes or improvements. Include code snippets for examples where appropriate.
+        3. Use Markdown for clear formatting.
 
         If you find no issues, please respond with the single sentence: "I have reviewed the changes and found no significant issues."
 

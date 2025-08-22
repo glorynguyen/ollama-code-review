@@ -84,6 +84,10 @@ This extension contributes the following settings to your VS Code `settings.json
 * `ollama-code-review.temperature`: The creativity of the AI's response (0.0 for deterministic, 1.0 for very creative).
     * **Type**: `number`
     * **Default**: `0`
+* `ollama-code-review.frameworks`: Specify frameworks or libraries (e.g., `React`, `Node.js`) to receive more tailored code reviews aligned with their specific conventions and best practices.
+    * **Type**: `array`
+    * **Default**: `["React"]`
+![Config Frameworks](images/setting-frameworks.png)
 
 You can configure these by opening the Command Palette (`Ctrl+Shift+P`) and searching for `Preferences: Open User Settings (JSON)`.
 
@@ -93,8 +97,12 @@ You can configure these by opening the Command Palette (`Ctrl+Shift+P`) and sear
 
 ## Release Notes
 
+### 1.2.0
+*   **New Feature**: Added a new configuration option `ollama-code-review.frameworks` to specify project frameworks or libraries.
+*   Providing this context helps the AI generate more tailored code reviews that are aligned with the specific conventions and best practices of the technologies you use.
+
 ### 1.1.1
-*   **Enhacement**: **Suggest Code Improvements**. 
+*   **Enhacement**: **Suggest Code Improvements**.
 *   Get a better view of code suggestions using a git-diff comparison and a popup with an explanation of the improvements.
 
 ### 1.1.0

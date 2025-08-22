@@ -2,7 +2,7 @@
   "name": "ollama-code-review",
   "displayName": "Ollama Code Review",
   "description": "Get AI code reviews and generate commit messages from a local Ollama instance before you commit.",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "author": "Vinh Nguyen (vincent)",
   "publisher": "VinhNguyen-Vincent",
   "icon": "images/icon.png",
@@ -104,6 +104,26 @@
           "minimum": 0,
           "maximum": 1,
           "description": "The temperature for the Ollama model (e.g., 0.0-1.0). Higher values are more creative, lower values are more deterministic."
+        },
+        "ollama-code-review.frameworks": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "React",
+              "TypeScript",
+              "Express",
+              "Node.js",
+              "Django",
+              "Flask",
+              "Angular",
+              "Vue.js",
+              "Spring",
+              "Ruby on Rails"
+            ]
+          },
+          "default": ["React"],
+          "description": "Select the frameworks or libraries to tailor the code review. Use Ctrl+Click (Cmd+Click on Mac) for multiple selections."
         }
       }
     }
