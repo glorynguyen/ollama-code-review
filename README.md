@@ -39,7 +39,7 @@ You can interact with this extension in two primary ways:
 - **Command**: `Ollama: Suggestion`
 - Select any block of code in your editor, right-click, and choose this command to get an instant refactoring suggestion from Ollama. The extension presents the suggested code and an explanation in a pop-up, allowing you to apply the changes with a single click.
 
-![Suggest Improvements](images/feature-suggestion.png)
+![Suggest Improvements](images/feature-suggestion.gif)
 
 ### 4. Review a Commit Range
 - **Command**: `Ollama: Review Commit Range`
@@ -92,6 +92,10 @@ You can configure these by opening the Command Palette (`Ctrl+Shift+P`) and sear
 * The context menu item "Ollama: Review Commit" that appears when right-clicking a commit in the SCM panel or in GitLens views is currently non-functional. It references a command that has been replaced by the more flexible `reviewCommitRange` command. **Please use the commands from the Command Palette for now.**
 
 ## Release Notes
+
+### 1.1.1
+*   **Enhacement**: **Suggest Code Improvements**. 
+*   Get a better view of code suggestions using a git-diff comparison and a popup with an explanation of the improvements.
 
 ### 1.1.0
 *   **New Feature**: **Suggest Code Improvements**. Right-click on any selected code in the editor and choose `Ollama: Suggestion` to get instant refactoring ideas.

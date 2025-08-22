@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import axios from 'axios';
 import { exec } from 'child_process';
+import * as path from 'path';
 
 let outputChannel: vscode.OutputChannel;
 
@@ -52,8 +53,41 @@ function runGitCommand(repoPath: string, args: string[]): Promise<string> {
 	});
 }
 
+class SuggestionContentProvider implements vscode.TextDocumentContentProvider {
+	// A map to store the content of our virtual documents.
+	// The key is the URI as a string, and the value is the document content.
+	private readonly content = new Map<string, string>();
+
+	// This method is called by VS Code when it needs to display our virtual document.
+	provideTextDocumentContent(uri: vscode.Uri): string {
+		return this.content.get(uri.toString()) || '';
+	}
+
+	/**
+	 * Sets the content for a given URI. This is how we'll tell the provider
+	 * what to show for the original and suggested code.
+	 * @param uri The virtual document URI.
+	 * @param value The content of the virtual document.
+	 */
+	setContent(uri: vscode.Uri, value: string): void {
+		this.content.set(uri.toString(), value);
+	}
+
+	/**
+	 * Deletes the content for a given URI. This is important for cleanup.
+	 * @param uri The virtual document URI to clean up.
+	 */
+	deleteContent(uri: vscode.Uri): void {
+		this.content.delete(uri.toString());
+	}
+}
+
 export function activate(context: vscode.ExtensionContext) {
 	outputChannel = vscode.window.createOutputChannel("Ollama Code Review");
+	const suggestionProvider = new SuggestionContentProvider();
+	context.subscriptions.push(
+		vscode.workspace.registerTextDocumentContentProvider('ollama-suggestion', suggestionProvider)
+	);
 
 	const reviewStagedChangesCommand = vscode.commands.registerCommand('ollama-code-review.reviewChanges', async () => {
 		try {
@@ -237,6 +271,7 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
+	// Put this inside the activate function, replacing the old suggestRefactoringCommand
 	const suggestRefactoringCommand = vscode.commands.registerCommand('ollama-code-review.suggestRefactoring', async () => {
 		const editor = vscode.window.activeTextEditor;
 		if (!editor) {
@@ -247,10 +282,15 @@ export function activate(context: vscode.ExtensionContext) {
 		const selection = editor.selection;
 		const selectedText = editor.document.getText(selection);
 
-		if (!selectedText) {
+		if (selection.isEmpty || !selectedText.trim()) {
 			vscode.window.showInformationMessage('Please select a code snippet to get a suggestion.');
 			return;
 		}
+
+		// Define unique URIs for our virtual documents. A timestamp ensures they are new each time.
+		const timestamp = new Date().getTime();
+		const originalUri = vscode.Uri.parse(`ollama-suggestion:original/${path.basename(editor.document.fileName)}?ts=${timestamp}`);
+		const suggestedUri = vscode.Uri.parse(`ollama-suggestion:suggestion/${path.basename(editor.document.fileName)}?ts=${timestamp}`);
 
 		try {
 			await vscode.window.withProgress({
@@ -273,13 +313,27 @@ export function activate(context: vscode.ExtensionContext) {
 				}
 
 				const { code: suggestedCode, explanation } = parsed;
+
+				// Set the content for our virtual documents via the provider
+				suggestionProvider.setContent(originalUri, selectedText);
+				suggestionProvider.setContent(suggestedUri, suggestedCode);
+
+				const diffTitle = `Ollama Suggestion for ${path.basename(editor.document.fileName)}`;
+
+				// Execute the built-in diff command
+				vscode.commands.executeCommand('vscode.diff', originalUri, suggestedUri, diffTitle, {
+					preview: true, // Show in a peek view, not a new editor tab
+					viewColumn: vscode.ViewColumn.Beside, // Prefer showing beside the current editor
+				});
+
+				// Use a non-modal message for actions, now including the explanation.
 				const userChoice = await vscode.window.showInformationMessage(
-					explanation || "Ollama has a suggestion. Apply it?",
-					{ modal: true },
+					explanation,
+					{ modal: false }, // Explicitly non-modal
 					"Apply Suggestion",
-					"Cancel"
+					"Dismiss"
 				);
-				
+
 				if (userChoice === "Apply Suggestion") {
 					editor.edit(editBuilder => {
 						editBuilder.replace(selection, suggestedCode);
@@ -289,13 +343,17 @@ export function activate(context: vscode.ExtensionContext) {
 			});
 		} catch (error) {
 			handleError(error, "Failed to get suggestion.");
+		} finally {
+			// CRITICAL: Always clean up the virtual document content to free memory.
+			suggestionProvider.deleteContent(originalUri);
+			suggestionProvider.deleteContent(suggestedUri);
 		}
 	});
 
 	context.subscriptions.push(
-		reviewStagedChangesCommand, 
-		reviewCommitRangeCommand, 
-		reviewChangesBetweenTwoBranchesCommand, 
+		reviewStagedChangesCommand,
+		reviewCommitRangeCommand,
+		reviewChangesBetweenTwoBranchesCommand,
 		generateCommitMessageCommand,
 		suggestRefactoringCommand
 	);
