@@ -97,6 +97,12 @@ You can configure these by opening the Command Palette (`Ctrl+Shift+P`) and sear
 
 ## Release Notes
 
+### 1.2.1
+*   **Fix**: Resolved a critical issue where commands would fail or target the wrong repository in workspaces with multiple Git projects. The extension will no longer default to the first repository found.
+*   **Enhancement**: Implemented intelligent repository selection in multi-repo workspaces.
+    *   The extension will now automatically select the repository corresponding to your active editor file.
+    *   If the context is unclear (e.g., no file is open), you will be prompted with a simple list to choose the correct repository.
+
 ### 1.2.0
 *   **New Feature**: Added a new configuration option `ollama-code-review.frameworks` to specify project frameworks or libraries.
 *   Providing this context helps the AI generate more tailored code reviews that are aligned with the specific conventions and best practices of the technologies you use.

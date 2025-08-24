@@ -18,6 +18,50 @@ interface CommitQuickPickItem extends vscode.QuickPickItem {
 }
 
 /**
+ * Selects a Git repository from the workspace.
+ * - If only one repo, returns it.
+ * - If multiple, tries to find one matching the active editor.
+ * - If no match, prompts the user to choose.
+ * @param gitAPI The Git API instance.
+ * @returns The selected repository object, or undefined if none is selected.
+ */
+async function selectRepository(gitAPI: any): Promise<any | undefined> {
+	const repositories = gitAPI.repositories;
+
+	if (!repositories || repositories.length === 0) {
+		vscode.window.showInformationMessage('No Git repository found in your workspace.');
+		return undefined;
+	}
+
+	if (repositories.length === 1) {
+		return repositories[0];
+	}
+
+	// Try to find the repo for the active file
+	const activeEditor = vscode.window.activeTextEditor;
+	if (activeEditor) {
+		const activeFileUri = activeEditor.document.uri;
+		const bestMatch = repositories.find((repo: { rootUri: { fsPath: string; }; }) => activeFileUri.fsPath.startsWith(repo.rootUri.fsPath));
+		if (bestMatch) {
+			return bestMatch;
+		}
+	}
+	
+	// If no active editor or no match, ask the user
+	const quickPickItems = repositories.map((repo: any) => ({
+		label: `$(repo) ${path.basename(repo.rootUri.fsPath)}`,
+		description: repo.rootUri.fsPath,
+		repo: repo // Store the actual repo object
+	}));
+
+	const selected = await vscode.window.showQuickPick(quickPickItems, {
+		placeHolder: "Select a repository to perform the action on"
+	});
+
+	return selected ? (selected as unknown as {repo: any}).repo : undefined;
+}
+
+/**
  * Parses the suggestion from Ollama's response.
  * Expects a Markdown code block followed by an explanation.
  * @param response The raw string response from the Ollama API.
@@ -89,11 +133,16 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.workspace.registerTextDocumentContentProvider('ollama-suggestion', suggestionProvider)
 	);
 
-	const reviewStagedChangesCommand = vscode.commands.registerCommand('ollama-code-review.reviewChanges', async () => {
+	const reviewStagedChangesCommand = vscode.commands.registerCommand('ollama-code-review.reviewChanges', async (scmRepo?: any) => {
 		try {
 			const gitAPI = getGitAPI();
 			if (!gitAPI) { return; }
-			const repo = gitAPI.repositories[0];
+			let repo: any;
+			if (scmRepo) {
+				repo = scmRepo;
+			} else {
+				repo = await selectRepository(gitAPI);
+			}
 			if (!repo) {
 				vscode.window.showInformationMessage('No Git repository found.');
 				return;
@@ -110,7 +159,7 @@ export function activate(context: vscode.ExtensionContext) {
 		try {
 			const gitAPI = getGitAPI();
 			if (!gitAPI) { return; }
-			const repo = gitAPI.repositories[0];
+			const repo = await selectRepository(gitAPI);
 			if (!repo) {
 				vscode.window.showInformationMessage('No Git repository found.');
 				return;
@@ -186,7 +235,7 @@ export function activate(context: vscode.ExtensionContext) {
 		try {
 			const gitAPI = getGitAPI();
 			if (!gitAPI) { return; }
-			const repo = gitAPI.repositories[0];
+			const repo = await selectRepository(gitAPI);
 			if (!repo) {
 				vscode.window.showInformationMessage('No Git repository found.');
 				return;
@@ -230,14 +279,15 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
-	const generateCommitMessageCommand = vscode.commands.registerCommand('ollama-code-review.generateCommitMessage', async () => {
+	const generateCommitMessageCommand = vscode.commands.registerCommand('ollama-code-review.generateCommitMessage', async (scmRepo?: any) => {
 		try {
 			const gitAPI = getGitAPI();
 			if (!gitAPI) { return; }
-			const repo = gitAPI.repositories[0];
-			if (!repo) {
-				vscode.window.showInformationMessage('No Git repository found.');
-				return;
+			let repo: any;
+			if (scmRepo) {
+				repo = scmRepo;
+			} else {
+				repo = await selectRepository(gitAPI);
 			}
 
 			const repoPath = repo.rootUri.fsPath;
