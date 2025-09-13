@@ -97,6 +97,10 @@ You can configure these by opening the Command Palette (`Ctrl+Shift+P`) and sear
 
 ## Release Notes
 
+### 1.2.2
+
+*  **Enhancement**: Added support for PHP to the Ollama: Suggestion feature, allowing users to get refactoring suggestions for PHP code.
+
 ### 1.2.1
 *   **Fix**: Resolved a critical issue where commands would fail or target the wrong repository in workspaces with multiple Git projects. The extension will no longer default to the first repository found.
 *   **Enhancement**: Implemented intelligent repository selection in multi-repo workspaces.
