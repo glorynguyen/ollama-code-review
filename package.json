@@ -2,7 +2,7 @@
   "name": "ollama-code-review",
   "displayName": "Ollama Code Review",
   "description": "Get AI code reviews and generate commit messages from a local Ollama instance before you commit.",
-  "version": "1.2.3",
+  "version": "1.3.0",
   "author": "Vinh Nguyen (vincent)",
   "publisher": "VinhNguyen-Vincent",
   "icon": "images/icon.png",
@@ -120,7 +120,9 @@
               "Ruby on Rails"
             ]
           },
-          "default": ["React"],
+          "default": [
+            "React"
+          ],
           "description": "Select the frameworks or libraries to tailor the code review. Use Ctrl+Click (Cmd+Click on Mac) for multiple selections."
         }
       }
