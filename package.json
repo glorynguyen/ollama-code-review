@@ -20,8 +20,7 @@
     "onLanguage:javascriptreact",
     "onLanguage:typescript",
     "onLanguage:typescriptreact",
-    "onView:scm",
-    "onExtension:eamodio.gitlens"
+    "onView:scm"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -77,12 +76,6 @@
         }
       ],
       "git-graph.commitsView.commit.context": [
-        {
-          "command": "ollama-code-review.reviewCommit",
-          "group": "2_review@1"
-        }
-      ],
-      "gitlens.commit.context": [
         {
           "command": "ollama-code-review.reviewCommit",
           "group": "2_review@1"

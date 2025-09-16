@@ -72,7 +72,6 @@ You must have the following software installed and configured for this extension
     ```
 3.  **[Git](https://git-scm.com/)**: Git must be installed and available in your system's PATH.
 4.  **VS Code Built-in Git Extension**: This extension must be enabled (it is by default).
-5.  **[GitLens Extension](https://marketplace.visualstudio.com/items?itemName=eamodio.gitlens)**: This extension is listed as a dependency to enable some context menu integrations.
 
 ## Extension Settings
 
