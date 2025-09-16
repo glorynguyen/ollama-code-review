@@ -125,6 +125,51 @@ class SuggestionContentProvider implements vscode.TextDocumentContentProvider {
 		this.content.delete(uri.toString());
 	}
 }
+class OllamaSuggestionProvider implements vscode.CodeActionProvider {
+
+	public static readonly providedCodeActionKinds = [
+		vscode.CodeActionKind.Refactor,
+        // Let's also include QuickFix, as the lightbulb is often associated with it.
+        vscode.CodeActionKind.QuickFix 
+	];
+
+    /**
+     * This method is called by VS Code to provide code actions.
+     * @param document The document in which the command was invoked.
+     * @param range The selected range of text.
+     * @returns An array of CodeAction objects.
+     */
+	public provideCodeActions(document: vscode.TextDocument, range: vscode.Range): vscode.CodeAction[] | undefined {
+        console.log(`[OllamaSuggestionProvider] provideCodeActions called. Is range empty? ${range.isEmpty}`);
+		// Don't show the action if the selection is empty.
+		if (range.isEmpty) {
+			return;
+		}
+
+        // Create a new CodeAction with a title that will appear in the menu.
+		const refactorAction = new vscode.CodeAction('Ollama: Suggest Refactoring', OllamaSuggestionProvider.providedCodeActionKinds[0]);
+		
+        // Assign the command that should be executed when the user selects this action.
+        // This links the UI action to your existing command implementation.
+        refactorAction.command = {
+            command: 'ollama-code-review.suggestRefactoring',
+            title: 'Suggest a refactoring for the selected code',
+            tooltip: 'Asks Ollama for a suggestion to improve the selected code.'
+        };
+
+		refactorAction.isPreferred = true; 
+
+		const diagnostic = new vscode.Diagnostic(
+            range, 
+            'Select code to get a refactoring suggestion from Ollama.', 
+            vscode.DiagnosticSeverity.Hint
+        );
+		refactorAction.diagnostics = [diagnostic];
+
+		console.log("[OllamaSuggestionProvider] Range is NOT empty, returning a CodeAction.");
+		return [refactorAction];
+	}
+}
 
 export function activate(context: vscode.ExtensionContext) {
 	outputChannel = vscode.window.createOutputChannel("Ollama Code Review");
@@ -132,6 +177,13 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.workspace.registerTextDocumentContentProvider('ollama-suggestion', suggestionProvider)
 	);
+
+    context.subscriptions.push(
+        vscode.languages.registerCodeActionsProvider('*', new OllamaSuggestionProvider(), {
+            providedCodeActionKinds: OllamaSuggestionProvider.providedCodeActionKinds
+        })
+    );
+
 
 	const reviewStagedChangesCommand = vscode.commands.registerCommand('ollama-code-review.reviewChanges', async (scmRepo?: any) => {
 		try {
@@ -305,7 +357,7 @@ export function activate(context: vscode.ExtensionContext) {
 			}, async (progress, token) => {
 				progress.report({ message: "Generating commit message..." });
 
-				const commitMessage = await getOllamaCommitMessage(diffResult);
+				const commitMessage = await getOllamaCommitMessage(diffResult, repo.inputBox.value?.trim());
 				if (token.isCancellationRequested) { return; }
 
 				if (commitMessage) {
@@ -497,7 +549,7 @@ async function getOllamaReview(diff: string): Promise<string> {
 	}
 }
 
-async function getOllamaCommitMessage(diff: string): Promise<string> {
+async function getOllamaCommitMessage(diff: string, existingMessage?: string): Promise<string> {
 	const config = vscode.workspace.getConfiguration('ollama-code-review');
 	const model = config.get<string>('model', 'llama3');
 	const endpoint = config.get<string>('endpoint', 'http://localhost:11434/api/generate');
@@ -516,7 +568,10 @@ async function getOllamaCommitMessage(diff: string): Promise<string> {
 
 		Do not include the "---" markdown separators, or any other preamble or explanation in your response. Just provide the raw commit message text, ready to be used.
 
-		Here is the code diff:
+		Developer's draft message (may reflect intent):
+		${existingMessage && existingMessage.trim() ? existingMessage : "(none provided)"}
+
+		Staged git diff:
 		---
 		${diff}
 		---

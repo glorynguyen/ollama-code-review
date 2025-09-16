@@ -41,6 +41,9 @@ You can interact with this extension in two primary ways:
 
 ![Suggest Improvements](images/feature-suggestion.gif)
 
+- Alternatively (currently only JavaScript and TypeScript are supported), you can select a block of code, click on the light bulb icon, and choose "Ollama: Suggest Refactoring"
+![Suggest Improvements](images/code-action.gif)
+
 ### 4. Review a Commit Range
 - **Command**: `Ollama: Review Commit Range`
 - Analyze a series of commits. The extension will prompt you to select a starting commit from your history, and it will generate a review for all changes from that point up to `HEAD`.
@@ -96,6 +99,10 @@ You can configure these by opening the Command Palette (`Ctrl+Shift+P`) and sear
 * The context menu item "Ollama: Review Commit" that appears when right-clicking a commit in the SCM panel or in GitLens views is currently non-functional. It references a command that has been replaced by the more flexible `reviewCommitRange` command. **Please use the commands from the Command Palette for now.**
 
 ## Release Notes
+
+### 1.2.3
+
+*  **Enhancement**: Add developer draft commit message to enhance commit suggestions. Developers can now enter a draft message in the commit message input and then click ‘Ollama: Generate Commit Message’ to generate a more accurate commit intent.
 
 ### 1.2.2
 
