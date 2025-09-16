@@ -98,46 +98,4 @@ You can configure these by opening the Command Palette (`Ctrl+Shift+P`) and sear
 
 * The context menu item "Ollama: Review Commit" that appears when right-clicking a commit in the SCM panel or in GitLens views is currently non-functional. It references a command that has been replaced by the more flexible `reviewCommitRange` command. **Please use the commands from the Command Palette for now.**
 
-## Release Notes
-
-### 1.2.3
-
-*  **Enhancement**: Add developer draft commit message to enhance commit suggestions. Developers can now enter a draft message in the commit message input and then click ‘Ollama: Generate Commit Message’ to generate a more accurate commit intent.
-
-### 1.2.2
-
-*  **Enhancement**: Added support for PHP to the Ollama: Suggestion feature, allowing users to get refactoring suggestions for PHP code.
-
-### 1.2.1
-*   **Fix**: Resolved a critical issue where commands would fail or target the wrong repository in workspaces with multiple Git projects. The extension will no longer default to the first repository found.
-*   **Enhancement**: Implemented intelligent repository selection in multi-repo workspaces.
-    *   The extension will now automatically select the repository corresponding to your active editor file.
-    *   If the context is unclear (e.g., no file is open), you will be prompted with a simple list to choose the correct repository.
-
-### 1.2.0
-*   **New Feature**: Added a new configuration option `ollama-code-review.frameworks` to specify project frameworks or libraries.
-*   Providing this context helps the AI generate more tailored code reviews that are aligned with the specific conventions and best practices of the technologies you use.
-
-### 1.1.1
-*   **Enhacement**: **Suggest Code Improvements**.
-*   Get a better view of code suggestions using a git-diff comparison and a popup with an explanation of the improvements.
-
-### 1.1.0
-*   **New Feature**: **Suggest Code Improvements**. Right-click on any selected code in the editor and choose `Ollama: Suggestion` to get instant refactoring ideas.
-*   The suggestion is presented in an interactive pop-up, allowing you to review the explanation and apply the new code with a single click.
-
-### 1.0.4
-*   **New Feature**: Generate a conventional commit message from staged changes using the `Ollama: Generate Commit Message` command.
-*   Added a `$(sparkle)` icon to the Source Control title bar for quick access to commit message generation.
-*   Updated SCM title bar to show both review and generate icons.
-
-### 1.0.1
-
-* Added feature: Review all staged changes.
-* Added feature: Review a range of commits.
-* Added feature: Review the diff between two branches.
-* Configurable Ollama model and endpoint.
-
----
-
 **Enjoy!**
