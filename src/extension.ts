@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import axios from 'axios';
 import { exec } from 'child_process';
 import * as path from 'path';
+import { OllamaReviewPanel } from './reviewProvider';
 
 let outputChannel: vscode.OutputChannel;
 
@@ -485,16 +486,13 @@ async function runReview(diff: string) {
 		const review = await getOllamaReview(diff);
 
 		progress.report({ message: "Displaying review..." });
-		outputChannel.clear();
-		outputChannel.appendLine("--- Ollama Code Review ---");
-		outputChannel.appendLine(review);
-		outputChannel.show(true);
+		OllamaReviewPanel.createOrShow(review);
 	});
 }
 
 async function getOllamaReview(diff: string): Promise<string> {
 	const config = vscode.workspace.getConfiguration('ollama-code-review');
-	const model = config.get<string>('model', 'llama3');
+	const model = config.get<string>('model', 'qwen2.5-coder:14b-instruct-q4_0');
 	const endpoint = config.get<string>('endpoint', 'http://localhost:11434/api/generate');
 	const temperature = config.get<number>('temperature', 0);
 	const frameworks = config.get<string[] | string>('frameworks', ['React']);
@@ -551,7 +549,7 @@ async function getOllamaReview(diff: string): Promise<string> {
 
 async function getOllamaCommitMessage(diff: string, existingMessage?: string): Promise<string> {
 	const config = vscode.workspace.getConfiguration('ollama-code-review');
-	const model = config.get<string>('model', 'llama3');
+	const model = config.get<string>('model', 'qwen2.5-coder:14b-instruct-q4_0');
 	const endpoint = config.get<string>('endpoint', 'http://localhost:11434/api/generate');
 	const temperature = config.get<number>('temperature', 0.2); // Slightly more creative for commit messages
 
@@ -600,7 +598,7 @@ async function getOllamaCommitMessage(diff: string, existingMessage?: string): P
 
 async function getOllamaSuggestion(codeSnippet: string, languageId: string): Promise<string> {
 	const config = vscode.workspace.getConfiguration('ollama-code-review');
-	const model = config.get<string>('model', 'llama3');
+	const model = config.get<string>('model', 'qwen2.5-coder:14b-instruct-q4_0');
 	const endpoint = config.get<string>('endpoint', 'http://localhost:11434/api/generate');
 	const temperature = config.get<number>('temperature', 0.3);
 
