@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.5.0](https://github.com/glorynguyen/ollama-code-review/compare/v1.4.0...v1.5.0) (2026-01-23)
+
+
+### Features
+
+* **src/reviewProvider.ts:** Add OllamaReviewPanel for displaying code reviews in a webview ([5c4dfb5](https://github.com/glorynguyen/ollama-code-review/commit/5c4dfb5e3b6c1f0f278ab61eb8f701af0919643b))
+
 ## 1.4.0 (2025-09-16)
 
 
