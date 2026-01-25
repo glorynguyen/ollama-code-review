@@ -1,3 +1,11 @@
+# [1.6.0](https://github.com/glorynguyen/ollama-code-review/compare/v1.5.1...v1.6.0) (2026-01-25)
+
+
+### Features
+
+* **ci:** add semantic-release workflow for automated publishing ([d33cafc](https://github.com/glorynguyen/ollama-code-review/commit/d33cafc402f5de3e66a924c52a565a067ac324a5))
+* **extension:** add agent skills and commit review features ([954193d](https://github.com/glorynguyen/ollama-code-review/commit/954193dc963e8469c6ceb4bb83ad4d058900ac33))
+
 # Changelog
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
@@ -121,4 +129,4 @@ All notable changes to this project will be documented in this file. See [standa
 ### Added
 - Initial release.  
 - Base project configuration files.  
-- Initial command structure for Ollama Code Review extension.  
+- Initial command structure for Ollama Code Review extension.
