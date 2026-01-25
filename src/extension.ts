@@ -3,6 +3,9 @@ import axios from 'axios';
 import { exec } from 'child_process';
 import * as path from 'path';
 import { OllamaReviewPanel } from './reviewProvider';
+import { SkillsService } from './skillsService';
+import { SkillsBrowserPanel } from './skillsBrowserPanel';
+
 
 let outputChannel: vscode.OutputChannel;
 
@@ -172,9 +175,73 @@ class OllamaSuggestionProvider implements vscode.CodeActionProvider {
 	}
 }
 
-export function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext) {
+	const skillsService = await SkillsService.create(context);
 	outputChannel = vscode.window.createOutputChannel("Ollama Code Review");
 	const suggestionProvider = new SuggestionContentProvider();
+	const browseSkillsCommand = vscode.commands.registerCommand(
+        'ollama-code-review.browseAgentSkills',
+        async () => {
+            try {
+                await vscode.window.withProgress({
+                    location: vscode.ProgressLocation.Notification,
+                    title: 'Loading Agent Skills',
+                    cancellable: false
+                }, async (progress) => {
+                    progress.report({ message: 'Fetching skills from GitHub...' });
+                    
+                    const skills = await skillsService.fetchAvailableSkills();
+                    
+                    progress.report({ message: 'Opening skills browser...' });
+                    await SkillsBrowserPanel.createOrShow(skillsService, skills);
+                });
+            } catch (error) {
+                vscode.window.showErrorMessage(
+                    `Failed to load agent skills: ${error}`
+                );
+            }
+        }
+    );
+
+    // Apply Skill to Code Review Command
+    const applySkillCommand = vscode.commands.registerCommand(
+        'ollama-code-review.applySkillToReview',
+        async () => {
+            const cachedSkills = skillsService.listCachedSkills();
+            
+            if (cachedSkills.length === 0) {
+                const browse = await vscode.window.showInformationMessage(
+                    'No skills installed. Would you like to browse available skills?',
+                    'Browse Skills',
+                    'Cancel'
+                );
+                
+                if (browse === 'Browse Skills') {
+                    vscode.commands.executeCommand('ollama-code-review.browseAgentSkills');
+                }
+                return;
+            }
+
+            const selectedSkill = await vscode.window.showQuickPick(
+                cachedSkills.map(skill => ({
+                    label: skill.name,
+                    description: skill.description,
+                    skill: skill
+                })),
+                { placeHolder: 'Select a skill to apply to code review' }
+            );
+
+            if (selectedSkill) {
+                vscode.window.showInformationMessage(
+                    `Skill "${selectedSkill.skill.name}" will be applied to next review`
+                );
+                // Store selected skill for next review
+                context.globalState.update('selectedSkill', selectedSkill.skill);
+            }
+        }
+    );
+
+    context.subscriptions.push(browseSkillsCommand, applySkillCommand);
 	context.subscriptions.push(
 		vscode.workspace.registerTextDocumentContentProvider('ollama-suggestion', suggestionProvider)
 	);
@@ -202,9 +269,132 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 			const repoPath = repo.rootUri.fsPath;
 			const diffResult = await runGitCommand(repoPath, ['diff', '--staged']);
-			await runReview(diffResult);
+			await runReview(diffResult, context);
 		} catch (error) {
 			handleError(error, "Failed to review staged changes.");
+		}
+	});
+
+	const reviewCommitCommand = vscode.commands.registerCommand('ollama-code-review.reviewCommit', async (commitOrUri?: any) => {
+		try {
+			const gitAPI = getGitAPI();
+			if (!gitAPI) { return; }
+
+			let repo: any;
+			let commitHash: string | undefined;
+
+			// Handle different invocation contexts
+			if (commitOrUri) {
+				// Called from Git Graph or SCM context menu with commit info
+				if (commitOrUri.hash) {
+					// Git Graph format
+					commitHash = commitOrUri.hash;
+					repo = gitAPI.repositories.find((r: any) => 
+						commitOrUri.repoRoot && r.rootUri.fsPath === commitOrUri.repoRoot
+					) || await selectRepository(gitAPI);
+				} else if (commitOrUri.rootUri) {
+					// SCM repository context
+					repo = commitOrUri;
+				}
+			}
+
+			if (!repo) {
+				repo = await selectRepository(gitAPI);
+			}
+
+			if (!repo) {
+				vscode.window.showInformationMessage('No Git repository found.');
+				return;
+			}
+
+			const repoPath = repo.rootUri.fsPath;
+
+			// If we don't have a commit hash yet, prompt for it or show a picker
+			if (!commitHash) {
+				const inputHash = await vscode.window.showInputBox({
+					prompt: 'Enter commit hash to review (or leave empty to select from recent commits)',
+					placeHolder: 'e.g., abc123 or HEAD~1'
+				});
+
+				if (inputHash === undefined) { return; } // User cancelled
+
+				if (inputHash.trim()) {
+					commitHash = inputHash.trim();
+				} else {
+					// Show commit picker
+					await vscode.window.withProgress({
+						location: vscode.ProgressLocation.Notification,
+						title: 'Loading commits...',
+						cancellable: false
+					}, async () => {
+						const log = await repo.log({ maxEntries: 50 }) as GitCommitDetails[];
+						
+						const quickPickItems: CommitQuickPickItem[] = log.map(commit => ({
+							label: `$(git-commit) ${commit.message.split('\n')[0]}`,
+							description: `${commit.hash.substring(0, 7)} by ${commit.authorName || 'Unknown'}`,
+							detail: commit.commitDate ? new Date(commit.commitDate).toLocaleString() : '',
+							hash: commit.hash
+						}));
+
+						const selected = await vscode.window.showQuickPick(quickPickItems, {
+							placeHolder: 'Select a commit to review',
+							matchOnDescription: true
+						});
+
+						if (selected) {
+							commitHash = selected.hash;
+						}
+					});
+				}
+			}
+
+			if (!commitHash) { return; }
+
+			await vscode.window.withProgress({
+				location: vscode.ProgressLocation.Notification,
+				title: 'Ollama Code Review',
+				cancellable: true
+			}, async (progress, token) => {
+				progress.report({ message: `Getting commit details for ${commitHash!.substring(0, 7)}...` });
+
+				// Get commit details
+				const commitDetails = await repo.getCommit(commitHash);
+				if (token.isCancellationRequested) { return; }
+
+				progress.report({ message: 'Generating diff...' });
+
+				let diffResult: string;
+				let parentHashOrEmptyTree: string;
+
+				// Handle initial commit (no parents) vs regular commits
+				if (commitDetails.parents.length > 0) {
+					parentHashOrEmptyTree = commitDetails.parents[0];
+					diffResult = await runGitCommand(repoPath, ['diff', `${parentHashOrEmptyTree}..${commitHash}`]);
+				} else {
+					// Initial commit - compare against empty tree
+					parentHashOrEmptyTree = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
+					diffResult = await runGitCommand(repoPath, ['diff', parentHashOrEmptyTree, commitHash as unknown as string]);
+				}
+
+				if (token.isCancellationRequested) { return; }
+
+				// Get list of changed files for logging
+				const filesList = await runGitCommand(repoPath, ['diff', '--name-only', parentHashOrEmptyTree, commitHash as unknown as string]);
+				const filesArray = filesList.trim().split('\n').filter(Boolean);
+
+				outputChannel.appendLine(`\n--- Reviewing Commit: ${commitHash!.substring(0, 7)} ---`);
+				outputChannel.appendLine(`Commit Message: ${commitDetails.message.split('\n')[0]}`);
+				outputChannel.appendLine(`Author: ${commitDetails.authorName || 'Unknown'}`);
+				outputChannel.appendLine(`Changed files (${filesArray.length}):`);
+				filesArray.forEach(f => outputChannel.appendLine(`  - ${f}`));
+				outputChannel.appendLine('---------------------------------------');
+
+				progress.report({ message: 'Running review...' });
+				await runReview(diffResult, context);
+			});
+
+		} catch (error) {
+			handleError(error, 'Failed to review commit.');
 		}
 	});
 
@@ -276,7 +466,7 @@ export function activate(context: vscode.ExtensionContext) {
 				filesArray.forEach(f => outputChannel.appendLine(f));
 				outputChannel.appendLine('---------------------------------------');
 
-				await runReview(diffResult);
+				await runReview(diffResult, context);
 			});
 
 		} catch (error) {
@@ -325,7 +515,7 @@ export function activate(context: vscode.ExtensionContext) {
 				filesArray.forEach(f => outputChannel.appendLine(f));
 				outputChannel.appendLine('---------------------------------------');
 
-				await runReview(diffResult);
+				await runReview(diffResult, context);
 			});
 		} catch (error) {
 			handleError(error, 'Failed to review changes between branches.');
@@ -458,7 +648,8 @@ export function activate(context: vscode.ExtensionContext) {
 		reviewCommitRangeCommand,
 		reviewChangesBetweenTwoBranchesCommand,
 		generateCommitMessageCommand,
-		suggestRefactoringCommand
+		suggestRefactoringCommand,
+		reviewCommitCommand
 	);
 }
 
@@ -471,7 +662,7 @@ function getGitAPI() {
 	return gitExtension.getAPI(1);
 }
 
-async function runReview(diff: string) {
+async function runReview(diff: string, context: vscode.ExtensionContext) {
 	if (!diff || !diff.trim()) {
 		vscode.window.showInformationMessage('No code changes found to review in the selected range.');
 		return;
@@ -483,16 +674,16 @@ async function runReview(diff: string) {
 		cancellable: false
 	}, async (progress) => {
 		progress.report({ message: "Asking Ollama for a review..." });
-		const review = await getOllamaReview(diff);
+		const review = await getOllamaReview(diff, context);
 
 		progress.report({ message: "Displaying review..." });
 		OllamaReviewPanel.createOrShow(review);
 	});
 }
 
-async function getOllamaReview(diff: string): Promise<string> {
+async function getOllamaReview(diff: string, context?: vscode.ExtensionContext): Promise<string> {
 	const config = vscode.workspace.getConfiguration('ollama-code-review');
-	const model = config.get<string>('model', 'qwen2.5-coder:14b-instruct-q4_0');
+	const model = getOllamaModel(config);
 	const endpoint = config.get<string>('endpoint', 'http://localhost:11434/api/generate');
 	const temperature = config.get<number>('temperature', 0);
 	const frameworks = config.get<string[] | string>('frameworks', ['React']);
@@ -501,37 +692,45 @@ async function getOllamaReview(diff: string): Promise<string> {
 		: typeof frameworks === 'string'
 		? frameworks
 		: 'React';
+	let skillContext = '';
+	
+	if (context) {
+		const selectedSkill = context.globalState.get<any>('selectedSkill');
+		if (selectedSkill) {
+			skillContext = `\n\nAdditional Review Guidelines:\n${selectedSkill.content}\n`;
+		}
+	}
 
 	const prompt = `
-        You are an expert software engineer and code reviewer with deep knowledge of the following frameworks and libraries: **${frameworksList}**.
-        Your task is to analyze the following code changes (in git diff format) and provide constructive, actionable feedback tailored to the conventions, best practices, and common pitfalls of these technologies.
+		You are an expert software engineer and code reviewer with deep knowledge of the following frameworks and libraries: **${frameworksList}**.
+		Your task is to analyze the following code changes (in git diff format) and provide constructive, actionable feedback tailored to the conventions, best practices, and common pitfalls of these technologies.
+		${skillContext}
+		**How to Read the Git Diff Format:**
+		- Lines starting with \`---\` and \`+++\` indicate the file names before and after the changes.
+		- Lines starting with \`@@\` (e.g., \`@@ -15,7 +15,9 @@\`) denote the location of the changes within the file.
+		- Lines starting with a \`-\` are lines that were DELETED.
+		- Lines starting with a \`+\` are lines that were ADDED.
+		- Lines without a prefix (starting with a space) are for context and have not been changed. **Please focus your review on the added (\`+\`) and deleted (\`-\`) lines.**
 
-        **How to Read the Git Diff Format:**
-        - Lines starting with \`---\` and \`+++\` indicate the file names before and after the changes.
-        - Lines starting with \`@@\` (e.g., \`@@ -15,7 +15,9 @@\`) denote the location of the changes within the file.
-        - Lines starting with a \`-\` are lines that were DELETED.
-        - Lines starting with a \`+\` are lines that were ADDED.
-        - Lines without a prefix (starting with a space) are for context and have not been changed. **Please focus your review on the added (\`+\`) and deleted (\`-\`) lines.**
+		**Review Focus:**
+		- Potential bugs or logical errors specific to the frameworks/libraries (${frameworksList}).
+		- Performance optimizations, considering framework-specific patterns.
+		- Code style inconsistencies or deviations from ${frameworksList} best practices.
+		- Security vulnerabilities, especially those common in ${frameworksList}.
+		- Improvements to maintainability and readability, aligned with ${frameworksList} conventions.
 
-        **Review Focus:**
-        - Potential bugs or logical errors specific to the frameworks/libraries (${frameworksList}).
-        - Performance optimizations, considering framework-specific patterns.
-        - Code style inconsistencies or deviations from ${frameworksList} best practices.
-        - Security vulnerabilities, especially those common in ${frameworksList}.
-        - Improvements to maintainability and readability, aligned with ${frameworksList} conventions.
+		**Feedback Requirements:**
+		1. Explain any issues clearly and concisely, referencing ${frameworksList} where relevant.
+		2. Suggest specific code changes or improvements. Include code snippets for examples where appropriate.
+		3. Use Markdown for clear formatting.
 
-        **Feedback Requirements:**
-        1. Explain any issues clearly and concisely, referencing ${frameworksList} where relevant.
-        2. Suggest specific code changes or improvements. Include code snippets for examples where appropriate.
-        3. Use Markdown for clear formatting.
+		If you find no issues, please respond with the single sentence: "I have reviewed the changes and found no significant issues."
 
-        If you find no issues, please respond with the single sentence: "I have reviewed the changes and found no significant issues."
-
-        Here is the code diff to review:
-        ---
-        ${diff}
-        ---
-        `;
+		Here is the code diff to review:
+		---
+		${diff}
+		---
+		`;
 
 
 	try {
@@ -549,7 +748,7 @@ async function getOllamaReview(diff: string): Promise<string> {
 
 async function getOllamaCommitMessage(diff: string, existingMessage?: string): Promise<string> {
 	const config = vscode.workspace.getConfiguration('ollama-code-review');
-	const model = config.get<string>('model', 'qwen2.5-coder:14b-instruct-q4_0');
+	const model = getOllamaModel(config);
 	const endpoint = config.get<string>('endpoint', 'http://localhost:11434/api/generate');
 	const temperature = config.get<number>('temperature', 0.2); // Slightly more creative for commit messages
 
@@ -596,9 +795,17 @@ async function getOllamaCommitMessage(diff: string, existingMessage?: string): P
 	}
 }
 
+function getOllamaModel(config: vscode.WorkspaceConfiguration): string {
+	let model = config.get<string>('model', 'qwen2.5-coder:14b-instruct-q4_0');
+	if (model === 'custom') {
+		model = config.get<string>('customModel') || 'qwen2.5-coder:14b-instruct-q4_0';
+	}
+	return model;
+}
+
 async function getOllamaSuggestion(codeSnippet: string, languageId: string): Promise<string> {
 	const config = vscode.workspace.getConfiguration('ollama-code-review');
-	const model = config.get<string>('model', 'qwen2.5-coder:14b-instruct-q4_0');
+	const model = getOllamaModel(config);
 	const endpoint = config.get<string>('endpoint', 'http://localhost:11434/api/generate');
 	const temperature = config.get<number>('temperature', 0.3);
 

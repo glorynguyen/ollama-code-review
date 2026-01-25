@@ -13,8 +13,7 @@ It leverages the power of local large language models to provide feedback on:
 
 You can interact with this extension in two primary ways:
 
-1.  **Command Palette**: Press `Ctrl+Shift+P` (or `Cmd+Shift+P` on Mac), type `Ollama`, and select the desired action from the list.
-2.  **Context Menus**: Use the right-click menu in the editor for selected code or access quick-action buttons in the Source Control panel.
+**Command Palette**: Press `Ctrl+Shift+P` (or `Cmd+Shift+P` on Mac), type `Ollama`, and select the desired action from the list.
 
 ![Ollama Commands in the Command Palette](images/commands.png)
 
@@ -57,6 +56,21 @@ All feedback from Ollama is displayed in a dedicated "Ollama Code Review" output
 
 ![Code Review Output](images/feature-output-panel.png)
 
+### 7. Agent Skills (New!)
+- **Command**: `Ollama Code Review: Browse Agent Skills`
+- **Command**: `Ollama Code Review: Apply Skill to Review`
+- Enhance your code reviews by downloading specialized "skills" from GitHub (defaulting to `vercel-labs/agent-skills`). 
+- These skills provide the AI with specific context or specialized rules (e.g., "Performance Expert," "Security Auditor," or "Accessibility Specialist").
+- **Workflow**: Browse the library, download a skill, and it will be applied to your next review to provide more targeted feedback.
+
+### 8. Review a Specific Commit
+- **Command**: `Ollama Code Review: Review Commit`
+- Review any historical commit. You can enter a hash, select from a list of the 50 most recent commits, or trigger it directly from the **Git Graph** extension context menu.
+
+### 9. Detailed Review Output
+All feedback from Ollama is displayed in a dedicated "Ollama Code Review" output channel... 
+- **New**: The review panel now features a **"Copy Review"** button to quickly copy the entire Markdown feedback to your clipboard for sharing in Pull Requests or Slack.
+
 ## Requirements
 
 You must have the following software installed and configured for this extension to work.
@@ -77,12 +91,15 @@ You must have the following software installed and configured for this extension
 
 This extension contributes the following settings to your VS Code `settings.json`:
 
-* `ollama-code-review.model`: The Ollama model to use.
-    * **Type**: `string`
-    * **Default**: `"qwen2.5-coder:14b-instruct-q4_0"`
+* `ollama-code-review.model`: Now supports expanded options including `qwen3-coder:480b-cloud`, `glm-4.7:cloud`, or `custom`.
+* `ollama-code-review.customModel`: Specify your own model name if you select "custom" in the model setting.
 * `ollama-code-review.endpoint`: The API endpoint for your local Ollama instance's generate API.
     * **Type**: `string`
     * **Default**: `"http://localhost:11434/api/generate"`
+* `ollama-code-review.skills.defaultRepository`: The GitHub repository to fetch skills from.
+    * **Default**: `"vercel-labs/agent-skills"`
+* `ollama-code-review.skills.autoApply`: If enabled, the selected skill is automatically applied to all subsequent reviews.
+    * **Default**: `true`
 * `ollama-code-review.temperature`: The creativity of the AI's response (0.0 for deterministic, 1.0 for very creative).
     * **Type**: `number`
     * **Default**: `0`
