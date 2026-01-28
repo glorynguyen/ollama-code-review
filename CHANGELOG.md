@@ -1,3 +1,10 @@
+# [1.7.0](https://github.com/glorynguyen/ollama-code-review/compare/v1.6.0...v1.7.0) (2026-01-28)
+
+
+### Features
+
+* **review:** add interactive chat for follow-up questions ([8f392c7](https://github.com/glorynguyen/ollama-code-review/commit/8f392c74f7ec7bf44cc9acdb14b506ea412b8a7d))
+
 # [1.6.0](https://github.com/glorynguyen/ollama-code-review/compare/v1.5.1...v1.6.0) (2026-01-25)
 
 
