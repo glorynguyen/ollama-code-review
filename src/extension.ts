@@ -677,7 +677,7 @@ async function runReview(diff: string, context: vscode.ExtensionContext) {
 		const review = await getOllamaReview(diff, context);
 
 		progress.report({ message: "Displaying review..." });
-		OllamaReviewPanel.createOrShow(review);
+		OllamaReviewPanel.createOrShow(review, diff, context);
 	});
 }
 
