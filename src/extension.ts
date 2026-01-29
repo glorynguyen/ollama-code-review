@@ -6,6 +6,7 @@ import { OllamaReviewPanel } from './reviewProvider';
 import { SkillsService } from './skillsService';
 import { SkillsBrowserPanel } from './skillsBrowserPanel';
 import { getOllamaModel } from './utils';
+import { filterDiff, getFilterSummary } from './diffFilter';
 
 const CLAUDE_API_ENDPOINT = 'https://api.anthropic.com/v1/messages';
 
@@ -888,16 +889,33 @@ async function runReview(diff: string, context: vscode.ExtensionContext) {
 		return;
 	}
 
+	// Apply diff filtering
+	const filterResult = filterDiff(diff);
+	const filteredDiff = filterResult.filteredDiff;
+
+	if (!filteredDiff || !filteredDiff.trim()) {
+		vscode.window.showInformationMessage('All changes were filtered out (lock files, build outputs, etc.). No code to review.');
+		return;
+	}
+
+	// Show filter summary if files were filtered
+	const filterSummary = getFilterSummary(filterResult.stats);
+	if (filterSummary) {
+		outputChannel.appendLine(`\n--- Diff Filter ---`);
+		outputChannel.appendLine(filterSummary);
+		outputChannel.appendLine(`Reviewing ${filterResult.stats.includedFiles} of ${filterResult.stats.totalFiles} files`);
+	}
+
 	await vscode.window.withProgress({
 		location: vscode.ProgressLocation.Notification,
 		title: "Ollama Code Review",
 		cancellable: false
 	}, async (progress) => {
-		progress.report({ message: "Asking Ollama for a review..." });
-		const review = await getOllamaReview(diff, context);
+		progress.report({ message: `Asking Ollama for a review (${filterResult.stats.includedFiles} files)...` });
+		const review = await getOllamaReview(filteredDiff, context);
 
 		progress.report({ message: "Displaying review..." });
-		OllamaReviewPanel.createOrShow(review, diff, context);
+		OllamaReviewPanel.createOrShow(review, filteredDiff, context);
 	});
 }
 

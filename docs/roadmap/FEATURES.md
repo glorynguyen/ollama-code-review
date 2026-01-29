@@ -95,7 +95,7 @@ Add predefined review profiles that adjust the AI's focus area. Users can switch
 | **ID** | F-002 |
 | **Priority** | 🔴 P0 |
 | **Effort** | Low (1 day) |
-| **Status** | 📋 Planned |
+| **Status** | ✅ Complete |
 | **Dependencies** | None |
 
 #### Description
@@ -882,7 +882,7 @@ rules:
 | ID | Feature | Phase | Status |
 |----|---------|-------|--------|
 | F-001 | Review Profiles | 1 | 📋 Planned |
-| F-002 | Smart Diff Filtering | 1 | 📋 Planned |
+| F-002 | Smart Diff Filtering | 1 | ✅ Complete |
 | F-003 | Export Options | 1 | 📋 Planned |
 | F-004 | GitHub PR Integration | 2 | 📋 Planned |
 | F-005 | Inline Code Actions | 2 | 📋 Planned |

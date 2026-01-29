@@ -186,6 +186,35 @@
             "React"
           ],
           "description": "Select the frameworks or libraries to tailor the code review. Use Ctrl+Click (Cmd+Click on Mac) for multiple selections."
+        },
+        "ollama-code-review.diffFilter": {
+          "type": "object",
+          "description": "Configure diff filtering to exclude noise from reviews",
+          "default": {},
+          "properties": {
+            "ignorePaths": {
+              "type": "array",
+              "items": { "type": "string" },
+              "default": ["**/node_modules/**", "**/*.lock", "**/package-lock.json", "**/yarn.lock", "**/dist/**", "**/build/**", "**/out/**"],
+              "description": "Glob patterns for paths to ignore"
+            },
+            "ignorePatterns": {
+              "type": "array",
+              "items": { "type": "string" },
+              "default": ["*.min.js", "*.min.css", "*.map", "*.generated.*"],
+              "description": "File name patterns to ignore"
+            },
+            "maxFileLines": {
+              "type": "number",
+              "default": 500,
+              "description": "Warn when a file has more changed lines than this"
+            },
+            "ignoreFormattingOnly": {
+              "type": "boolean",
+              "default": false,
+              "description": "Skip files with only whitespace/formatting changes"
+            }
+          }
         }
       }
     }
