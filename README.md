@@ -1,6 +1,6 @@
 # Ollama Code Review
 
-Get lightning-fast, expert code reviews and AI-generated commit messages directly in your editor using your local Ollama instance. This extension analyzes your code changes before you commit, helping you catch bugs, improve code quality, and write consistent, informative commit messages, all while keeping your code private on your own machine.
+Get lightning-fast, expert code reviews and AI-generated commit messages directly in your editor using local Ollama models or cloud AI providers like **Claude (Anthropic)**. This extension analyzes your code changes before you commit, helping you catch bugs, improve code quality, and write consistent, informative commit messages.
 
 It leverages the power of local large language models to provide feedback on:
 - Potential bugs and logical errors
@@ -82,30 +82,45 @@ All feedback from Ollama is displayed in a dedicated "Ollama Code Review" output
 
 ![Model Selection](images/switch-models.gif)
 
+### 11. Claude (Anthropic) Support
+Use Anthropic's powerful Claude models for code reviews:
+- **Claude Sonnet 4** - Fast, capable model for everyday reviews
+- **Claude Opus 4** - Most capable model for complex analysis
+- **Claude 3.7 Sonnet** - Balanced performance and quality
+
+To use Claude models:
+1. Get your API key from [Anthropic Console](https://console.anthropic.com/)
+2. Set your API key in settings: `ollama-code-review.claudeApiKey`
+3. Select a Claude model from the status bar or command palette
+
 ---
 
 ## Requirements
 
 You must have the following software installed and configured for this extension to work.
 
-1.  **[Ollama](https://ollama.com/)**: The extension requires a running Ollama instance. Please download and install it from the official website.
-2.  **An Ollama Model**: You need to have a model pulled to use for the reviews. We recommend a model tuned for coding. You can pull the default model by running:
+### For Local Ollama Models
+1.  **[Ollama](https://ollama.com/)**: Download and install from the official website.
+2.  **An Ollama Model**: Pull a model tuned for coding:
     ```bash
     ollama pull kimi-k2.5:cloud
     ```
-    To verify your setup, you can run the model from your terminal. This command will also pull the model if it doesn't exist and start an interactive session:
-    ```bash
-    ollama run kimi-k2.5:cloud
-    ```
-3.  **[Git](https://git-scm.com/)**: Git must be installed and available in your system's PATH.
-4.  **VS Code Built-in Git Extension**: This extension must be enabled (it is by default).
+
+### For Claude Models (Alternative)
+1.  **Anthropic API Key**: Get one from [console.anthropic.com](https://console.anthropic.com/)
+2.  **Configure the key** in VS Code settings: `ollama-code-review.claudeApiKey`
+
+### General Requirements
+1.  **[Git](https://git-scm.com/)**: Git must be installed and available in your system's PATH.
+2.  **VS Code Built-in Git Extension**: This extension must be enabled (it is by default).
 
 ## Extension Settings
 
 This extension contributes the following settings to your VS Code `settings.json`:
 
-* `ollama-code-review.model`: Now supports expanded options including `qwen3-coder:480b-cloud`, `glm-4.7:cloud`, or `custom`.
+* `ollama-code-review.model`: Supports local Ollama models, cloud models (`kimi-k2.5:cloud`, `qwen3-coder:480b-cloud`, `glm-4.7:cloud`), Claude models (`claude-sonnet-4-20250514`, `claude-opus-4-20250514`, `claude-3-7-sonnet-20250219`), or `custom`.
 * `ollama-code-review.customModel`: Specify your own model name if you select "custom" in the model setting.
+* `ollama-code-review.claudeApiKey`: Your Anthropic API key for Claude models.
 * `ollama-code-review.endpoint`: The API endpoint for your local Ollama instance's generate API.
     * **Type**: `string`
     * **Default**: `"http://localhost:11434/api/generate"`
