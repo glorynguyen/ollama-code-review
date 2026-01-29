@@ -1,3 +1,10 @@
+# [1.10.0](https://github.com/glorynguyen/ollama-code-review/compare/v1.9.0...v1.10.0) (2026-01-29)
+
+
+### Features
+
+* **claude:** Add Claude model support ([15c32d8](https://github.com/glorynguyen/ollama-code-review/commit/15c32d85a2722e42139f6666c1fcfc42891c0b47))
+
 # [1.9.0](https://github.com/glorynguyen/[secure]-code-review/compare/v1.8.0...v1.9.0) (2026-01-29)
 
 
