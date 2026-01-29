@@ -1,3 +1,10 @@
+# [1.14.0](https://github.com/glorynguyen/ollama-code-review/compare/v1.13.0...v1.14.0) (2026-01-29)
+
+
+### Features
+
+* add Gemini (Google AI) support ([4091053](https://github.com/glorynguyen/ollama-code-review/commit/4091053d44f3b2cb452bb876510b6a83ee0a5239))
+
 # [1.13.0](https://github.com/glorynguyen/ollama-code-review/compare/v1.12.0...v1.13.0) (2026-01-29)
 
 
