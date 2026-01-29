@@ -2,6 +2,15 @@ import * as vscode from 'vscode';
 import axios from 'axios';
 import { getOllamaModel } from './utils';
 
+const CLAUDE_API_ENDPOINT = 'https://api.anthropic.com/v1/messages';
+
+/**
+ * Check if the model is a Claude model
+ */
+function isClaudeModel(model: string): boolean {
+  return model.startsWith('claude-');
+}
+
 export class OllamaReviewPanel {
   public static currentPanel: OllamaReviewPanel | undefined;
   private readonly _panel: vscode.WebviewPanel;
@@ -83,15 +92,57 @@ export class OllamaReviewPanel {
   private async _getFollowUpResponse(): Promise<string> {
     const config = vscode.workspace.getConfiguration('ollama-code-review');
     const model = getOllamaModel(config);
+    const selectedSkill = this._context.globalState.get<any>('selectedSkill');
+    const systemContent = `You are an expert code reviewer. You are discussing this code diff:\n\n${this._originalDiff}${selectedSkill ? `\n\nReview Guidelines: ${selectedSkill.content}` : ''}`;
+
+    // Use Claude API if a Claude model is selected
+    if (isClaudeModel(model)) {
+      const apiKey = config.get<string>('claudeApiKey', '');
+      if (!apiKey) {
+        throw new Error('Claude API key is not configured. Please set it in Settings > Ollama Code Review > Claude Api Key');
+      }
+
+      // Claude uses a different message format - system goes in a separate field
+      const claudeMessages = this._conversationHistory.map(m => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content
+      }));
+
+      const response = await axios.post(
+        CLAUDE_API_ENDPOINT,
+        {
+          model: model,
+          max_tokens: 8192,
+          system: systemContent,
+          messages: claudeMessages,
+          temperature: config.get('temperature', 0)
+        },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01'
+          }
+        }
+      );
+
+      const content = response.data.content;
+      if (Array.isArray(content) && content.length > 0) {
+        return content.map((block: { type: string; text: string }) =>
+          block.type === 'text' ? block.text : ''
+        ).join('').trim();
+      }
+      return '';
+    }
+
+    // Otherwise use Ollama API
     const endpoint = config.get<string>('endpoint', 'http://localhost:11434/api/generate').replace('/generate', '/chat');
 
-    const selectedSkill = this._context.globalState.get<any>('selectedSkill');
-    
     // System message provides the context of the code being reviewed
     const messages = [
       {
         role: 'system',
-        content: `You are an expert code reviewer. You are discussing this code diff:\n\n${this._originalDiff}${selectedSkill ? `\n\nReview Guidelines: ${selectedSkill.content}` : ''}`
+        content: systemContent
       },
       ...this._conversationHistory
     ];

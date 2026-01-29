@@ -65,11 +65,27 @@ out/                      # Compiled JavaScript output
 |---------|---------|-------------|
 | `ollama-code-review.model` | `kimi-k2.5:cloud` | Model selection |
 | `ollama-code-review.customModel` | `""` | Custom model name |
+| `ollama-code-review.claudeApiKey` | `""` | Anthropic API key for Claude models |
 | `ollama-code-review.endpoint` | `http://localhost:11434/api/generate` | Ollama API endpoint |
 | `ollama-code-review.temperature` | `0` | Model temperature (0-1) |
 | `ollama-code-review.frameworks` | `["React"]` | Target frameworks for context |
 | `ollama-code-review.skills.defaultRepository` | `vercel-labs/agent-skills` | GitHub repo for skills |
 | `ollama-code-review.skills.autoApply` | `true` | Auto-apply selected skill |
+
+## Supported Models
+
+### Cloud Models (No local setup required)
+- `kimi-k2.5:cloud` - Kimi cloud model (Default)
+- `qwen3-coder:480b-cloud` - Cloud coding model
+- `glm-4.7:cloud` - GLM cloud model
+
+### Claude Models (Requires Anthropic API key)
+- `claude-sonnet-4-20250514` - Claude Sonnet 4
+- `claude-opus-4-20250514` - Claude Opus 4
+- `claude-3-7-sonnet-20250219` - Claude 3.7 Sonnet
+
+### Local Ollama Models
+Any model available in your local Ollama instance will be auto-discovered.
 
 ## Architecture
 

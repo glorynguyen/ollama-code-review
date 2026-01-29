@@ -134,10 +134,18 @@
             "qwen3-coder:480b-cloud",
             "glm-4.7:cloud",
             "qwen2.5-coder:14b-instruct-q4_0",
+            "claude-sonnet-4-20250514",
+            "claude-opus-4-20250514",
+            "claude-3-7-sonnet-20250219",
             "custom"
           ],
           "default": "kimi-k2.5:cloud",
-          "description": "The Ollama model to use for code reviews (e.g., kimi-k2.5:cloud, ...)."
+          "description": "The Ollama model to use for code reviews (e.g., kimi-k2.5:cloud, claude-sonnet-4-20250514, ...)."
+        },
+        "ollama-code-review.claudeApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Your Anthropic API key for Claude models. Get one at https://console.anthropic.com/"
         },
         "ollama-code-review.customModel": {
           "type": "string",

@@ -7,6 +7,60 @@ import { SkillsService } from './skillsService';
 import { SkillsBrowserPanel } from './skillsBrowserPanel';
 import { getOllamaModel } from './utils';
 
+const CLAUDE_API_ENDPOINT = 'https://api.anthropic.com/v1/messages';
+
+/**
+ * Check if the model is a Claude model
+ */
+function isClaudeModel(model: string): boolean {
+	return model.startsWith('claude-');
+}
+
+/**
+ * Call Claude API for generating responses
+ */
+async function callClaudeAPI(prompt: string, config: vscode.WorkspaceConfiguration): Promise<string> {
+	const model = getOllamaModel(config);
+	const apiKey = config.get<string>('claudeApiKey', '');
+	const temperature = config.get<number>('temperature', 0);
+
+	if (!apiKey) {
+		throw new Error('Claude API key is not configured. Please set it in Settings > Ollama Code Review > Claude Api Key');
+	}
+
+	const response = await axios.post(
+		CLAUDE_API_ENDPOINT,
+		{
+			model: model,
+			max_tokens: 8192,
+			messages: [
+				{
+					role: 'user',
+					content: prompt
+				}
+			],
+			temperature: temperature
+		},
+		{
+			headers: {
+				'Content-Type': 'application/json',
+				'x-api-key': apiKey,
+				'anthropic-version': '2023-06-01'
+			}
+		}
+	);
+
+	// Extract text from Claude's response format
+	const content = response.data.content;
+	if (Array.isArray(content) && content.length > 0) {
+		return content.map((block: { type: string; text: string }) =>
+			block.type === 'text' ? block.text : ''
+		).join('').trim();
+	}
+
+	return '';
+}
+
 
 let outputChannel: vscode.OutputChannel;
 
@@ -221,7 +275,10 @@ export async function activate(context: vscode.ExtensionContext) {
 		const cloudModels = [
 			{ label: 'kimi-k2.5:cloud', description: 'Kimi cloud model (Default)' },
 			{ label: 'qwen3-coder:480b-cloud', description: 'Cloud coding model' },
-			{ label: 'glm-4.7:cloud', description: 'GLM cloud model' }
+			{ label: 'glm-4.7:cloud', description: 'GLM cloud model' },
+			{ label: 'claude-sonnet-4-20250514', description: 'Claude Sonnet 4 (Anthropic)' },
+			{ label: 'claude-opus-4-20250514', description: 'Claude Opus 4 (Anthropic)' },
+			{ label: 'claude-3-7-sonnet-20250219', description: 'Claude 3.7 Sonnet (Anthropic)' }
 		];
 
 		try {
@@ -897,6 +954,12 @@ async function getOllamaReview(diff: string, context?: vscode.ExtensionContext):
 
 
 	try {
+		// Use Claude API if a Claude model is selected
+		if (isClaudeModel(model)) {
+			return await callClaudeAPI(prompt, config);
+		}
+
+		// Otherwise use Ollama API
 		const response = await axios.post(endpoint, {
 			model: model,
 			prompt: prompt,
@@ -942,14 +1005,23 @@ async function getOllamaCommitMessage(diff: string, existingMessage?: string): P
         `;
 
 	try {
-		const response = await axios.post(endpoint, {
-			model: model,
-			prompt: prompt,
-			stream: false,
-			options: { temperature }
-		});
+		let message: string;
+
+		// Use Claude API if a Claude model is selected
+		if (isClaudeModel(model)) {
+			message = await callClaudeAPI(prompt, config);
+		} else {
+			// Otherwise use Ollama API
+			const response = await axios.post(endpoint, {
+				model: model,
+				prompt: prompt,
+				stream: false,
+				options: { temperature }
+			});
+			message = response.data.response.trim();
+		}
+
 		// Sometimes models add quotes or markdown blocks around the message, so we trim them.
-		let message = response.data.response.trim();
 		if (message.startsWith('```') && message.endsWith('```')) {
 			message = message.substring(3, message.length - 3).trim();
 		}
@@ -985,6 +1057,12 @@ async function getOllamaSuggestion(codeSnippet: string, languageId: string): Pro
 	`;
 
 	try {
+		// Use Claude API if a Claude model is selected
+		if (isClaudeModel(model)) {
+			return await callClaudeAPI(prompt, config);
+		}
+
+		// Otherwise use Ollama API
 		const response = await axios.post(endpoint, {
 			model: model,
 			prompt: prompt,
