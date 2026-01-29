@@ -1,3 +1,11 @@
+# [1.7.0](https://github.com/glorynguyen/ollama-code-review/compare/v1.6.0...v1.7.0) (2026-01-29)
+
+
+### Features
+
+* **extension:** Add model selector and set kimi-k2.5 as default ([bfd2436](https://github.com/glorynguyen/ollama-code-review/commit/bfd24362d70021743b5a80421a0c24276531002d))
+* **review:** add interactive chat for follow-up questions ([8f392c7](https://github.com/glorynguyen/ollama-code-review/commit/8f392c74f7ec7bf44cc9acdb14b506ea412b8a7d))
+
 # [1.7.0](https://github.com/glorynguyen/ollama-code-review/compare/v1.6.0...v1.7.0) (2026-01-28)
 
 
