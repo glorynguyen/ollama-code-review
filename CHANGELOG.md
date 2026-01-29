@@ -1,3 +1,10 @@
+# [1.12.0](https://github.com/glorynguyen/ollama-code-review/compare/v1.11.0...v1.12.0) (2026-01-29)
+
+
+### Features
+
+* add GLM model support via Z.AI API ([1a8ead0](https://github.com/glorynguyen/ollama-code-review/commit/1a8ead08b7a79650d5e10704f92feebdc8d82d8d))
+
 # [1.11.0](https://github.com/glorynguyen/ollama-code-review/compare/v1.10.0...v1.11.0) (2026-01-29)
 
 
