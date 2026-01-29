@@ -1,3 +1,10 @@
+# [1.13.0](https://github.com/glorynguyen/ollama-code-review/compare/v1.12.0...v1.13.0) (2026-01-29)
+
+
+### Features
+
+* **api:** add Hugging Face Inference API support ([da22de6](https://github.com/glorynguyen/ollama-code-review/commit/da22de681c8c4f1205d805c1d74f6ebc0b549744))
+
 # [1.12.0](https://github.com/glorynguyen/ollama-code-review/compare/v1.11.0...v1.12.0) (2026-01-29)
 
 
