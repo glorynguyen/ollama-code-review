@@ -67,6 +67,8 @@ out/                      # Compiled JavaScript output
 | `ollama-code-review.customModel` | `""` | Custom model name |
 | `ollama-code-review.claudeApiKey` | `""` | Anthropic API key for Claude models |
 | `ollama-code-review.glmApiKey` | `""` | Z.AI (BigModel/Zhipu) API key for GLM models |
+| `ollama-code-review.hfApiKey` | `""` | Hugging Face API token for HF Inference API |
+| `ollama-code-review.hfModel` | `Qwen/Qwen2.5-Coder-7B-Instruct` | Hugging Face model name |
 | `ollama-code-review.endpoint` | `http://localhost:11434/api/generate` | Ollama API endpoint |
 | `ollama-code-review.temperature` | `0` | Model temperature (0-1) |
 | `ollama-code-review.frameworks` | `["React"]` | Target frameworks for context |
@@ -82,6 +84,11 @@ out/                      # Compiled JavaScript output
 
 ### GLM Models (Requires Z.AI API key)
 - `glm-4.7-flash` - GLM 4.7 Flash (Free tier, via Z.AI API)
+
+### Hugging Face Models (Requires HF API token)
+- `huggingface` - Use any model from Hugging Face Inference API
+  - Configure `hfModel` setting with model name (e.g., `Qwen/Qwen2.5-Coder-7B-Instruct`)
+  - Popular coding models: `codellama/CodeLlama-7b-Instruct-hf`, `bigcode/starcoder2-15b`
 
 ### Claude Models (Requires Anthropic API key)
 - `claude-sonnet-4-20250514` - Claude Sonnet 4

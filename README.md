@@ -1,6 +1,6 @@
 # Ollama Code Review
 
-Get lightning-fast, expert code reviews and AI-generated commit messages directly in your editor using local Ollama models or cloud AI providers like **Claude (Anthropic)**. This extension analyzes your code changes before you commit, helping you catch bugs, improve code quality, and write consistent, informative commit messages.
+Get lightning-fast, expert code reviews and AI-generated commit messages directly in your editor using local Ollama models or cloud AI providers like **Claude (Anthropic)**, **GLM (Z.AI)**, and **Hugging Face**. This extension analyzes your code changes before you commit, helping you catch bugs, improve code quality, and write consistent, informative commit messages.
 
 It leverages the power of local large language models to provide feedback on:
 - Potential bugs and logical errors
@@ -93,6 +93,35 @@ To use Claude models:
 2. Set your API key in settings: `ollama-code-review.claudeApiKey`
 3. Select a Claude model from the status bar or command palette
 
+### 12. GLM (Z.AI/Zhipu) Support
+Use GLM models via the Z.AI (BigModel/Zhipu) API:
+- **GLM-4.7 Flash** - Fast and free-tier model for code reviews
+
+To use GLM models:
+1. Get your API key from [Z.AI Open Platform](https://open.bigmodel.cn/)
+2. Set your API key in settings: `ollama-code-review.glmApiKey`
+3. Select `glm-4.7-flash` from the model picker
+
+### 13. Hugging Face Support
+Use any model from the Hugging Face Inference API:
+- Access thousands of open-source models
+- Popular coding models: `Qwen/Qwen2.5-Coder-7B-Instruct`, `codellama/CodeLlama-7b-Instruct-hf`, `bigcode/starcoder2-15b`
+
+To use Hugging Face models:
+1. Get your API token from [Hugging Face Settings](https://huggingface.co/settings/tokens)
+2. Set your token in settings: `ollama-code-review.hfApiKey`
+3. Configure the model name: `ollama-code-review.hfModel`
+4. Select `huggingface` from the model picker
+
+### 14. Smart Diff Filtering
+Reduce noise in your code reviews by filtering out irrelevant changes:
+- **Ignore paths**: Skip `node_modules`, lock files, build outputs
+- **Ignore patterns**: Exclude minified files, source maps, generated code
+- **Large file warnings**: Get notified when files exceed a line threshold
+- **Formatting-only detection**: Optionally skip files with only whitespace changes
+
+Configure in settings under `ollama-code-review.diffFilter`.
+
 ---
 
 ## Requirements
@@ -110,6 +139,15 @@ You must have the following software installed and configured for this extension
 1.  **Anthropic API Key**: Get one from [console.anthropic.com](https://console.anthropic.com/)
 2.  **Configure the key** in VS Code settings: `ollama-code-review.claudeApiKey`
 
+### For GLM Models (Alternative)
+1.  **Z.AI API Key**: Get one from [open.bigmodel.cn](https://open.bigmodel.cn/)
+2.  **Configure the key** in VS Code settings: `ollama-code-review.glmApiKey`
+
+### For Hugging Face Models (Alternative)
+1.  **Hugging Face API Token**: Get one from [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)
+2.  **Configure the token** in VS Code settings: `ollama-code-review.hfApiKey`
+3.  **Set the model name** in VS Code settings: `ollama-code-review.hfModel`
+
 ### General Requirements
 1.  **[Git](https://git-scm.com/)**: Git must be installed and available in your system's PATH.
 2.  **VS Code Built-in Git Extension**: This extension must be enabled (it is by default).
@@ -118,9 +156,12 @@ You must have the following software installed and configured for this extension
 
 This extension contributes the following settings to your VS Code `settings.json`:
 
-* `ollama-code-review.model`: Supports local Ollama models, cloud models (`kimi-k2.5:cloud`, `qwen3-coder:480b-cloud`, `glm-4.7:cloud`), Claude models (`claude-sonnet-4-20250514`, `claude-opus-4-20250514`, `claude-3-7-sonnet-20250219`), or `custom`.
+* `ollama-code-review.model`: Supports local Ollama models, cloud models (`kimi-k2.5:cloud`, `qwen3-coder:480b-cloud`, `glm-4.7:cloud`), Claude models (`claude-sonnet-4-20250514`, `claude-opus-4-20250514`, `claude-3-7-sonnet-20250219`), GLM models (`glm-4.7-flash`), Hugging Face (`huggingface`), or `custom`.
 * `ollama-code-review.customModel`: Specify your own model name if you select "custom" in the model setting.
 * `ollama-code-review.claudeApiKey`: Your Anthropic API key for Claude models.
+* `ollama-code-review.glmApiKey`: Your Z.AI (BigModel/Zhipu) API key for GLM models.
+* `ollama-code-review.hfApiKey`: Your Hugging Face API token for using Hugging Face models.
+* `ollama-code-review.hfModel`: The Hugging Face model to use (default: `Qwen/Qwen2.5-Coder-7B-Instruct`).
 * `ollama-code-review.endpoint`: The API endpoint for your local Ollama instance's generate API.
     * **Type**: `string`
     * **Default**: `"http://localhost:11434/api/generate"`
@@ -135,6 +176,11 @@ This extension contributes the following settings to your VS Code `settings.json
     * **Type**: `array`
     * **Default**: `["React"]`
 ![Config Frameworks](images/setting-frameworks.png)
+* `ollama-code-review.diffFilter`: Configure diff filtering to exclude noise from reviews.
+    * `ignorePaths`: Glob patterns for paths to ignore (default: `node_modules`, lock files, `dist`, `build`, `out`)
+    * `ignorePatterns`: File name patterns to ignore (default: `*.min.js`, `*.min.css`, `*.map`, `*.generated.*`)
+    * `maxFileLines`: Warn when a file has more changed lines than this (default: `500`)
+    * `ignoreFormattingOnly`: Skip files with only whitespace/formatting changes (default: `false`)
 
 You can configure these by opening the Command Palette (`Ctrl+Shift+P`) and searching for `Preferences: Open User Settings (JSON)`.
 

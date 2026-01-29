@@ -134,6 +134,7 @@
             "qwen3-coder:480b-cloud",
             "glm-4.7:cloud",
             "glm-4.7-flash",
+            "huggingface",
             "qwen2.5-coder:14b-instruct-q4_0",
             "claude-sonnet-4-20250514",
             "claude-opus-4-20250514",
@@ -141,7 +142,7 @@
             "custom"
           ],
           "default": "kimi-k2.5:cloud",
-          "description": "The Ollama model to use for code reviews (e.g., kimi-k2.5:cloud, glm-4.7-flash:cloud, claude-sonnet-4-20250514, ...)."
+          "description": "The Ollama model to use for code reviews (e.g., kimi-k2.5:cloud, glm-4.7-flash, huggingface, claude-sonnet-4-20250514, ...)."
         },
         "ollama-code-review.claudeApiKey": {
           "type": "string",
@@ -152,6 +153,16 @@
           "type": "string",
           "default": "",
           "description": "Your Z.AI (BigModel/Zhipu) API key for GLM models. Get one at https://open.bigmodel.cn/"
+        },
+        "ollama-code-review.hfApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Your Hugging Face API token for Hugging Face Inference API. Get one at https://huggingface.co/settings/tokens"
+        },
+        "ollama-code-review.hfModel": {
+          "type": "string",
+          "default": "Qwen/Qwen2.5-Coder-7B-Instruct",
+          "description": "The Hugging Face model to use (e.g., Qwen/Qwen2.5-Coder-7B-Instruct, codellama/CodeLlama-7b-Instruct-hf, etc.)"
         },
         "ollama-code-review.customModel": {
           "type": "string",

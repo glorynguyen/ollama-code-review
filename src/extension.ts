@@ -10,6 +10,7 @@ import { filterDiff, getFilterSummary } from './diffFilter';
 
 const CLAUDE_API_ENDPOINT = 'https://api.anthropic.com/v1/messages';
 const GLM_API_ENDPOINT = 'https://api.z.ai/api/paas/v4/chat/completions';
+const HF_API_ENDPOINT = 'https://router.huggingface.co/v1/chat/completions';
 
 /**
  * Check if the model is a Claude model
@@ -23,6 +24,13 @@ function isClaudeModel(model: string): boolean {
  */
 function isGlmModel(model: string): boolean {
 	return model.startsWith('glm-');
+}
+
+/**
+ * Check if the model is a Hugging Face model
+ */
+function isHuggingFaceModel(model: string): boolean {
+	return model === 'huggingface';
 }
 
 /**
@@ -125,6 +133,94 @@ async function callGlmAPI(prompt: string, config: vscode.WorkspaceConfiguration)
 	}
 
 	return '';
+}
+
+/**
+ * Call Hugging Face Inference API for generating responses
+ * Uses the new router.huggingface.co OpenAI-compatible endpoint
+ */
+async function callHuggingFaceAPI(prompt: string, config: vscode.WorkspaceConfiguration): Promise<string> {
+	const apiKey = config.get<string>('hfApiKey', '');
+	const hfModel = config.get<string>('hfModel', 'Qwen/Qwen2.5-Coder-7B-Instruct');
+	const temperature = config.get<number>('temperature', 0);
+
+	if (!apiKey) {
+		throw new Error('Hugging Face API key is not configured. Please set it in Settings > Ollama Code Review > Hf Api Key');
+	}
+
+	if (!hfModel) {
+		throw new Error('Hugging Face model is not configured. Please set it in Settings > Ollama Code Review > Hf Model');
+	}
+
+	try {
+		const response = await axios.post(
+			HF_API_ENDPOINT,
+			{
+				model: hfModel,
+				messages: [
+					{
+						role: 'system',
+						content: 'You are an expert software engineer and code reviewer.'
+					},
+					{
+						role: 'user',
+						content: prompt
+					}
+				],
+				temperature: temperature,
+				max_tokens: 4096
+			},
+			{
+				headers: {
+					'Authorization': `Bearer ${apiKey}`,
+					'Content-Type': 'application/json'
+				},
+				timeout: 120000 // 2 minute timeout for model loading
+			}
+		);
+
+		// Extract text from OpenAI-compatible response format
+		const choices = response.data.choices;
+		if (Array.isArray(choices) && choices.length > 0 && choices[0].message) {
+			return choices[0].message.content?.trim() || '';
+		}
+
+		return '';
+	} catch (error) {
+		if (axios.isAxiosError(error)) {
+			const status = error.response?.status;
+			const errorData = error.response?.data;
+
+			// Handle model loading (503) - wait and retry
+			if (status === 503 && errorData?.estimated_time) {
+				const waitTime = Math.min(errorData.estimated_time * 1000, 60000);
+				vscode.window.showInformationMessage(`Model is loading, please wait ${Math.ceil(waitTime / 1000)}s...`);
+				await new Promise(resolve => setTimeout(resolve, waitTime));
+				return callHuggingFaceAPI(prompt, config); // Retry
+			}
+
+			// Provide helpful error messages
+			if (status === 404) {
+				throw new Error(
+					`Model "${hfModel}" not found on Hugging Face.\n` +
+					`Make sure the model name is correct (case-sensitive).\n` +
+					`Try: Qwen/Qwen2.5-Coder-7B-Instruct`
+				);
+			}
+
+			if (status === 401 || status === 403) {
+				throw new Error(
+					`Hugging Face authentication failed.\n` +
+					`Please check your API token in Settings > Ollama Code Review > Hf Api Key`
+				);
+			}
+
+			// Re-throw with more context
+			const errorMessage = errorData?.error?.message || errorData?.error || errorData?.message || error.message;
+			throw new Error(`Hugging Face API Error (${status}): ${errorMessage}`);
+		}
+		throw error;
+	}
 }
 
 
@@ -343,6 +439,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			{ label: 'qwen3-coder:480b-cloud', description: 'Cloud coding model' },
 			{ label: 'glm-4.7:cloud', description: 'GLM cloud model' },
 			{ label: 'glm-4.7-flash', description: 'GLM 4.7 Flash - Free tier (Z.AI)' },
+			{ label: 'huggingface', description: 'Hugging Face Inference API (configure model in settings)' },
 			{ label: 'claude-sonnet-4-20250514', description: 'Claude Sonnet 4 (Anthropic)' },
 			{ label: 'claude-opus-4-20250514', description: 'Claude Opus 4 (Anthropic)' },
 			{ label: 'claude-3-7-sonnet-20250219', description: 'Claude 3.7 Sonnet (Anthropic)' }
@@ -1048,6 +1145,11 @@ async function getOllamaReview(diff: string, context?: vscode.ExtensionContext):
 			return await callGlmAPI(prompt, config);
 		}
 
+		// Use Hugging Face API if huggingface is selected
+		if (isHuggingFaceModel(model)) {
+			return await callHuggingFaceAPI(prompt, config);
+		}
+
 		// Otherwise use Ollama API
 		const response = await axios.post(endpoint, {
 			model: model,
@@ -1102,6 +1204,9 @@ async function getOllamaCommitMessage(diff: string, existingMessage?: string): P
 		} else if (isGlmModel(model)) {
 			// Use GLM API if a GLM model is selected
 			message = await callGlmAPI(prompt, config);
+		} else if (isHuggingFaceModel(model)) {
+			// Use Hugging Face API if huggingface is selected
+			message = await callHuggingFaceAPI(prompt, config);
 		} else {
 			// Otherwise use Ollama API
 			const response = await axios.post(endpoint, {
@@ -1159,6 +1264,11 @@ async function getOllamaSuggestion(codeSnippet: string, languageId: string): Pro
 			return await callGlmAPI(prompt, config);
 		}
 
+		// Use Hugging Face API if huggingface is selected
+		if (isHuggingFaceModel(model)) {
+			return await callHuggingFaceAPI(prompt, config);
+		}
+
 		// Otherwise use Ollama API
 		const response = await axios.post(endpoint, {
 			model: model,
@@ -1177,9 +1287,28 @@ function handleError(error: unknown, contextMessage: string) {
 	if (error && typeof error === 'object' && 'stderr' in error && (error as any).stderr) {
 		errorMessage += `Git Error: ${(error as any).stderr}`;
 	} else if (axios.isAxiosError(error)) {
-		errorMessage += `Ollama API Error: ${error.message}. Is Ollama running? Check the endpoint in settings.`;
+		const url = error.config?.url || '';
+		const status = error.response?.status;
+		const responseData = error.response?.data;
+
+		// Determine which API caused the error based on URL
+		if (url.includes('anthropic.com')) {
+			errorMessage += `Claude API Error (${status}): ${responseData?.error?.message || error.message}`;
+		} else if (url.includes('z.ai') || url.includes('bigmodel.cn')) {
+			errorMessage += `GLM API Error (${status}): ${responseData?.error?.message || error.message}`;
+		} else if (url.includes('huggingface.co') || url.includes('router.huggingface.co')) {
+			const hfError = responseData?.error || responseData?.message || error.message;
+			errorMessage += `Hugging Face API Error (${status}): ${hfError}`;
+			if (status === 410) {
+				errorMessage += '\nThe model may not be available. Try a different model like "Qwen/Qwen2.5-Coder-7B-Instruct" or "mistralai/Mistral-7B-Instruct-v0.3"';
+			} else if (status === 503) {
+				errorMessage += '\nThe model is loading. Please try again in a few seconds.';
+			}
+		} else {
+			errorMessage += `Ollama API Error: ${error.message}. Is Ollama running? Check the endpoint in settings.`;
+		}
 	} else if (error instanceof Error) {
-		errorMessage += `An unexpected error occurred: ${error.message}`;
+		errorMessage += `${error.message}`;
 	} else {
 		errorMessage += `An unexpected error occurred: ${String(error)}`;
 	}
