@@ -1,3 +1,10 @@
+# [1.11.0](https://github.com/glorynguyen/ollama-code-review/compare/v1.10.0...v1.11.0) (2026-01-29)
+
+
+### Features
+
+* implement smart diff filtering ([78756b6](https://github.com/glorynguyen/ollama-code-review/commit/78756b6533627b6c17f95f6752630b7536960e2c))
+
 # [1.10.0](https://github.com/glorynguyen/ollama-code-review/compare/v1.9.0...v1.10.0) (2026-01-29)
 
 
