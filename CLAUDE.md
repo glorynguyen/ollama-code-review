@@ -66,6 +66,7 @@ out/                      # Compiled JavaScript output
 | `ollama-code-review.model` | `kimi-k2.5:cloud` | Model selection |
 | `ollama-code-review.customModel` | `""` | Custom model name |
 | `ollama-code-review.claudeApiKey` | `""` | Anthropic API key for Claude models |
+| `ollama-code-review.glmApiKey` | `""` | Z.AI (BigModel/Zhipu) API key for GLM models |
 | `ollama-code-review.endpoint` | `http://localhost:11434/api/generate` | Ollama API endpoint |
 | `ollama-code-review.temperature` | `0` | Model temperature (0-1) |
 | `ollama-code-review.frameworks` | `["React"]` | Target frameworks for context |
@@ -77,7 +78,10 @@ out/                      # Compiled JavaScript output
 ### Cloud Models (No local setup required)
 - `kimi-k2.5:cloud` - Kimi cloud model (Default)
 - `qwen3-coder:480b-cloud` - Cloud coding model
-- `glm-4.7:cloud` - GLM cloud model
+- `glm-4.7:cloud` - GLM cloud model (via configured endpoint)
+
+### GLM Models (Requires Z.AI API key)
+- `glm-4.7-flash` - GLM 4.7 Flash (Free tier, via Z.AI API)
 
 ### Claude Models (Requires Anthropic API key)
 - `claude-sonnet-4-20250514` - Claude Sonnet 4

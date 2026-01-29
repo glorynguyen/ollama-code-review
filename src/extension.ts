@@ -9,12 +9,28 @@ import { getOllamaModel } from './utils';
 import { filterDiff, getFilterSummary } from './diffFilter';
 
 const CLAUDE_API_ENDPOINT = 'https://api.anthropic.com/v1/messages';
+const GLM_API_ENDPOINT = 'https://api.z.ai/api/paas/v4/chat/completions';
 
 /**
  * Check if the model is a Claude model
  */
 function isClaudeModel(model: string): boolean {
 	return model.startsWith('claude-');
+}
+
+/**
+ * Check if the model is a GLM model (Z.AI/BigModel API)
+ */
+function isGlmModel(model: string): boolean {
+	return model.startsWith('glm-');
+}
+
+/**
+ * Get the actual GLM model name from the configured model
+ * Strips the :cloud suffix if present
+ */
+function getGlmModelName(model: string): string {
+	return model.replace(':cloud', '');
 }
 
 /**
@@ -57,6 +73,55 @@ async function callClaudeAPI(prompt: string, config: vscode.WorkspaceConfigurati
 		return content.map((block: { type: string; text: string }) =>
 			block.type === 'text' ? block.text : ''
 		).join('').trim();
+	}
+
+	return '';
+}
+
+/**
+ * Call GLM API (Z.AI/BigModel) for generating responses
+ */
+async function callGlmAPI(prompt: string, config: vscode.WorkspaceConfiguration): Promise<string> {
+	const model = getOllamaModel(config);
+	const apiKey = config.get<string>('glmApiKey', '');
+	const temperature = config.get<number>('temperature', 0);
+
+	if (!apiKey) {
+		throw new Error('GLM API key is not configured. Please set it in Settings > Ollama Code Review > Glm Api Key');
+	}
+
+	const glmModel = getGlmModelName(model);
+
+	const response = await axios.post(
+		GLM_API_ENDPOINT,
+		{
+			model: glmModel,
+			messages: [
+				{
+					role: 'system',
+					content: 'You are an expert software engineer and code reviewer.'
+				},
+				{
+					role: 'user',
+					content: prompt
+				}
+			],
+			temperature: temperature,
+			max_tokens: 8192
+		},
+		{
+			headers: {
+				'Authorization': `Bearer ${apiKey}`,
+				'Content-Type': 'application/json',
+				'Accept-Language': 'en-US,en'
+			}
+		}
+	);
+
+	// Extract text from GLM's OpenAI-compatible response format
+	const choices = response.data.choices;
+	if (Array.isArray(choices) && choices.length > 0 && choices[0].message) {
+		return choices[0].message.content?.trim() || '';
 	}
 
 	return '';
@@ -277,6 +342,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			{ label: 'kimi-k2.5:cloud', description: 'Kimi cloud model (Default)' },
 			{ label: 'qwen3-coder:480b-cloud', description: 'Cloud coding model' },
 			{ label: 'glm-4.7:cloud', description: 'GLM cloud model' },
+			{ label: 'glm-4.7-flash', description: 'GLM 4.7 Flash - Free tier (Z.AI)' },
 			{ label: 'claude-sonnet-4-20250514', description: 'Claude Sonnet 4 (Anthropic)' },
 			{ label: 'claude-opus-4-20250514', description: 'Claude Opus 4 (Anthropic)' },
 			{ label: 'claude-3-7-sonnet-20250219', description: 'Claude 3.7 Sonnet (Anthropic)' }
@@ -977,6 +1043,11 @@ async function getOllamaReview(diff: string, context?: vscode.ExtensionContext):
 			return await callClaudeAPI(prompt, config);
 		}
 
+		// Use GLM API if a GLM model is selected
+		if (isGlmModel(model)) {
+			return await callGlmAPI(prompt, config);
+		}
+
 		// Otherwise use Ollama API
 		const response = await axios.post(endpoint, {
 			model: model,
@@ -1028,6 +1099,9 @@ async function getOllamaCommitMessage(diff: string, existingMessage?: string): P
 		// Use Claude API if a Claude model is selected
 		if (isClaudeModel(model)) {
 			message = await callClaudeAPI(prompt, config);
+		} else if (isGlmModel(model)) {
+			// Use GLM API if a GLM model is selected
+			message = await callGlmAPI(prompt, config);
 		} else {
 			// Otherwise use Ollama API
 			const response = await axios.post(endpoint, {
@@ -1078,6 +1152,11 @@ async function getOllamaSuggestion(codeSnippet: string, languageId: string): Pro
 		// Use Claude API if a Claude model is selected
 		if (isClaudeModel(model)) {
 			return await callClaudeAPI(prompt, config);
+		}
+
+		// Use GLM API if a GLM model is selected
+		if (isGlmModel(model)) {
+			return await callGlmAPI(prompt, config);
 		}
 
 		// Otherwise use Ollama API
