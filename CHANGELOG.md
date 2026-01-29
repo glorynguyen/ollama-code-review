@@ -1,9 +1,9 @@
-# [1.9.0](https://github.com/glorynguyen/ollama-code-review/compare/v1.8.0...v1.9.0) (2026-01-29)
+# [1.9.0](https://github.com/glorynguyen/[secure]-code-review/compare/v1.8.0...v1.9.0) (2026-01-29)
 
 
 ### Features
 
-* release version 1.8.0 ([deada67](https://github.com/glorynguyen/ollama-code-review/commit/deada679fa4a06159247b47faa0ada13b1bc0fbe))
+* release version 1.8.0 ([deada67](https://github.com/glorynguyen/[secure]-code-review/commit/deada679fa4a06159247b47faa0ada13b1bc0fbe))
 
 # [1.7.0](https://github.com/glorynguyen/ollama-code-review/compare/v1.6.0...v1.7.0) (2026-01-29)
 
