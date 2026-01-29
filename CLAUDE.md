@@ -142,3 +142,22 @@ yarn release    # Semantic release
 - Conventional Commits format for generated messages
 - Status bar shows current model with click-to-switch
 - Reviews support follow-up questions via chat interface
+
+## Roadmap & Future Development
+
+See [docs/roadmap/](./docs/roadmap/) for comprehensive planning documents:
+
+| Document | Purpose |
+|----------|---------|
+| [README.md](./docs/roadmap/README.md) | Roadmap overview, phases, priorities |
+| [FEATURES.md](./docs/roadmap/FEATURES.md) | Detailed feature specifications (F-001 to F-012) |
+| [ARCHITECTURE.md](./docs/roadmap/ARCHITECTURE.md) | Technical architecture decisions (ADRs) |
+
+### Key Planned Features
+
+| Phase | Features | Target |
+|-------|----------|--------|
+| v2.0 | Review Profiles, Smart Diff Filtering, Export Options | Q2 2025 |
+| v2.5 | GitHub PR Integration, Inline Code Actions, Custom Prompts | Q3 2025 |
+| v3.0 | Agentic Multi-Step Reviews, RAG-Enhanced Reviews | Q4 2025 |
+| v4.0 | CI/CD Integration, Analytics, Team Knowledge Base | Q1 2026 |
