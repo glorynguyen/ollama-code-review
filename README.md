@@ -63,6 +63,8 @@ All feedback from Ollama is displayed in a dedicated "Ollama Code Review" output
 - These skills provide the AI with specific context or specialized rules (e.g., "Performance Expert," "Security Auditor," or "Accessibility Specialist").
 - **Workflow**: Browse the library, download a skill, and it will be applied to your next review to provide more targeted feedback.
 
+![Agent Skills](images/apply-skills-to-review.gif)
+
 ### 8. Review a Specific Commit
 - **Command**: `Ollama Code Review: Review Commit`
 - Review any historical commit. You can enter a hash, select from a list of the 50 most recent commits, or trigger it directly from the **Git Graph** extension context menu.
@@ -71,6 +73,17 @@ All feedback from Ollama is displayed in a dedicated "Ollama Code Review" output
 All feedback from Ollama is displayed in a dedicated "Ollama Code Review" output channel... 
 - **New**: The review panel now features a **"Copy Review"** button to quickly copy the entire Markdown feedback to your clipboard for sharing in Pull Requests or Slack.
 
+### 10. Dynamic Model Selection & Status Bar
+- **Command**: `Ollama Code Review: Select Ollama Model`
+- **Quick Access**: Look for the model name (e.g., `ollama: llama3`) in the **Status Bar** at the bottom of your editor. Click it to switch models instantly.
+- **Auto-Discovery**: The extension automatically fetches all models currently installed on your local Ollama instance.
+- **Cloud Support**: Even if Ollama isn't running locally, you can switch to configured cloud-based models (like Kimi, Qwen, or GLM) or set a custom model name.
+- **Smart Fallbacks**: If the connection to the Ollama API fails, the extension gracefully provides a list of cloud and custom options so you're never stuck.
+
+![Model Selection](images/switch-models.gif)
+
+---
+
 ## Requirements
 
 You must have the following software installed and configured for this extension to work.
@@ -78,11 +91,11 @@ You must have the following software installed and configured for this extension
 1.  **[Ollama](https://ollama.com/)**: The extension requires a running Ollama instance. Please download and install it from the official website.
 2.  **An Ollama Model**: You need to have a model pulled to use for the reviews. We recommend a model tuned for coding. You can pull the default model by running:
     ```bash
-    ollama pull qwen2.5-coder:14b-instruct-q4_0
+    ollama pull kimi-k2.5:cloud
     ```
     To verify your setup, you can run the model from your terminal. This command will also pull the model if it doesn't exist and start an interactive session:
     ```bash
-    ollama run qwen2.5-coder:14b-instruct-q4_0
+    ollama run kimi-k2.5:cloud
     ```
 3.  **[Git](https://git-scm.com/)**: Git must be installed and available in your system's PATH.
 4.  **VS Code Built-in Git Extension**: This extension must be enabled (it is by default).

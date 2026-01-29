@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import axios from 'axios';
+import { getOllamaModel } from './utils';
 
 export class OllamaReviewPanel {
   public static currentPanel: OllamaReviewPanel | undefined;
@@ -81,7 +82,7 @@ export class OllamaReviewPanel {
 
   private async _getFollowUpResponse(): Promise<string> {
     const config = vscode.workspace.getConfiguration('ollama-code-review');
-    const model = config.get<string>('model', 'qwen2.5-coder:14b-instruct-q4_0');
+    const model = getOllamaModel(config);
     const endpoint = config.get<string>('endpoint', 'http://localhost:11434/api/generate').replace('/generate', '/chat');
 
     const selectedSkill = this._context.globalState.get<any>('selectedSkill');

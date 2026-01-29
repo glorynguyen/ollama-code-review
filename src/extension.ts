@@ -5,6 +5,7 @@ import * as path from 'path';
 import { OllamaReviewPanel } from './reviewProvider';
 import { SkillsService } from './skillsService';
 import { SkillsBrowserPanel } from './skillsBrowserPanel';
+import { getOllamaModel } from './utils';
 
 
 let outputChannel: vscode.OutputChannel;
@@ -50,7 +51,7 @@ async function selectRepository(gitAPI: any): Promise<any | undefined> {
 			return bestMatch;
 		}
 	}
-	
+
 	// If no active editor or no match, ask the user
 	const quickPickItems = repositories.map((repo: any) => ({
 		label: `$(repo) ${path.basename(repo.rootUri.fsPath)}`,
@@ -62,7 +63,7 @@ async function selectRepository(gitAPI: any): Promise<any | undefined> {
 		placeHolder: "Select a repository to perform the action on"
 	});
 
-	return selected ? (selected as unknown as {repo: any}).repo : undefined;
+	return selected ? (selected as unknown as { repo: any }).repo : undefined;
 }
 
 /**
@@ -133,41 +134,41 @@ class OllamaSuggestionProvider implements vscode.CodeActionProvider {
 
 	public static readonly providedCodeActionKinds = [
 		vscode.CodeActionKind.Refactor,
-        // Let's also include QuickFix, as the lightbulb is often associated with it.
-        vscode.CodeActionKind.QuickFix 
+		// Let's also include QuickFix, as the lightbulb is often associated with it.
+		vscode.CodeActionKind.QuickFix
 	];
 
-    /**
-     * This method is called by VS Code to provide code actions.
-     * @param document The document in which the command was invoked.
-     * @param range The selected range of text.
-     * @returns An array of CodeAction objects.
-     */
+	/**
+	 * This method is called by VS Code to provide code actions.
+	 * @param document The document in which the command was invoked.
+	 * @param range The selected range of text.
+	 * @returns An array of CodeAction objects.
+	 */
 	public provideCodeActions(document: vscode.TextDocument, range: vscode.Range): vscode.CodeAction[] | undefined {
-        console.log(`[OllamaSuggestionProvider] provideCodeActions called. Is range empty? ${range.isEmpty}`);
+		console.log(`[OllamaSuggestionProvider] provideCodeActions called. Is range empty? ${range.isEmpty}`);
 		// Don't show the action if the selection is empty.
 		if (range.isEmpty) {
 			return;
 		}
 
-        // Create a new CodeAction with a title that will appear in the menu.
+		// Create a new CodeAction with a title that will appear in the menu.
 		const refactorAction = new vscode.CodeAction('Ollama: Suggest Refactoring', OllamaSuggestionProvider.providedCodeActionKinds[0]);
-		
-        // Assign the command that should be executed when the user selects this action.
-        // This links the UI action to your existing command implementation.
-        refactorAction.command = {
-            command: 'ollama-code-review.suggestRefactoring',
-            title: 'Suggest a refactoring for the selected code',
-            tooltip: 'Asks Ollama for a suggestion to improve the selected code.'
-        };
 
-		refactorAction.isPreferred = true; 
+		// Assign the command that should be executed when the user selects this action.
+		// This links the UI action to your existing command implementation.
+		refactorAction.command = {
+			command: 'ollama-code-review.suggestRefactoring',
+			title: 'Suggest a refactoring for the selected code',
+			tooltip: 'Asks Ollama for a suggestion to improve the selected code.'
+		};
+
+		refactorAction.isPreferred = true;
 
 		const diagnostic = new vscode.Diagnostic(
-            range, 
-            'Select code to get a refactoring suggestion from Ollama.', 
-            vscode.DiagnosticSeverity.Hint
-        );
+			range,
+			'Select code to get a refactoring suggestion from Ollama.',
+			vscode.DiagnosticSeverity.Hint
+		);
 		refactorAction.diagnostics = [diagnostic];
 
 		console.log("[OllamaSuggestionProvider] Range is NOT empty, returning a CodeAction.");
@@ -175,82 +176,244 @@ class OllamaSuggestionProvider implements vscode.CodeActionProvider {
 	}
 }
 
+/**
+ * Updates the status bar item to show the current model
+ */
+function updateModelStatusBar(statusBarItem: vscode.StatusBarItem) {
+	const config = vscode.workspace.getConfiguration('ollama-code-review');
+	const model = getOllamaModel(config);
+	// Show just the base model name for cleaner look
+	const displayModel = model;
+	statusBarItem.text = `$(hubot) ${displayModel}`;
+	statusBarItem.tooltip = `Ollama Model: ${model}\nClick to switch model`;
+}
+
+const distinctByProperty = <T, K extends keyof T>(arr: T[], prop: K): T[] => {
+	const seen = new Set<T[K]>();
+	return arr.filter(item => {
+		const val = item[prop];
+		if (seen.has(val)) {
+			return false;
+		}
+		seen.add(val);
+		return true;
+	});
+};
+
 export async function activate(context: vscode.ExtensionContext) {
 	const skillsService = await SkillsService.create(context);
 	outputChannel = vscode.window.createOutputChannel("Ollama Code Review");
 	const suggestionProvider = new SuggestionContentProvider();
+
+	// Create status bar item for model selection (appears in bottom status bar)
+	const modelStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
+	modelStatusBarItem.command = 'ollama-code-review.selectModel';
+	updateModelStatusBar(modelStatusBarItem);
+	modelStatusBarItem.show();
+	context.subscriptions.push(modelStatusBarItem);
+
+	// Register model selection command
+	const selectModelCommand = vscode.commands.registerCommand('ollama-code-review.selectModel', async () => {
+		const config = vscode.workspace.getConfiguration('ollama-code-review');
+		const currentModel = getOllamaModel(config);
+
+		// Cloud models (remote APIs) that won't appear in local Ollama
+		const cloudModels = [
+			{ label: 'kimi-k2.5:cloud', description: 'Kimi cloud model (Default)' },
+			{ label: 'qwen3-coder:480b-cloud', description: 'Cloud coding model' },
+			{ label: 'glm-4.7:cloud', description: 'GLM cloud model' }
+		];
+
+		try {
+			// Derive the tags endpoint from the configured generate endpoint
+			const endpoint = config.get<string>('endpoint', 'http://localhost:11434/api/generate');
+			const baseUrl = endpoint.replace(/\/api\/generate\/?$/, '').replace(/\/$/, '');
+			const tagsUrl = `${baseUrl}/api/tags`;
+
+			// Fetch with timeout
+			const controller = new AbortController();
+			const timeout = setTimeout(() => controller.abort(), 5000);
+
+			const response = await fetch(tagsUrl, { signal: controller.signal });
+			clearTimeout(timeout);
+
+			if (!response.ok) {
+				throw new Error(`${response.status}: ${response.statusText}`);
+			}
+
+			const data = await response.json() as {
+				models: Array<{
+					name: string;
+					modified_at?: string;
+					size?: number;
+					details?: {
+						parameter_size?: string;
+						family?: string;
+						format?: string;
+						quantized_level?: string;
+					}
+				}>
+			};
+
+			// Transform Ollama models to QuickPick items
+			const localModels = data.models.map((model) => {
+				const details: string[] = [];
+
+				if (model.details?.family) {
+					details.push(model.details.family);
+				}
+				if (model.details?.parameter_size) {
+					details.push(model.details.parameter_size);
+				}
+				if (model.size) {
+					const sizeGB = (model.size / (1024 ** 3)).toFixed(1);
+					details.push(`${sizeGB}GB`);
+				}
+
+				return {
+					label: model.name,
+					description: details.join(' • ') || 'Local Ollama model'
+				};
+			});
+
+			// Sort alphabetically
+			localModels.sort((a, b) => a.label.localeCompare(b.label));
+
+			// Combine cloud + local + custom
+			const models = distinctByProperty([
+				...cloudModels,
+				...localModels,
+				{ label: 'custom', description: 'Use custom model from settings' }
+			], 'label');
+
+			const currentItem = models.find(m => m.label === currentModel);
+			const selected = await vscode.window.showQuickPick(models, {
+				placeHolder: `Current: ${currentItem?.label || currentModel || 'None'} | Select Ollama model`,
+				matchOnDescription: true
+			});
+
+			if (selected) {
+				await config.update('model', selected.label, vscode.ConfigurationTarget.Global);
+				updateModelStatusBar(modelStatusBarItem);
+				vscode.window.showInformationMessage(`Ollama model changed to: ${selected.label}`);
+			}
+
+		} catch (error) {
+			// Fallback if Ollama is not running
+			vscode.window.showWarningMessage(
+				`Could not connect to Ollama (${error}). Showing available cloud options.`
+			);
+
+			const fallbackModels = [
+				...cloudModels,
+				{ label: 'custom', description: 'Use custom model from settings' }
+			];
+
+			// Add current model to list if it's not already there
+			if (currentModel && !fallbackModels.find(m => m.label === currentModel)) {
+				fallbackModels.unshift({
+					label: currentModel,
+					description: 'Currently configured'
+				});
+			}
+
+			const currentItem = fallbackModels.find(m => m.label === currentModel);
+			const selected = await vscode.window.showQuickPick(fallbackModels, {
+				placeHolder: `Current: ${currentItem?.label || currentModel || 'None'} | Select model (Ollama unreachable)`
+			});
+
+			if (selected) {
+				await config.update('model', selected.label, vscode.ConfigurationTarget.Global);
+				updateModelStatusBar(modelStatusBarItem);
+				vscode.window.showInformationMessage(`Ollama model changed to: ${selected.label}`);
+			}
+		}
+	});
+
+	context.subscriptions.push(selectModelCommand);
+
+	// Listen for configuration changes to update status bar
+	context.subscriptions.push(
+		vscode.workspace.onDidChangeConfiguration(e => {
+			if (e.affectsConfiguration('ollama-code-review.model') ||
+				e.affectsConfiguration('ollama-code-review.customModel')) {
+				updateModelStatusBar(modelStatusBarItem);
+			}
+		})
+	);
+
 	const browseSkillsCommand = vscode.commands.registerCommand(
-        'ollama-code-review.browseAgentSkills',
-        async () => {
-            try {
-                await vscode.window.withProgress({
-                    location: vscode.ProgressLocation.Notification,
-                    title: 'Loading Agent Skills',
-                    cancellable: false
-                }, async (progress) => {
-                    progress.report({ message: 'Fetching skills from GitHub...' });
-                    
-                    const skills = await skillsService.fetchAvailableSkills();
-                    
-                    progress.report({ message: 'Opening skills browser...' });
-                    await SkillsBrowserPanel.createOrShow(skillsService, skills);
-                });
-            } catch (error) {
-                vscode.window.showErrorMessage(
-                    `Failed to load agent skills: ${error}`
-                );
-            }
-        }
-    );
+		'ollama-code-review.browseAgentSkills',
+		async () => {
+			try {
+				await vscode.window.withProgress({
+					location: vscode.ProgressLocation.Notification,
+					title: 'Loading Agent Skills',
+					cancellable: false
+				}, async (progress) => {
+					progress.report({ message: 'Fetching skills from GitHub...' });
 
-    // Apply Skill to Code Review Command
-    const applySkillCommand = vscode.commands.registerCommand(
-        'ollama-code-review.applySkillToReview',
-        async () => {
-            const cachedSkills = skillsService.listCachedSkills();
-            
-            if (cachedSkills.length === 0) {
-                const browse = await vscode.window.showInformationMessage(
-                    'No skills installed. Would you like to browse available skills?',
-                    'Browse Skills',
-                    'Cancel'
-                );
-                
-                if (browse === 'Browse Skills') {
-                    vscode.commands.executeCommand('ollama-code-review.browseAgentSkills');
-                }
-                return;
-            }
+					const skills = await skillsService.fetchAvailableSkills();
 
-            const selectedSkill = await vscode.window.showQuickPick(
-                cachedSkills.map(skill => ({
-                    label: skill.name,
-                    description: skill.description,
-                    skill: skill
-                })),
-                { placeHolder: 'Select a skill to apply to code review' }
-            );
+					progress.report({ message: 'Opening skills browser...' });
+					await SkillsBrowserPanel.createOrShow(skillsService, skills);
+				});
+			} catch (error) {
+				vscode.window.showErrorMessage(
+					`Failed to load agent skills: ${error}`
+				);
+			}
+		}
+	);
 
-            if (selectedSkill) {
-                vscode.window.showInformationMessage(
-                    `Skill "${selectedSkill.skill.name}" will be applied to next review`
-                );
-                // Store selected skill for next review
-                context.globalState.update('selectedSkill', selectedSkill.skill);
-            }
-        }
-    );
+	// Apply Skill to Code Review Command
+	const applySkillCommand = vscode.commands.registerCommand(
+		'ollama-code-review.applySkillToReview',
+		async () => {
+			const cachedSkills = skillsService.listCachedSkills();
 
-    context.subscriptions.push(browseSkillsCommand, applySkillCommand);
+			if (cachedSkills.length === 0) {
+				const browse = await vscode.window.showInformationMessage(
+					'No skills installed. Would you like to browse available skills?',
+					'Browse Skills',
+					'Cancel'
+				);
+
+				if (browse === 'Browse Skills') {
+					vscode.commands.executeCommand('ollama-code-review.browseAgentSkills');
+				}
+				return;
+			}
+
+			const selectedSkill = await vscode.window.showQuickPick(
+				cachedSkills.map(skill => ({
+					label: skill.name,
+					description: skill.description,
+					skill: skill
+				})),
+				{ placeHolder: 'Select a skill to apply to code review' }
+			);
+
+			if (selectedSkill) {
+				vscode.window.showInformationMessage(
+					`Skill "${selectedSkill.skill.name}" will be applied to next review`
+				);
+				// Store selected skill for next review
+				context.globalState.update('selectedSkill', selectedSkill.skill);
+			}
+		}
+	);
+
+	context.subscriptions.push(browseSkillsCommand, applySkillCommand);
 	context.subscriptions.push(
 		vscode.workspace.registerTextDocumentContentProvider('ollama-suggestion', suggestionProvider)
 	);
 
-    context.subscriptions.push(
-        vscode.languages.registerCodeActionsProvider('*', new OllamaSuggestionProvider(), {
-            providedCodeActionKinds: OllamaSuggestionProvider.providedCodeActionKinds
-        })
-    );
+	context.subscriptions.push(
+		vscode.languages.registerCodeActionsProvider('*', new OllamaSuggestionProvider(), {
+			providedCodeActionKinds: OllamaSuggestionProvider.providedCodeActionKinds
+		})
+	);
 
 
 	const reviewStagedChangesCommand = vscode.commands.registerCommand('ollama-code-review.reviewChanges', async (scmRepo?: any) => {
@@ -289,7 +452,7 @@ export async function activate(context: vscode.ExtensionContext) {
 				if (commitOrUri.hash) {
 					// Git Graph format
 					commitHash = commitOrUri.hash;
-					repo = gitAPI.repositories.find((r: any) => 
+					repo = gitAPI.repositories.find((r: any) =>
 						commitOrUri.repoRoot && r.rootUri.fsPath === commitOrUri.repoRoot
 					) || await selectRepository(gitAPI);
 				} else if (commitOrUri.rootUri) {
@@ -328,7 +491,7 @@ export async function activate(context: vscode.ExtensionContext) {
 						cancellable: false
 					}, async () => {
 						const log = await repo.log({ maxEntries: 50 }) as GitCommitDetails[];
-						
+
 						const quickPickItems: CommitQuickPickItem[] = log.map(commit => ({
 							label: `$(git-commit) ${commit.message.split('\n')[0]}`,
 							description: `${commit.hash.substring(0, 7)} by ${commit.authorName || 'Unknown'}`,
@@ -690,10 +853,10 @@ async function getOllamaReview(diff: string, context?: vscode.ExtensionContext):
 	const frameworksList = Array.isArray(frameworks)
 		? frameworks.join(', ')
 		: typeof frameworks === 'string'
-		? frameworks
-		: 'React';
+			? frameworks
+			: 'React';
 	let skillContext = '';
-	
+
 	if (context) {
 		const selectedSkill = context.globalState.get<any>('selectedSkill');
 		if (selectedSkill) {
@@ -753,26 +916,30 @@ async function getOllamaCommitMessage(diff: string, existingMessage?: string): P
 	const temperature = config.get<number>('temperature', 0.2); // Slightly more creative for commit messages
 
 	const prompt = `
-		You are an expert at writing concise and informative git commit messages.
-		Based on the following git diff, generate a commit message that follows the Conventional Commits specification.
+        You are an expert at writing git commit messages for Semantic Release.
+        Generate a commit message based on the git diff below following the Conventional Commits specification.
 
-		The commit message should have a short, imperative-style subject line (less than 50 characters).
-		The subject line should be in the format: <type>(<scope>): <subject>
-		- <type> can be one of: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert.
-		- <scope> is optional and indicates the part of the codebase affected.
+        ### Structural Requirements:
+        1. **Subject Line**: <type>(<scope>): <short description>
+           - Keep under 50 characters.
+           - Use imperative mood ("add" not "added").
+           - Types: feat (new feature), fix (bug fix), docs, style, refactor, perf, test, build, ci, chore, revert.
+        2. **Body**: Explain 'what' and 'why'. Required if the change is complex.
+        3. **Breaking Changes**: If the diff contains breaking changes, the footer MUST start with "BREAKING CHANGE:" followed by a description.
 
-		After the subject line, there should be a blank line, followed by a longer body that explains the 'what' and 'why' of the changes. Use bullet points for clarity if needed.
-
-		Do not include the "---" markdown separators, or any other preamble or explanation in your response. Just provide the raw commit message text, ready to be used.
+        ### Rules:
+        - If the user's draft mentions a breaking change, prioritize documenting it in the footer.
+        - Semantic Release triggers: 'feat' for MINOR, 'fix' for PATCH, and 'BREAKING CHANGE' in footer for MAJOR.
+        - Output ONLY the raw commit message text. No markdown blocks, no "Here is your message," no preamble.
 
 		Developer's draft message (may reflect intent):
 		${existingMessage && existingMessage.trim() ? existingMessage : "(none provided)"}
 
-		Staged git diff:
-		---
-		${diff}
-		---
-		`;
+        Staged git diff:
+        ---
+        ${diff}
+        ---
+        `;
 
 	try {
 		const response = await axios.post(endpoint, {
@@ -793,14 +960,6 @@ async function getOllamaCommitMessage(diff: string, existingMessage?: string): P
 	} catch (error) {
 		throw error;
 	}
-}
-
-function getOllamaModel(config: vscode.WorkspaceConfiguration): string {
-	let model = config.get<string>('model', 'qwen2.5-coder:14b-instruct-q4_0');
-	if (model === 'custom') {
-		model = config.get<string>('customModel') || 'qwen2.5-coder:14b-instruct-q4_0';
-	}
-	return model;
 }
 
 async function getOllamaSuggestion(codeSnippet: string, languageId: string): Promise<string> {

@@ -2,7 +2,7 @@
   "name": "ollama-code-review",
   "displayName": "Ollama Code Review",
   "description": "Get AI code reviews and generate commit messages from a local Ollama instance before you commit.",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "author": "Vinh Nguyen (vincent)",
   "publisher": "VinhNguyen-Vincent",
   "icon": "images/icon.png",
@@ -25,6 +25,11 @@
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
+      {
+        "command": "ollama-code-review.selectModel",
+        "title": "Select Ollama Model",
+        "category": "Ollama Code Review"
+      },
       {
         "command": "ollama-code-review.browseAgentSkills",
         "title": "Browse Agent Skills",
@@ -125,13 +130,14 @@
         "ollama-code-review.model": {
           "type": "string",
           "enum": [
-            "qwen2.5-coder:14b-instruct-q4_0",
+            "kimi-k2.5:cloud",
             "qwen3-coder:480b-cloud",
             "glm-4.7:cloud",
+            "qwen2.5-coder:14b-instruct-q4_0",
             "custom"
           ],
-          "default": "qwen2.5-coder:14b-instruct-q4_0",
-          "description": "The Ollama model to use for code reviews (e.g., qwen2.5-coder:14b-instruct-q4_0, ...)."
+          "default": "kimi-k2.5:cloud",
+          "description": "The Ollama model to use for code reviews (e.g., kimi-k2.5:cloud, ...)."
         },
         "ollama-code-review.customModel": {
           "type": "string",
