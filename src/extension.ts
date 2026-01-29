@@ -11,6 +11,7 @@ import { filterDiff, getFilterSummary } from './diffFilter';
 const CLAUDE_API_ENDPOINT = 'https://api.anthropic.com/v1/messages';
 const GLM_API_ENDPOINT = 'https://api.z.ai/api/paas/v4/chat/completions';
 const HF_API_ENDPOINT = 'https://router.huggingface.co/v1/chat/completions';
+const GEMINI_API_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
 
 /**
  * Check if the model is a Claude model
@@ -31,6 +32,13 @@ function isGlmModel(model: string): boolean {
  */
 function isHuggingFaceModel(model: string): boolean {
 	return model === 'huggingface';
+}
+
+/**
+ * Check if the model is a Gemini model
+ */
+function isGeminiModel(model: string): boolean {
+	return model.startsWith('gemini-');
 }
 
 /**
@@ -218,6 +226,104 @@ async function callHuggingFaceAPI(prompt: string, config: vscode.WorkspaceConfig
 			// Re-throw with more context
 			const errorMessage = errorData?.error?.message || errorData?.error || errorData?.message || error.message;
 			throw new Error(`Hugging Face API Error (${status}): ${errorMessage}`);
+		}
+		throw error;
+	}
+}
+
+/**
+ * Call Gemini API (Google AI Studio) for generating responses
+ */
+async function callGeminiAPI(prompt: string, config: vscode.WorkspaceConfiguration): Promise<string> {
+	const model = getOllamaModel(config);
+	const apiKey = config.get<string>('geminiApiKey', '');
+	const temperature = config.get<number>('temperature', 0);
+
+	if (!apiKey) {
+		throw new Error('Gemini API key is not configured. Please set it in Settings > Ollama Code Review > Gemini Api Key');
+	}
+
+	const endpoint = `${GEMINI_API_ENDPOINT}/${model}:generateContent?key=${apiKey}`;
+
+	try {
+		const response = await axios.post(
+			endpoint,
+			{
+				contents: [
+					{
+						role: 'user',
+						parts: [
+							{
+								text: prompt
+							}
+						]
+					}
+				],
+				generationConfig: {
+					temperature: temperature,
+					topK: 40,
+					topP: 0.95,
+					maxOutputTokens: 8192,
+					responseMimeType: 'text/plain'
+				},
+				systemInstruction: {
+					parts: [
+						{
+							text: 'You are an expert software engineer and code reviewer.'
+						}
+					]
+				}
+			},
+			{
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				timeout: 120000 // 2 minute timeout
+			}
+		);
+
+		// Extract text from Gemini's response format
+		const candidates = response.data.candidates;
+		if (Array.isArray(candidates) && candidates.length > 0 && candidates[0].content?.parts) {
+			return candidates[0].content.parts
+				.map((part: { text?: string }) => part.text || '')
+				.join('')
+				.trim();
+		}
+
+		return '';
+	} catch (error) {
+		if (axios.isAxiosError(error)) {
+			const status = error.response?.status;
+			const errorData = error.response?.data;
+
+			if (status === 400) {
+				const errorMessage = errorData?.error?.message || 'Invalid request';
+				throw new Error(`Gemini API Error: ${errorMessage}`);
+			}
+
+			if (status === 401 || status === 403) {
+				throw new Error(
+					`Gemini authentication failed.\n` +
+					`Please check your API key in Settings > Ollama Code Review > Gemini Api Key`
+				);
+			}
+
+			if (status === 429) {
+				throw new Error(
+					`Gemini rate limit exceeded.\n` +
+					`Free tier allows 15 RPM for Flash, 5 RPM for Pro. Please wait and try again.`
+				);
+			}
+
+			if (status === 503) {
+				throw new Error(
+					`Gemini service temporarily unavailable. Please try again in a moment.`
+				);
+			}
+
+			const errorMessage = errorData?.error?.message || error.message;
+			throw new Error(`Gemini API Error (${status}): ${errorMessage}`);
 		}
 		throw error;
 	}
@@ -440,6 +546,8 @@ export async function activate(context: vscode.ExtensionContext) {
 			{ label: 'glm-4.7:cloud', description: 'GLM cloud model' },
 			{ label: 'glm-4.7-flash', description: 'GLM 4.7 Flash - Free tier (Z.AI)' },
 			{ label: 'huggingface', description: 'Hugging Face Inference API (configure model in settings)' },
+			{ label: 'gemini-2.5-flash', description: 'Gemini 2.5 Flash - Free tier (Google AI)' },
+			{ label: 'gemini-2.5-pro', description: 'Gemini 2.5 Pro - Free tier (Google AI)' },
 			{ label: 'claude-sonnet-4-20250514', description: 'Claude Sonnet 4 (Anthropic)' },
 			{ label: 'claude-opus-4-20250514', description: 'Claude Opus 4 (Anthropic)' },
 			{ label: 'claude-3-7-sonnet-20250219', description: 'Claude 3.7 Sonnet (Anthropic)' }
@@ -1150,6 +1258,11 @@ async function getOllamaReview(diff: string, context?: vscode.ExtensionContext):
 			return await callHuggingFaceAPI(prompt, config);
 		}
 
+		// Use Gemini API if a Gemini model is selected
+		if (isGeminiModel(model)) {
+			return await callGeminiAPI(prompt, config);
+		}
+
 		// Otherwise use Ollama API
 		const response = await axios.post(endpoint, {
 			model: model,
@@ -1207,6 +1320,9 @@ async function getOllamaCommitMessage(diff: string, existingMessage?: string): P
 		} else if (isHuggingFaceModel(model)) {
 			// Use Hugging Face API if huggingface is selected
 			message = await callHuggingFaceAPI(prompt, config);
+		} else if (isGeminiModel(model)) {
+			// Use Gemini API if a Gemini model is selected
+			message = await callGeminiAPI(prompt, config);
 		} else {
 			// Otherwise use Ollama API
 			const response = await axios.post(endpoint, {
@@ -1269,6 +1385,11 @@ async function getOllamaSuggestion(codeSnippet: string, languageId: string): Pro
 			return await callHuggingFaceAPI(prompt, config);
 		}
 
+		// Use Gemini API if a Gemini model is selected
+		if (isGeminiModel(model)) {
+			return await callGeminiAPI(prompt, config);
+		}
+
 		// Otherwise use Ollama API
 		const response = await axios.post(endpoint, {
 			model: model,
@@ -1301,6 +1422,14 @@ function handleError(error: unknown, contextMessage: string) {
 			errorMessage += `Hugging Face API Error (${status}): ${hfError}`;
 			if (status === 410) {
 				errorMessage += '\nThe model may not be available. Try a different model like "Qwen/Qwen2.5-Coder-7B-Instruct" or "mistralai/Mistral-7B-Instruct-v0.3"';
+			} else if (status === 503) {
+				errorMessage += '\nThe model is loading. Please try again in a few seconds.';
+			}
+		} else if (url.includes('generativelanguage.googleapis.com')) {
+			const geminiError = responseData?.error?.message || error.message;
+			errorMessage += `Gemini API Error (${status}): ${geminiError}`;
+			if (status === 429) {
+				errorMessage += '\nRate limit exceeded. Free tier allows 15 RPM for Flash, 5 RPM for Pro.';
 			} else if (status === 503) {
 				errorMessage += '\nThe model is loading. Please try again in a few seconds.';
 			}

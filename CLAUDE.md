@@ -69,6 +69,7 @@ out/                      # Compiled JavaScript output
 | `ollama-code-review.glmApiKey` | `""` | Z.AI (BigModel/Zhipu) API key for GLM models |
 | `ollama-code-review.hfApiKey` | `""` | Hugging Face API token for HF Inference API |
 | `ollama-code-review.hfModel` | `Qwen/Qwen2.5-Coder-7B-Instruct` | Hugging Face model name |
+| `ollama-code-review.geminiApiKey` | `""` | Google AI Studio API key for Gemini models |
 | `ollama-code-review.endpoint` | `http://localhost:11434/api/generate` | Ollama API endpoint |
 | `ollama-code-review.temperature` | `0` | Model temperature (0-1) |
 | `ollama-code-review.frameworks` | `["React"]` | Target frameworks for context |
@@ -89,6 +90,12 @@ out/                      # Compiled JavaScript output
 - `huggingface` - Use any model from Hugging Face Inference API
   - Configure `hfModel` setting with model name (e.g., `Qwen/Qwen2.5-Coder-7B-Instruct`)
   - Popular coding models: `codellama/CodeLlama-7b-Instruct-hf`, `bigcode/starcoder2-15b`
+
+### Gemini Models (Requires Google AI Studio API key)
+- `gemini-2.5-flash` - Gemini 2.5 Flash (Free tier: 250 RPD, 15 RPM)
+- `gemini-2.5-pro` - Gemini 2.5 Pro (Free tier: 100 RPD, 5 RPM)
+  - Both models feature 1M token context window
+  - Get API key at https://aistudio.google.com/ (no credit card required)
 
 ### Claude Models (Requires Anthropic API key)
 - `claude-sonnet-4-20250514` - Claude Sonnet 4

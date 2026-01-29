@@ -1,6 +1,6 @@
 # Ollama Code Review
 
-Get lightning-fast, expert code reviews and AI-generated commit messages directly in your editor using local Ollama models or cloud AI providers like **Claude (Anthropic)**, **GLM (Z.AI)**, and **Hugging Face**. This extension analyzes your code changes before you commit, helping you catch bugs, improve code quality, and write consistent, informative commit messages.
+Get lightning-fast, expert code reviews and AI-generated commit messages directly in your editor using local Ollama models or cloud AI providers like **Claude (Anthropic)**, **Gemini (Google AI)**, **GLM (Z.AI)**, and **Hugging Face**. This extension analyzes your code changes before you commit, helping you catch bugs, improve code quality, and write consistent, informative commit messages.
 
 It leverages the power of local large language models to provide feedback on:
 - Potential bugs and logical errors
@@ -102,7 +102,18 @@ To use GLM models:
 2. Set your API key in settings: `ollama-code-review.glmApiKey`
 3. Select `glm-4.7-flash` from the model picker
 
-### 13. Hugging Face Support
+### 13. Gemini (Google AI) Support
+Use Google's Gemini models via the free Google AI Studio API:
+- **Gemini 2.5 Flash** - Fast model with 250 requests/day free tier (15 RPM)
+- **Gemini 2.5 Pro** - More capable model with 100 requests/day free tier (5 RPM)
+- Both models feature a massive 1-million-token context window
+
+To use Gemini models:
+1. Get your API key from [Google AI Studio](https://aistudio.google.com/) (no credit card required)
+2. Set your API key in settings: `ollama-code-review.geminiApiKey`
+3. Select `gemini-2.5-flash` or `gemini-2.5-pro` from the model picker
+
+### 14. Hugging Face Support
 Use any model from the Hugging Face Inference API:
 - Access thousands of open-source models
 - Popular coding models: `Qwen/Qwen2.5-Coder-7B-Instruct`, `codellama/CodeLlama-7b-Instruct-hf`, `bigcode/starcoder2-15b`
@@ -113,7 +124,7 @@ To use Hugging Face models:
 3. Configure the model name: `ollama-code-review.hfModel`
 4. Select `huggingface` from the model picker
 
-### 14. Smart Diff Filtering
+### 15. Smart Diff Filtering
 Reduce noise in your code reviews by filtering out irrelevant changes:
 - **Ignore paths**: Skip `node_modules`, lock files, build outputs
 - **Ignore patterns**: Exclude minified files, source maps, generated code
@@ -143,6 +154,10 @@ You must have the following software installed and configured for this extension
 1.  **Z.AI API Key**: Get one from [open.bigmodel.cn](https://open.bigmodel.cn/)
 2.  **Configure the key** in VS Code settings: `ollama-code-review.glmApiKey`
 
+### For Gemini Models (Alternative)
+1.  **Google AI Studio API Key**: Get one from [aistudio.google.com](https://aistudio.google.com/) (free, no credit card required)
+2.  **Configure the key** in VS Code settings: `ollama-code-review.geminiApiKey`
+
 ### For Hugging Face Models (Alternative)
 1.  **Hugging Face API Token**: Get one from [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)
 2.  **Configure the token** in VS Code settings: `ollama-code-review.hfApiKey`
@@ -156,12 +171,13 @@ You must have the following software installed and configured for this extension
 
 This extension contributes the following settings to your VS Code `settings.json`:
 
-* `ollama-code-review.model`: Supports local Ollama models, cloud models (`kimi-k2.5:cloud`, `qwen3-coder:480b-cloud`, `glm-4.7:cloud`), Claude models (`claude-sonnet-4-20250514`, `claude-opus-4-20250514`, `claude-3-7-sonnet-20250219`), GLM models (`glm-4.7-flash`), Hugging Face (`huggingface`), or `custom`.
+* `ollama-code-review.model`: Supports local Ollama models, cloud models (`kimi-k2.5:cloud`, `qwen3-coder:480b-cloud`, `glm-4.7:cloud`), Claude models (`claude-sonnet-4-20250514`, `claude-opus-4-20250514`, `claude-3-7-sonnet-20250219`), Gemini models (`gemini-2.5-flash`, `gemini-2.5-pro`), GLM models (`glm-4.7-flash`), Hugging Face (`huggingface`), or `custom`.
 * `ollama-code-review.customModel`: Specify your own model name if you select "custom" in the model setting.
 * `ollama-code-review.claudeApiKey`: Your Anthropic API key for Claude models.
 * `ollama-code-review.glmApiKey`: Your Z.AI (BigModel/Zhipu) API key for GLM models.
 * `ollama-code-review.hfApiKey`: Your Hugging Face API token for using Hugging Face models.
 * `ollama-code-review.hfModel`: The Hugging Face model to use (default: `Qwen/Qwen2.5-Coder-7B-Instruct`).
+* `ollama-code-review.geminiApiKey`: Your Google AI Studio API key for Gemini models.
 * `ollama-code-review.endpoint`: The API endpoint for your local Ollama instance's generate API.
     * **Type**: `string`
     * **Default**: `"http://localhost:11434/api/generate"`

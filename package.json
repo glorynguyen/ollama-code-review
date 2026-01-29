@@ -135,6 +135,8 @@
             "glm-4.7:cloud",
             "glm-4.7-flash",
             "huggingface",
+            "gemini-2.5-flash",
+            "gemini-2.5-pro",
             "qwen2.5-coder:14b-instruct-q4_0",
             "claude-sonnet-4-20250514",
             "claude-opus-4-20250514",
@@ -163,6 +165,11 @@
           "type": "string",
           "default": "Qwen/Qwen2.5-Coder-7B-Instruct",
           "description": "The Hugging Face model to use (e.g., Qwen/Qwen2.5-Coder-7B-Instruct, codellama/CodeLlama-7b-Instruct-hf, etc.)"
+        },
+        "ollama-code-review.geminiApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Your Google AI Studio API key for Gemini models. Get one at https://aistudio.google.com/"
         },
         "ollama-code-review.customModel": {
           "type": "string",
