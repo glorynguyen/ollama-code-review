@@ -71,6 +71,7 @@ out/                      # Compiled JavaScript output
 | `ollama-code-review.hfModel` | `Qwen/Qwen2.5-Coder-7B-Instruct` | Hugging Face model name |
 | `ollama-code-review.hfPopularModels` | (see below) | Popular HF models for quick selection |
 | `ollama-code-review.geminiApiKey` | `""` | Google AI Studio API key for Gemini models |
+| `ollama-code-review.mistralApiKey` | `""` | Mistral AI API key for Mistral models |
 | `ollama-code-review.endpoint` | `http://localhost:11434/api/generate` | Ollama API endpoint |
 | `ollama-code-review.temperature` | `0` | Model temperature (0-1) |
 | `ollama-code-review.frameworks` | `["React"]` | Target frameworks for context |
@@ -107,6 +108,12 @@ out/                      # Compiled JavaScript output
 - `gemini-2.5-pro` - Gemini 2.5 Pro (Free tier: 100 RPD, 5 RPM)
   - Both models feature 1M token context window
   - Get API key at https://aistudio.google.com/ (no credit card required)
+
+### Mistral Models (Requires Mistral AI API key)
+- `mistral-large-latest` - Mistral Large (most capable)
+- `mistral-small-latest` - Mistral Small (fast & efficient)
+- `codestral-latest` - Codestral (optimized for code)
+  - Get API key at https://console.mistral.ai/
 
 ### Claude Models (Requires Anthropic API key)
 - `claude-sonnet-4-20250514` - Claude Sonnet 4
@@ -180,11 +187,15 @@ interface PerformanceMetrics {
   geminiInputTokens?: number;
   geminiOutputTokens?: number;
 
+  // Mistral-specific
+  mistralInputTokens?: number;
+  mistralOutputTokens?: number;
+
   // Computed metrics
   tokensPerSecond?: number;
   totalDurationSeconds?: number;
   model?: string;
-  provider?: 'ollama' | 'claude' | 'glm' | 'huggingface' | 'gemini';
+  provider?: 'ollama' | 'claude' | 'glm' | 'huggingface' | 'gemini' | 'mistral';
 
   // Active model info (Ollama /api/ps)
   activeModel?: {
@@ -205,6 +216,7 @@ interface PerformanceMetrics {
 | GLM | Prompt/completion tokens |
 | Hugging Face | Token counts, rate limit remaining, rate limit reset time |
 | Gemini | Input/output tokens |
+| Mistral | Input/output tokens |
 
 ### UI Display (reviewProvider.ts)
 

@@ -12,6 +12,7 @@ const CLAUDE_API_ENDPOINT = 'https://api.anthropic.com/v1/messages';
 const GLM_API_ENDPOINT = 'https://api.z.ai/api/paas/v4/chat/completions';
 const HF_API_ENDPOINT = 'https://router.huggingface.co/v1/chat/completions';
 const GEMINI_API_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
+const MISTRAL_API_ENDPOINT = 'https://api.mistral.ai/v1/chat/completions';
 
 /**
  * Performance metrics captured from API responses
@@ -36,11 +37,15 @@ export interface PerformanceMetrics {
 	geminiInputTokens?: number;
 	geminiOutputTokens?: number;
 
+	// Mistral-specific metrics (from response body)
+	mistralInputTokens?: number;
+	mistralOutputTokens?: number;
+
 	// Common computed metrics
 	tokensPerSecond?: number;
 	totalDurationSeconds?: number;
 	model?: string;
-	provider?: 'ollama' | 'claude' | 'glm' | 'huggingface' | 'gemini';
+	provider?: 'ollama' | 'claude' | 'glm' | 'huggingface' | 'gemini' | 'mistral';
 
 	// Active model info (from /api/ps)
 	activeModel?: {
@@ -150,6 +155,13 @@ function isHuggingFaceModel(model: string): boolean {
  */
 function isGeminiModel(model: string): boolean {
 	return model.startsWith('gemini-');
+}
+
+/**
+ * Check if the model is a Mistral model
+ */
+function isMistralModel(model: string): boolean {
+	return model.startsWith('mistral-') || model.startsWith('codestral-');
 }
 
 /**
@@ -504,6 +516,95 @@ async function callGeminiAPI(prompt: string, config: vscode.WorkspaceConfigurati
 	}
 }
 
+/**
+ * Call Mistral API for generating responses
+ */
+async function callMistralAPI(prompt: string, config: vscode.WorkspaceConfiguration, captureMetrics = false): Promise<string> {
+	const model = getOllamaModel(config);
+	const apiKey = config.get<string>('mistralApiKey', '');
+	const temperature = config.get<number>('temperature', 0);
+
+	if (!apiKey) {
+		throw new Error('Mistral API key is not configured. Please set it in Settings > Ollama Code Review > Mistral Api Key');
+	}
+
+	try {
+		const response = await axios.post(
+			MISTRAL_API_ENDPOINT,
+			{
+				model: model,
+				messages: [
+					{
+						role: 'system',
+						content: 'You are an expert software engineer and code reviewer.'
+					},
+					{
+						role: 'user',
+						content: prompt
+					}
+				],
+				temperature: temperature,
+				max_tokens: 8192
+			},
+			{
+				headers: {
+					'Authorization': `Bearer ${apiKey}`,
+					'Content-Type': 'application/json'
+				},
+				timeout: 120000 // 2 minute timeout
+			}
+		);
+
+		// Capture metrics from Mistral's response
+		if (captureMetrics && response.data.usage) {
+			lastPerformanceMetrics = {
+				provider: 'mistral',
+				model: model,
+				mistralInputTokens: response.data.usage.prompt_tokens,
+				mistralOutputTokens: response.data.usage.completion_tokens,
+				promptEvalCount: response.data.usage.prompt_tokens,
+				evalCount: response.data.usage.completion_tokens
+			};
+		}
+
+		// Extract text from Mistral's OpenAI-compatible response format
+		const choices = response.data.choices;
+		if (Array.isArray(choices) && choices.length > 0 && choices[0].message) {
+			return choices[0].message.content?.trim() || '';
+		}
+
+		return '';
+	} catch (error) {
+		if (axios.isAxiosError(error)) {
+			const status = error.response?.status;
+			const errorData = error.response?.data;
+
+			if (status === 401) {
+				throw new Error(
+					`Mistral authentication failed.\n` +
+					`Please check your API key in Settings > Ollama Code Review > Mistral Api Key`
+				);
+			}
+
+			if (status === 429) {
+				throw new Error(
+					`Mistral rate limit exceeded. Please wait and try again.`
+				);
+			}
+
+			if (status === 503) {
+				throw new Error(
+					`Mistral service temporarily unavailable. Please try again in a moment.`
+				);
+			}
+
+			const errorMessage = errorData?.error?.message || errorData?.message || error.message;
+			throw new Error(`Mistral API Error (${status}): ${errorMessage}`);
+		}
+		throw error;
+	}
+}
+
 
 let outputChannel: vscode.OutputChannel;
 
@@ -852,6 +953,9 @@ export async function activate(context: vscode.ExtensionContext) {
 			{ label: 'huggingface', description: 'Hugging Face Inference API (select model →)' },
 			{ label: 'gemini-2.5-flash', description: 'Gemini 2.5 Flash - Free tier (Google AI)' },
 			{ label: 'gemini-2.5-pro', description: 'Gemini 2.5 Pro - Free tier (Google AI)' },
+			{ label: 'mistral-large-latest', description: 'Mistral Large - Most capable (Mistral AI)' },
+			{ label: 'mistral-small-latest', description: 'Mistral Small - Fast & efficient (Mistral AI)' },
+			{ label: 'codestral-latest', description: 'Codestral - Optimized for code (Mistral AI)' },
 			{ label: 'claude-sonnet-4-20250514', description: 'Claude Sonnet 4 (Anthropic)' },
 			{ label: 'claude-opus-4-20250514', description: 'Claude Opus 4 (Anthropic)' },
 			{ label: 'claude-3-7-sonnet-20250219', description: 'Claude 3.7 Sonnet (Anthropic)' }
@@ -1608,6 +1712,11 @@ async function getOllamaReview(diff: string, context?: vscode.ExtensionContext):
 			return await callGeminiAPI(prompt, config, true);
 		}
 
+		// Use Mistral API if a Mistral model is selected
+		if (isMistralModel(model)) {
+			return await callMistralAPI(prompt, config, true);
+		}
+
 		// Otherwise use Ollama API
 		const response = await axios.post(endpoint, {
 			model: model,
@@ -1690,6 +1799,9 @@ async function getOllamaCommitMessage(diff: string, existingMessage?: string): P
 		} else if (isGeminiModel(model)) {
 			// Use Gemini API if a Gemini model is selected
 			message = await callGeminiAPI(prompt, config);
+		} else if (isMistralModel(model)) {
+			// Use Mistral API if a Mistral model is selected
+			message = await callMistralAPI(prompt, config);
 		} else {
 			// Otherwise use Ollama API
 			const response = await axios.post(endpoint, {
@@ -1757,6 +1869,11 @@ async function getOllamaSuggestion(codeSnippet: string, languageId: string): Pro
 			return await callGeminiAPI(prompt, config);
 		}
 
+		// Use Mistral API if a Mistral model is selected
+		if (isMistralModel(model)) {
+			return await callMistralAPI(prompt, config);
+		}
+
 		// Otherwise use Ollama API
 		const response = await axios.post(endpoint, {
 			model: model,
@@ -1799,6 +1916,12 @@ function handleError(error: unknown, contextMessage: string) {
 				errorMessage += '\nRate limit exceeded. Free tier allows 15 RPM for Flash, 5 RPM for Pro.';
 			} else if (status === 503) {
 				errorMessage += '\nThe model is loading. Please try again in a few seconds.';
+			}
+		} else if (url.includes('api.mistral.ai')) {
+			const mistralError = responseData?.error?.message || responseData?.message || error.message;
+			errorMessage += `Mistral API Error (${status}): ${mistralError}`;
+			if (status === 429) {
+				errorMessage += '\nRate limit exceeded. Please wait and try again.';
 			}
 		} else {
 			errorMessage += `Ollama API Error: ${error.message}. Is Ollama running? Check the endpoint in settings.`;

@@ -137,6 +137,9 @@
             "huggingface",
             "gemini-2.5-flash",
             "gemini-2.5-pro",
+            "mistral-large-latest",
+            "mistral-small-latest",
+            "codestral-latest",
             "qwen2.5-coder:14b-instruct-q4_0",
             "claude-sonnet-4-20250514",
             "claude-opus-4-20250514",
@@ -186,6 +189,11 @@
           "type": "string",
           "default": "",
           "description": "Your Google AI Studio API key for Gemini models. Get one at https://aistudio.google.com/"
+        },
+        "ollama-code-review.mistralApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Your Mistral AI API key. Get one at https://console.mistral.ai/"
         },
         "ollama-code-review.customModel": {
           "type": "string",
