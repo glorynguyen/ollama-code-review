@@ -289,6 +289,7 @@
     "compile": "tsc -p ./",
     "build": "yarn run lint --fix && yarn run compile",
     "package": "yarn run build && vsce package",
+    "deploy": "vsce publish",
     "watch": "tsc -watch -p ./",
     "pretest": "yarn run compile && yarn run lint --fix",
     "lint": "eslint src",
@@ -338,7 +339,8 @@
       [
         "@semantic-release/exec",
         {
-          "prepareCmd": "yarn run package"
+          "prepareCmd": "yarn run package",
+          "publishCmd": "yarn run deploy"
         }
       ],
       [
