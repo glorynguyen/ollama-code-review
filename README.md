@@ -116,13 +116,26 @@ To use Gemini models:
 ### 14. Hugging Face Support
 Use any model from the Hugging Face Inference API:
 - Access thousands of open-source models
-- Popular coding models: `Qwen/Qwen2.5-Coder-7B-Instruct`, `codellama/CodeLlama-7b-Instruct-hf`, `bigcode/starcoder2-15b`
+- **Smart Model Picker**: When selecting `huggingface`, a submenu appears with:
+  - **Recently Used**: Your last 5 HF models for quick switching
+  - **Popular Models**: Curated list of coding models (customizable)
+  - **Custom**: Enter any HF model identifier manually
+- This makes it easy to quickly switch models when one is busy or returns errors (401/503)
 
 To use Hugging Face models:
 1. Get your API token from [Hugging Face Settings](https://huggingface.co/settings/tokens)
 2. Set your token in settings: `ollama-code-review.hfApiKey`
-3. Configure the model name: `ollama-code-review.hfModel`
-4. Select `huggingface` from the model picker
+3. Select `huggingface` from the model picker → choose from recent, popular, or enter custom
+4. (Optional) Customize the popular models list via `ollama-code-review.hfPopularModels`
+
+**Default Popular Models:**
+- `Qwen/Qwen2.5-Coder-7B-Instruct`
+- `Qwen/Qwen2.5-Coder-32B-Instruct`
+- `mistralai/Mistral-7B-Instruct-v0.3`
+- `codellama/CodeLlama-7b-Instruct-hf`
+- `bigcode/starcoder2-15b`
+- `meta-llama/Llama-3.1-8B-Instruct`
+- `deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct`
 
 ### 15. Smart Diff Filtering
 Reduce noise in your code reviews by filtering out irrelevant changes:
@@ -161,7 +174,7 @@ You must have the following software installed and configured for this extension
 ### For Hugging Face Models (Alternative)
 1.  **Hugging Face API Token**: Get one from [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)
 2.  **Configure the token** in VS Code settings: `ollama-code-review.hfApiKey`
-3.  **Set the model name** in VS Code settings: `ollama-code-review.hfModel`
+3.  **Select a model** from the model picker (recent, popular, or custom) - no need to configure `hfModel` manually!
 
 ### General Requirements
 1.  **[Git](https://git-scm.com/)**: Git must be installed and available in your system's PATH.
@@ -177,6 +190,7 @@ This extension contributes the following settings to your VS Code `settings.json
 * `ollama-code-review.glmApiKey`: Your Z.AI (BigModel/Zhipu) API key for GLM models.
 * `ollama-code-review.hfApiKey`: Your Hugging Face API token for using Hugging Face models.
 * `ollama-code-review.hfModel`: The Hugging Face model to use (default: `Qwen/Qwen2.5-Coder-7B-Instruct`).
+* `ollama-code-review.hfPopularModels`: Customize the list of popular Hugging Face models shown in the model picker submenu.
 * `ollama-code-review.geminiApiKey`: Your Google AI Studio API key for Gemini models.
 * `ollama-code-review.endpoint`: The API endpoint for your local Ollama instance's generate API.
     * **Type**: `string`
