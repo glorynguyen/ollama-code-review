@@ -21,7 +21,6 @@ export {
 // Fix Issue Action
 export {
 	FixIssueActionProvider,
-	FixDiffContentProvider,
 	FixPreviewPanel,
 	FixTracker
 } from './fixAction';

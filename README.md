@@ -43,20 +43,30 @@ You can interact with this extension in two primary ways:
 - Alternatively (currently only JavaScript and TypeScript are supported), you can select a block of code, click on the light bulb icon, and choose "Ollama: Suggest Refactoring"
 ![Suggest Improvements](images/code-action.gif)
 
-### 4. Review a Commit Range
+### 4. Inline AI Code Actions (New!)
+Select any code in your editor and access powerful AI-powered actions via the lightbulb menu or `Ctrl+.` (`Cmd+.` on Mac):
+
+- **Explain Code**: Get detailed explanations of selected code displayed in a preview panel. Understand complex logic, algorithms, or unfamiliar code patterns.
+- **Generate Tests**: Automatically generate unit tests for your code with framework detection (Jest, Mocha, Vitest, etc.). Preview tests before creating the test file.
+- **Fix Issue**: Get AI-powered fixes for diagnostics or selected code. View changes in a diff preview before applying them with one click.
+- **Add Documentation**: Generate JSDoc/TSDoc comments for functions, classes, and methods. Preview documentation before inserting it into your code.
+
+Each action opens a dedicated preview panel where you can review the AI's output before applying changes to your code.
+
+### 5. Review a Commit Range
 - **Command**: `Ollama: Review Commit Range`
 - Analyze a series of commits. The extension will prompt you to select a starting commit from your history, and it will generate a review for all changes from that point up to `HEAD`.
 
-### 5. Review Changes Between Two Branches
+### 6. Review Changes Between Two Branches
 - **Command**: `Ollama: Review Changes Between Two Branches`
 - Ideal for pull requests. Compare any two branches or git refs (like tags or commit hashes) to get a comprehensive review of the differences.
 
-### 6. Detailed Review Output
+### 7. Detailed Review Output
 All feedback from Ollama is displayed in a dedicated "Ollama Code Review" output channel, keeping your editor clean. The output includes a list of the files that were analyzed in the review.
 
 ![Code Review Output](images/feature-output-panel.png)
 
-### 7. Agent Skills (New!)
+### 8. Agent Skills
 - **Command**: `Ollama Code Review: Browse Agent Skills`
 - **Command**: `Ollama Code Review: Apply Skill to Review`
 - Enhance your code reviews by downloading specialized "skills" from GitHub (defaulting to `vercel-labs/agent-skills`). 
@@ -65,15 +75,15 @@ All feedback from Ollama is displayed in a dedicated "Ollama Code Review" output
 
 ![Agent Skills](images/apply-skills-to-review.gif)
 
-### 8. Review a Specific Commit
+### 9. Review a Specific Commit
 - **Command**: `Ollama Code Review: Review Commit`
 - Review any historical commit. You can enter a hash, select from a list of the 50 most recent commits, or trigger it directly from the **Git Graph** extension context menu.
 
-### 9. Detailed Review Output
+### 10. Detailed Review Output
 All feedback from Ollama is displayed in a dedicated "Ollama Code Review" output channel... 
 - **New**: The review panel now features a **"Copy Review"** button to quickly copy the entire Markdown feedback to your clipboard for sharing in Pull Requests or Slack.
 
-### 10. Dynamic Model Selection & Status Bar
+### 11. Dynamic Model Selection & Status Bar
 - **Command**: `Ollama Code Review: Select Ollama Model`
 - **Quick Access**: Look for the model name (e.g., `ollama: llama3`) in the **Status Bar** at the bottom of your editor. Click it to switch models instantly.
 - **Auto-Discovery**: The extension automatically fetches all models currently installed on your local Ollama instance.
@@ -82,7 +92,7 @@ All feedback from Ollama is displayed in a dedicated "Ollama Code Review" output
 
 ![Model Selection](images/switch-models.gif)
 
-### 11. Claude (Anthropic) Support
+### 12. Claude (Anthropic) Support
 Use Anthropic's powerful Claude models for code reviews:
 - **Claude Sonnet 4** - Fast, capable model for everyday reviews
 - **Claude Opus 4** - Most capable model for complex analysis
@@ -93,7 +103,7 @@ To use Claude models:
 2. Set your API key in settings: `ollama-code-review.claudeApiKey`
 3. Select a Claude model from the status bar or command palette
 
-### 12. GLM (Z.AI/Zhipu) Support
+### 13. GLM (Z.AI/Zhipu) Support
 Use GLM models via the Z.AI (BigModel/Zhipu) API:
 - **GLM-4.7 Flash** - Fast and free-tier model for code reviews
 
@@ -102,7 +112,7 @@ To use GLM models:
 2. Set your API key in settings: `ollama-code-review.glmApiKey`
 3. Select `glm-4.7-flash` from the model picker
 
-### 13. Gemini (Google AI) Support
+### 14. Gemini (Google AI) Support
 Use Google's Gemini models via the free Google AI Studio API:
 - **Gemini 2.5 Flash** - Fast model with 250 requests/day free tier (15 RPM)
 - **Gemini 2.5 Pro** - More capable model with 100 requests/day free tier (5 RPM)
@@ -113,7 +123,7 @@ To use Gemini models:
 2. Set your API key in settings: `ollama-code-review.geminiApiKey`
 3. Select `gemini-2.5-flash` or `gemini-2.5-pro` from the model picker
 
-### 14. Mistral AI Support
+### 15. Mistral AI Support
 Use Mistral AI's powerful models for code reviews:
 - **Mistral Large** - Most capable model for complex analysis
 - **Mistral Small** - Fast and efficient for everyday reviews
@@ -124,7 +134,7 @@ To use Mistral models:
 2. Set your API key in settings: `ollama-code-review.mistralApiKey`
 3. Select `mistral-large-latest`, `mistral-small-latest`, or `codestral-latest` from the model picker
 
-### 15. Hugging Face Support
+### 16. Hugging Face Support
 Use any model from the Hugging Face Inference API:
 - Access thousands of open-source models
 - **Smart Model Picker**: When selecting `huggingface`, a submenu appears with:
@@ -148,7 +158,7 @@ To use Hugging Face models:
 - `meta-llama/Llama-3.1-8B-Instruct`
 - `deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct`
 
-### 16. Smart Diff Filtering
+### 17. Smart Diff Filtering
 Reduce noise in your code reviews by filtering out irrelevant changes:
 - **Ignore paths**: Skip `node_modules`, lock files, build outputs
 - **Ignore patterns**: Exclude minified files, source maps, generated code

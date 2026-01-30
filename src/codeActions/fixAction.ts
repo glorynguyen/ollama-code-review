@@ -71,25 +71,6 @@ export class FixIssueActionProvider implements vscode.CodeActionProvider {
 }
 
 /**
- * Virtual document content provider for showing fix diffs
- */
-export class FixDiffContentProvider implements vscode.TextDocumentContentProvider {
-	private readonly _content = new Map<string, string>();
-
-	provideTextDocumentContent(uri: vscode.Uri): string {
-		return this._content.get(uri.toString()) || '';
-	}
-
-	setContent(uri: vscode.Uri, value: string): void {
-		this._content.set(uri.toString(), value);
-	}
-
-	deleteContent(uri: vscode.Uri): void {
-		this._content.delete(uri.toString());
-	}
-}
-
-/**
  * Stores applied fixes for tracking in review panel
  */
 export interface AppliedFix {

@@ -28,6 +28,13 @@ src/
 ├── skillsService.ts      # Agent skills download/caching from GitHub
 ├── skillsBrowserPanel.ts # Skills browser UI webview
 ├── utils.ts              # Config helper functions
+├── codeActions/          # Inline AI code actions (F-005)
+│   ├── index.ts          # Module exports
+│   ├── types.ts          # Common types and utilities
+│   ├── explainAction.ts  # Explain Code action provider
+│   ├── testAction.ts     # Generate Tests action provider
+│   ├── fixAction.ts      # Fix Issue action provider
+│   └── documentAction.ts # Add Documentation action provider
 └── test/
     └── extension.test.ts # Mocha test suite
 
@@ -39,11 +46,16 @@ out/                      # Compiled JavaScript output
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `src/extension.ts` | ~1,024 | Main extension logic, all commands, Git operations |
+| `src/extension.ts` | ~2,369 | Main extension logic, all commands, Git operations |
 | `src/reviewProvider.ts` | ~196 | Webview for displaying reviews with chat interface |
 | `src/skillsService.ts` | ~204 | Fetches/caches agent skills from GitHub repos |
 | `src/skillsBrowserPanel.ts` | ~255 | UI for browsing and downloading skills |
 | `src/utils.ts` | ~9 | Helper for resolving model configuration |
+| `src/codeActions/explainAction.ts` | ~168 | Explain Code action with preview panel |
+| `src/codeActions/testAction.ts` | ~369 | Generate Tests action with framework detection |
+| `src/codeActions/fixAction.ts` | ~449 | Fix Issue action with diff preview |
+| `src/codeActions/documentAction.ts` | ~377 | Add Documentation action with preview |
+| `src/codeActions/types.ts` | ~103 | Common types and parsing utilities |
 
 ## Commands
 
@@ -56,6 +68,10 @@ out/                      # Compiled JavaScript output
 | `ollama-code-review.reviewChangesBetweenTwoBranches` | Compare two branches |
 | `ollama-code-review.generateCommitMessage` | Auto-generate conventional commit message |
 | `ollama-code-review.suggestRefactoring` | Code suggestions via lightbulb/context menu |
+| `ollama-code-review.explainCode` | Explain selected code in preview panel |
+| `ollama-code-review.generateTests` | Generate unit tests for selected code |
+| `ollama-code-review.fixIssue` | Fix diagnostics or selected code with diff preview |
+| `ollama-code-review.addDocumentation` | Generate JSDoc/TSDoc for functions/classes |
 | `ollama-code-review.browseAgentSkills` | Browse and download agent skills |
 | `ollama-code-review.applySkillToReview` | Apply a skill to reviews |
 
@@ -143,6 +159,10 @@ Any model available in your local Ollama instance will be auto-discovered.
 ### Webview Panels
 - **Review Panel:** Displays markdown reviews with highlight.js, supports chat
 - **Skills Browser:** Lists/downloads skills with search filtering
+- **Explain Panel:** Shows code explanations with syntax highlighting
+- **Test Preview Panel:** Displays generated tests before creating files
+- **Fix Preview Panel:** Shows proposed fixes in diff view
+- **Documentation Panel:** Previews JSDoc/TSDoc before insertion
 
 ## Key Functions in extension.ts
 
@@ -159,6 +179,57 @@ Any model available in your local Ollama instance will be auto-discovered.
 - `showHfModelPicker()` - Display HF model selection submenu with recent/popular/custom options
 - `getRecentHfModels()` - Get recently used HF models from globalState
 - `addRecentHfModel()` - Add a model to recent HF models list
+
+## Inline Code Actions (F-005)
+
+The extension provides four AI-powered code actions accessible via the lightbulb menu or `Ctrl+.`:
+
+### Code Action Providers
+
+| Provider | File | Purpose |
+|----------|------|---------|
+| `ExplainCodeActionProvider` | `explainAction.ts` | Provides "Explain Code" action |
+| `GenerateTestsActionProvider` | `testAction.ts` | Provides "Generate Tests" action |
+| `FixIssueActionProvider` | `fixAction.ts` | Provides "Fix Issue" action |
+| `AddDocumentationActionProvider` | `documentAction.ts` | Provides "Add Documentation" action |
+
+### Preview Panels
+
+Each action has a dedicated webview panel for previewing results:
+- `ExplainCodePanel` - Displays code explanations with syntax highlighting
+- `GenerateTestsPanel` - Shows generated tests with "Create Test File" button
+- `FixPreviewPanel` - Shows diff view with "Apply Fix" button
+- `DocumentationPreviewPanel` - Previews JSDoc with "Insert Documentation" button
+
+### Key Types (src/codeActions/types.ts)
+
+```typescript
+interface CodeActionResult {
+  code: string;
+  explanation: string;
+}
+
+interface TestGenerationResult {
+  testCode: string;
+  testFileName: string;
+  explanation: string;
+}
+
+interface DocumentationResult {
+  documentation: string;
+  explanation: string;
+}
+```
+
+### Utility Functions
+
+- `parseCodeResponse()` - Parse AI response with code block and explanation
+- `parseTestResponse()` - Parse test generation response
+- `extractSymbolName()` - Extract function/class name from code
+- `createVirtualUri()` - Create virtual document URI for diff view
+- `detectTestFramework()` - Detect test framework from project config
+- `getTestFileName()` - Generate test file name from source file
+- `getDocumentationStyle()` - Determine JSDoc vs TSDoc based on file type
 
 ## Performance Metrics System
 
@@ -268,6 +339,8 @@ See [docs/roadmap/](./docs/roadmap/) for comprehensive planning documents:
 | Phase | Features | Target |
 |-------|----------|--------|
 | v2.0 | Review Profiles, Export Options | Q1 2026 |
-| v2.5 | GitHub PR Integration, Inline Code Actions, Custom Prompts | Q2 2026 |
+| v2.5 | GitHub PR Integration, ~~Inline Code Actions~~ ✓, Custom Prompts | Q2 2026 |
 | v3.0 | Agentic Multi-Step Reviews, RAG-Enhanced Reviews | Q3 2026 |
 | v4.0 | CI/CD Integration, Analytics, Team Knowledge Base | Q4 2026 |
+
+**Note:** Inline Code Actions (F-005) has been implemented ahead of schedule.

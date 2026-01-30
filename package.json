@@ -71,6 +71,31 @@
         "command": "ollama-code-review.suggestRefactoring",
         "category": "Ollama Code Review",
         "title": "Suggestion"
+      },
+      {
+        "command": "ollama-code-review.explainCode",
+        "category": "Ollama Code Review",
+        "title": "Explain Code"
+      },
+      {
+        "command": "ollama-code-review.generateTests",
+        "category": "Ollama Code Review",
+        "title": "Generate Tests"
+      },
+      {
+        "command": "ollama-code-review.fixIssue",
+        "category": "Ollama Code Review",
+        "title": "Fix Issue"
+      },
+      {
+        "command": "ollama-code-review.fixSelection",
+        "category": "Ollama Code Review",
+        "title": "Fix Selected Code"
+      },
+      {
+        "command": "ollama-code-review.addDocumentation",
+        "category": "Ollama Code Review",
+        "title": "Add Documentation"
       }
     ],
     "menus": {

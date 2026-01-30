@@ -2363,6 +2363,27 @@ function handleError(error: unknown, contextMessage: string) {
 }
 
 export function deactivate() {
+	// Dispose webview panels
+	if (OllamaReviewPanel.currentPanel) {
+		OllamaReviewPanel.currentPanel.dispose();
+	}
+	if (SkillsBrowserPanel.currentPanel) {
+		SkillsBrowserPanel.currentPanel.dispose();
+	}
+	if (ExplainCodePanel.currentPanel) {
+		ExplainCodePanel.currentPanel.dispose();
+	}
+	if (GenerateTestsPanel.currentPanel) {
+		GenerateTestsPanel.currentPanel.dispose();
+	}
+	if (FixPreviewPanel.currentPanel) {
+		FixPreviewPanel.currentPanel.dispose();
+	}
+	if (DocumentationPreviewPanel.currentPanel) {
+		DocumentationPreviewPanel.currentPanel.dispose();
+	}
+
+	// Dispose output channel
 	if (outputChannel) {
 		outputChannel.dispose();
 	}

@@ -150,9 +150,14 @@ export class GenerateTestsPanel {
 				} else {
 					await vscode.workspace.fs.writeFile(testFileUri, Buffer.from(this._testCode, 'utf8'));
 				}
-			} catch {
+			} catch (statError) {
 				// File doesn't exist, create it
-				await vscode.workspace.fs.writeFile(testFileUri, Buffer.from(this._testCode, 'utf8'));
+				if (statError instanceof vscode.FileSystemError && statError.code === 'FileNotFound') {
+					await vscode.workspace.fs.writeFile(testFileUri, Buffer.from(this._testCode, 'utf8'));
+				} else {
+					// Re-throw unexpected errors
+					throw statError;
+				}
 			}
 
 			// Open the test file
@@ -361,8 +366,9 @@ export async function detectTestFramework(): Promise<string> {
 		if (deps['jest']) {
 			return 'jest';
 		}
-	} catch {
-		// Package.json not found or invalid
+	} catch (error) {
+		// Package.json not found or invalid - fall back to default
+		console.log('Could not detect test framework from package.json:', error instanceof Error ? error.message : String(error));
 	}
 
 	return 'jest';
