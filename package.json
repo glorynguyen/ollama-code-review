@@ -2,7 +2,7 @@
   "name": "ollama-code-review",
   "displayName": "Ollama Code Review",
   "description": "Get AI code reviews and generate commit messages from a local Ollama instance before you commit.",
-  "version": "1.16.0",
+  "version": "1.17.0",
   "author": "Vinh Nguyen (vincent)",
   "publisher": "VinhNguyen-Vincent",
   "icon": "images/icon.png",
