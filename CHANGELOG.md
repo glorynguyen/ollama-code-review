@@ -1,3 +1,10 @@
+# [1.15.0](https://github.com/glorynguyen/ollama-code-review/compare/v1.14.0...v1.15.0) (2026-01-30)
+
+
+### Features
+
+* add performance metrics and HF model picker ([e5deee2](https://github.com/glorynguyen/ollama-code-review/commit/e5deee24de622e4fb4b1c42c019d4b48be31bc5a))
+
 # [1.14.0](https://github.com/glorynguyen/ollama-code-review/compare/v1.13.0...v1.14.0) (2026-01-29)
 
 
