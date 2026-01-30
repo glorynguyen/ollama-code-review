@@ -1,3 +1,10 @@
+# [1.18.0](https://github.com/glorynguyen/ollama-code-review/compare/v1.17.0...v1.18.0) (2026-01-30)
+
+
+### Features
+
+* **code-actions:** add AI inline code actions ([f777442](https://github.com/glorynguyen/ollama-code-review/commit/f777442556c75858604123221f5af01b3b7927a0))
+
 # [1.17.0](https://github.com/glorynguyen/ollama-code-review/compare/v1.16.0...v1.17.0) (2026-01-30)
 
 
