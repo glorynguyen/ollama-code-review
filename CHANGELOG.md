@@ -1,3 +1,10 @@
+# [1.16.0](https://github.com/glorynguyen/ollama-code-review/compare/v1.15.0...v1.16.0) (2026-01-30)
+
+
+### Features
+
+* add Mistral AI support ([93234be](https://github.com/glorynguyen/ollama-code-review/commit/93234be0ff55700a53e574ab6d6b85f4e7a37eae))
+
 # [1.15.0](https://github.com/glorynguyen/ollama-code-review/compare/v1.14.0...v1.15.0) (2026-01-30)
 
 
