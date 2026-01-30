@@ -267,7 +267,7 @@ See [docs/roadmap/](./docs/roadmap/) for comprehensive planning documents:
 
 | Phase | Features | Target |
 |-------|----------|--------|
-| v2.0 | Review Profiles, Smart Diff Filtering, Export Options | Q2 2025 |
-| v2.5 | GitHub PR Integration, Inline Code Actions, Custom Prompts | Q3 2025 |
-| v3.0 | Agentic Multi-Step Reviews, RAG-Enhanced Reviews | Q4 2025 |
-| v4.0 | CI/CD Integration, Analytics, Team Knowledge Base | Q1 2026 |
+| v2.0 | Review Profiles, Export Options | Q1 2026 |
+| v2.5 | GitHub PR Integration, Inline Code Actions, Custom Prompts | Q2 2026 |
+| v3.0 | Agentic Multi-Step Reviews, RAG-Enhanced Reviews | Q3 2026 |
+| v4.0 | CI/CD Integration, Analytics, Team Knowledge Base | Q4 2026 |

@@ -7,6 +7,21 @@ import { SkillsService } from './skillsService';
 import { SkillsBrowserPanel } from './skillsBrowserPanel';
 import { getOllamaModel } from './utils';
 import { filterDiff, getFilterSummary } from './diffFilter';
+import {
+	ExplainCodeActionProvider,
+	ExplainCodePanel,
+	GenerateTestsActionProvider,
+	GenerateTestsPanel,
+	getTestFileName,
+	detectTestFramework,
+	FixIssueActionProvider,
+	FixPreviewPanel,
+	FixTracker,
+	AddDocumentationActionProvider,
+	DocumentationPreviewPanel,
+	getDocumentationStyle,
+	parseCodeResponse
+} from './codeActions';
 
 const CLAUDE_API_ENDPOINT = 'https://api.anthropic.com/v1/messages';
 const GLM_API_ENDPOINT = 'https://api.z.ai/api/paas/v4/chat/completions';
@@ -1178,6 +1193,222 @@ export async function activate(context: vscode.ExtensionContext) {
 		})
 	);
 
+	// Register new code action providers (F-005: Inline Code Actions)
+	context.subscriptions.push(
+		vscode.languages.registerCodeActionsProvider('*', new ExplainCodeActionProvider(), {
+			providedCodeActionKinds: ExplainCodeActionProvider.providedCodeActionKinds
+		}),
+		vscode.languages.registerCodeActionsProvider('*', new GenerateTestsActionProvider(), {
+			providedCodeActionKinds: GenerateTestsActionProvider.providedCodeActionKinds
+		}),
+		vscode.languages.registerCodeActionsProvider('*', new FixIssueActionProvider(), {
+			providedCodeActionKinds: FixIssueActionProvider.providedCodeActionKinds
+		}),
+		vscode.languages.registerCodeActionsProvider('*', new AddDocumentationActionProvider(), {
+			providedCodeActionKinds: AddDocumentationActionProvider.providedCodeActionKinds
+		})
+	);
+
+	// Explain Code command (F-005)
+	const explainCodeCommand = vscode.commands.registerCommand('ollama-code-review.explainCode', async () => {
+		const editor = vscode.window.activeTextEditor;
+		if (!editor) {
+			vscode.window.showInformationMessage('No active editor found.');
+			return;
+		}
+
+		const selection = editor.selection;
+		const selectedText = editor.document.getText(selection);
+
+		if (selection.isEmpty || !selectedText.trim()) {
+			vscode.window.showInformationMessage('Please select code to explain.');
+			return;
+		}
+
+		try {
+			await vscode.window.withProgress({
+				location: vscode.ProgressLocation.Notification,
+				title: 'Ollama: Explaining code...',
+				cancellable: true
+			}, async (progress, token) => {
+				const explanation = await getExplanation(selectedText, editor.document.languageId);
+				if (token.isCancellationRequested) { return; }
+
+				ExplainCodePanel.createOrShow(selectedText, explanation, editor.document.languageId);
+			});
+		} catch (error) {
+			handleError(error, 'Failed to explain code.');
+		}
+	});
+
+	// Generate Tests command (F-005)
+	const generateTestsCommand = vscode.commands.registerCommand('ollama-code-review.generateTests', async () => {
+		const editor = vscode.window.activeTextEditor;
+		if (!editor) {
+			vscode.window.showInformationMessage('No active editor found.');
+			return;
+		}
+
+		const selection = editor.selection;
+		const selectedText = editor.document.getText(selection);
+
+		if (selection.isEmpty || !selectedText.trim()) {
+			vscode.window.showInformationMessage('Please select a function or code to generate tests for.');
+			return;
+		}
+
+		try {
+			await vscode.window.withProgress({
+				location: vscode.ProgressLocation.Notification,
+				title: 'Ollama: Generating tests...',
+				cancellable: true
+			}, async (progress, token) => {
+				const testFramework = await detectTestFramework();
+				const result = await generateTests(selectedText, editor.document.languageId, testFramework);
+				if (token.isCancellationRequested) { return; }
+
+				const testFileName = getTestFileName(path.basename(editor.document.fileName));
+				GenerateTestsPanel.createOrShow(
+					result.code,
+					testFileName,
+					result.explanation,
+					editor.document.fileName,
+					editor.document.languageId
+				);
+			});
+		} catch (error) {
+			handleError(error, 'Failed to generate tests.');
+		}
+	});
+
+	// Fix Issue command (F-005) - for diagnostics
+	const fixIssueCommand = vscode.commands.registerCommand('ollama-code-review.fixIssue', async (document: vscode.TextDocument, diagnostic: vscode.Diagnostic) => {
+		const editor = vscode.window.activeTextEditor;
+		if (!editor || editor.document !== document) {
+			vscode.window.showInformationMessage('Please ensure the file is open in the active editor.');
+			return;
+		}
+
+		// Expand range to include full lines for context
+		const startLine = diagnostic.range.start.line;
+		const endLine = diagnostic.range.end.line;
+		const expandedRange = new vscode.Range(
+			new vscode.Position(Math.max(0, startLine - 2), 0),
+			new vscode.Position(Math.min(document.lineCount - 1, endLine + 2), document.lineAt(Math.min(document.lineCount - 1, endLine + 2)).text.length)
+		);
+		const codeWithContext = document.getText(expandedRange);
+
+		try {
+			await vscode.window.withProgress({
+				location: vscode.ProgressLocation.Notification,
+				title: 'Ollama: Generating fix...',
+				cancellable: true
+			}, async (progress, token) => {
+				const result = await generateFix(codeWithContext, diagnostic.message, document.languageId);
+				if (token.isCancellationRequested) { return; }
+
+				FixPreviewPanel.createOrShow(
+					editor,
+					expandedRange,
+					codeWithContext,
+					result.code,
+					result.explanation,
+					diagnostic.message,
+					document.languageId
+				);
+			});
+		} catch (error) {
+			handleError(error, 'Failed to generate fix.');
+		}
+	});
+
+	// Fix Selection command (F-005) - for selected code
+	const fixSelectionCommand = vscode.commands.registerCommand('ollama-code-review.fixSelection', async () => {
+		const editor = vscode.window.activeTextEditor;
+		if (!editor) {
+			vscode.window.showInformationMessage('No active editor found.');
+			return;
+		}
+
+		const selection = editor.selection;
+		const selectedText = editor.document.getText(selection);
+
+		if (selection.isEmpty || !selectedText.trim()) {
+			vscode.window.showInformationMessage('Please select code to fix.');
+			return;
+		}
+
+		try {
+			await vscode.window.withProgress({
+				location: vscode.ProgressLocation.Notification,
+				title: 'Ollama: Analyzing and fixing code...',
+				cancellable: true
+			}, async (progress, token) => {
+				const result = await generateFix(selectedText, 'General code improvement', editor.document.languageId);
+				if (token.isCancellationRequested) { return; }
+
+				FixPreviewPanel.createOrShow(
+					editor,
+					selection,
+					selectedText,
+					result.code,
+					result.explanation,
+					'General code improvement',
+					editor.document.languageId
+				);
+			});
+		} catch (error) {
+			handleError(error, 'Failed to fix code.');
+		}
+	});
+
+	// Add Documentation command (F-005)
+	const addDocumentationCommand = vscode.commands.registerCommand('ollama-code-review.addDocumentation', async () => {
+		const editor = vscode.window.activeTextEditor;
+		if (!editor) {
+			vscode.window.showInformationMessage('No active editor found.');
+			return;
+		}
+
+		const selection = editor.selection;
+		const selectedText = editor.document.getText(selection);
+
+		if (selection.isEmpty || !selectedText.trim()) {
+			vscode.window.showInformationMessage('Please select a function or class to document.');
+			return;
+		}
+
+		try {
+			await vscode.window.withProgress({
+				location: vscode.ProgressLocation.Notification,
+				title: 'Ollama: Generating documentation...',
+				cancellable: true
+			}, async (progress, token) => {
+				const docStyle = getDocumentationStyle(editor.document.languageId);
+				const result = await generateDocumentation(selectedText, editor.document.languageId, docStyle);
+				if (token.isCancellationRequested) { return; }
+
+				DocumentationPreviewPanel.createOrShow(
+					editor,
+					selection,
+					result.code,
+					selectedText,
+					result.explanation,
+					editor.document.languageId
+				);
+			});
+		} catch (error) {
+			handleError(error, 'Failed to generate documentation.');
+		}
+	});
+
+	context.subscriptions.push(
+		explainCodeCommand,
+		generateTestsCommand,
+		fixIssueCommand,
+		fixSelectionCommand,
+		addDocumentationCommand
+	);
 
 	const reviewStagedChangesCommand = vscode.commands.registerCommand('ollama-code-review.reviewChanges', async (scmRepo?: any) => {
 		try {
@@ -1885,6 +2116,197 @@ async function getOllamaSuggestion(codeSnippet: string, languageId: string): Pro
 	} catch (error) {
 		throw error;
 	}
+}
+
+/**
+ * Get detailed explanation for a code snippet (F-005)
+ */
+async function getExplanation(codeSnippet: string, languageId: string): Promise<string> {
+	const config = vscode.workspace.getConfiguration('ollama-code-review');
+	const model = getOllamaModel(config);
+	const endpoint = config.get<string>('endpoint', 'http://localhost:11434/api/generate');
+	const temperature = config.get<number>('temperature', 0.2);
+
+	const prompt = `
+You are an expert software engineer and educator. Your task is to explain the following ${languageId} code in detail.
+
+**Instructions:**
+1. Start with a brief summary of what the code does (1-2 sentences).
+2. Explain the code step by step, breaking down each important part.
+3. Highlight any patterns, algorithms, or design decisions used.
+4. Note any potential issues, edge cases, or areas for improvement.
+5. If relevant, explain how this code might interact with other parts of a system.
+
+**Code to explain:**
+\`\`\`${languageId}
+${codeSnippet}
+\`\`\`
+
+Provide your explanation in clear Markdown format.
+`;
+
+	return callAIProvider(prompt, config, model, endpoint, temperature);
+}
+
+/**
+ * Generate unit tests for code (F-005)
+ */
+async function generateTests(codeSnippet: string, languageId: string, testFramework: string): Promise<{ code: string; explanation: string }> {
+	const config = vscode.workspace.getConfiguration('ollama-code-review');
+	const model = getOllamaModel(config);
+	const endpoint = config.get<string>('endpoint', 'http://localhost:11434/api/generate');
+	const temperature = config.get<number>('temperature', 0.3);
+
+	const prompt = `
+You are an expert software engineer specializing in testing. Generate comprehensive unit tests for the following ${languageId} code using ${testFramework}.
+
+**Instructions:**
+1. Create test cases that cover the main functionality.
+2. Include edge cases and error scenarios.
+3. Use descriptive test names that explain what is being tested.
+4. Follow ${testFramework} best practices and conventions.
+5. Include necessary imports and setup.
+
+**IMPORTANT:** Your response MUST follow this structure exactly:
+1. Start with the test code inside a markdown code block (e.g., \`\`\`${languageId}\n...\n\`\`\`).
+2. After the code block, provide a bulleted list explaining what each test covers.
+
+**Code to test:**
+\`\`\`${languageId}
+${codeSnippet}
+\`\`\`
+
+Generate the tests now.
+`;
+
+	const response = await callAIProvider(prompt, config, model, endpoint, temperature);
+	const parsed = parseCodeResponse(response);
+
+	if (parsed) {
+		return parsed;
+	}
+
+	return { code: response, explanation: 'Tests generated successfully.' };
+}
+
+/**
+ * Generate a fix for an issue (F-005)
+ */
+async function generateFix(codeSnippet: string, issue: string, languageId: string): Promise<{ code: string; explanation: string }> {
+	const config = vscode.workspace.getConfiguration('ollama-code-review');
+	const model = getOllamaModel(config);
+	const endpoint = config.get<string>('endpoint', 'http://localhost:11434/api/generate');
+	const temperature = config.get<number>('temperature', 0.2);
+
+	const prompt = `
+You are an expert software engineer. Fix the following issue in the ${languageId} code.
+
+**Issue to fix:** ${issue}
+
+**IMPORTANT:** Your response MUST follow this structure exactly:
+1. Start with the fixed code inside a markdown code block (e.g., \`\`\`${languageId}\n...\n\`\`\`).
+2. After the code block, explain what was wrong and how you fixed it.
+
+**Code with issue:**
+\`\`\`${languageId}
+${codeSnippet}
+\`\`\`
+
+Provide the fixed code now.
+`;
+
+	const response = await callAIProvider(prompt, config, model, endpoint, temperature);
+	const parsed = parseCodeResponse(response);
+
+	if (parsed) {
+		return parsed;
+	}
+
+	return { code: response, explanation: 'Fix applied.' };
+}
+
+/**
+ * Generate documentation for code (F-005)
+ */
+async function generateDocumentation(codeSnippet: string, languageId: string, docStyle: string): Promise<{ code: string; explanation: string }> {
+	const config = vscode.workspace.getConfiguration('ollama-code-review');
+	const model = getOllamaModel(config);
+	const endpoint = config.get<string>('endpoint', 'http://localhost:11434/api/generate');
+	const temperature = config.get<number>('temperature', 0.2);
+
+	const styleGuide = {
+		jsdoc: 'JSDoc format with @param, @returns, @throws, @example tags',
+		tsdoc: 'TSDoc format with @param, @returns, @throws, @example, and TypeScript-specific tags',
+		pydoc: 'Python docstring format with Args, Returns, Raises, Examples sections',
+		generic: 'Standard documentation comment format for the language'
+	};
+
+	const prompt = `
+You are an expert technical writer. Generate documentation for the following ${languageId} code.
+
+**Documentation style:** ${styleGuide[docStyle as keyof typeof styleGuide]}
+
+**Instructions:**
+1. Document the purpose of the function/class.
+2. Document all parameters with their types and descriptions.
+3. Document the return value if applicable.
+4. Document any exceptions/errors that may be thrown.
+5. Include a brief example if helpful.
+
+**IMPORTANT:** Your response MUST follow this structure exactly:
+1. Start with ONLY the documentation comment (no code) inside a markdown code block.
+2. After the code block, briefly explain what you documented.
+
+**Code to document:**
+\`\`\`${languageId}
+${codeSnippet}
+\`\`\`
+
+Generate the documentation comment now.
+`;
+
+	const response = await callAIProvider(prompt, config, model, endpoint, temperature);
+	const parsed = parseCodeResponse(response);
+
+	if (parsed) {
+		return parsed;
+	}
+
+	return { code: response, explanation: 'Documentation generated.' };
+}
+
+/**
+ * Helper function to call the appropriate AI provider
+ */
+async function callAIProvider(prompt: string, config: vscode.WorkspaceConfiguration, model: string, endpoint: string, temperature: number): Promise<string> {
+	if (isClaudeModel(model)) {
+		return await callClaudeAPI(prompt, config);
+	}
+
+	if (isGlmModel(model)) {
+		return await callGlmAPI(prompt, config);
+	}
+
+	if (isHuggingFaceModel(model)) {
+		return await callHuggingFaceAPI(prompt, config);
+	}
+
+	if (isGeminiModel(model)) {
+		return await callGeminiAPI(prompt, config);
+	}
+
+	if (isMistralModel(model)) {
+		return await callMistralAPI(prompt, config);
+	}
+
+	// Default to Ollama API
+	const response = await axios.post(endpoint, {
+		model: model,
+		prompt: prompt,
+		stream: false,
+		options: { temperature }
+	});
+	return response.data.response.trim();
 }
 
 function handleError(error: unknown, contextMessage: string) {
