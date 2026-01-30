@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import axios from 'axios';
 import { getOllamaModel } from './utils';
+import { PerformanceMetrics } from './extension';
 
 const CLAUDE_API_ENDPOINT = 'https://api.anthropic.com/v1/messages';
 
@@ -18,17 +19,19 @@ export class OllamaReviewPanel {
   private _context: vscode.ExtensionContext;
   private _conversationHistory: Array<{ role: 'user' | 'assistant' | 'system', content: string }> = [];
   private _originalDiff: string;
+  private _metrics: PerformanceMetrics | null = null;
 
-  private constructor(panel: vscode.WebviewPanel, content: string, diff: string, context: vscode.ExtensionContext) {
+  private constructor(panel: vscode.WebviewPanel, content: string, diff: string, context: vscode.ExtensionContext, metrics: PerformanceMetrics | null = null) {
     this._panel = panel;
     this._context = context;
     this._originalDiff = diff;
+    this._metrics = metrics;
 
     this._conversationHistory.push({ role: 'assistant', content: content });
 
     // 1. Set the initial HTML structure
     this._panel.webview.html = this._getHtmlForWebview();
-    
+
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
 
     this._panel.webview.onDidReceiveMessage(
@@ -44,7 +47,7 @@ export class OllamaReviewPanel {
     );
   }
 
-  public static createOrShow(content: string, diff: string, context: vscode.ExtensionContext) {
+  public static createOrShow(content: string, diff: string, context: vscode.ExtensionContext, metrics: PerformanceMetrics | null = null) {
     const column = vscode.window.activeTextEditor ? vscode.window.activeTextEditor.viewColumn : undefined;
 
     if (OllamaReviewPanel.currentPanel) {
@@ -52,8 +55,9 @@ export class OllamaReviewPanel {
       // Reset history for the new diff review
       OllamaReviewPanel.currentPanel._conversationHistory = [{ role: 'assistant', content }];
       OllamaReviewPanel.currentPanel._originalDiff = diff;
-      // Tell webview to refresh messages
-      OllamaReviewPanel.currentPanel._syncMessages();
+      OllamaReviewPanel.currentPanel._metrics = metrics;
+      // Refresh webview with new content and metrics
+      OllamaReviewPanel.currentPanel._panel.webview.html = OllamaReviewPanel.currentPanel._getHtmlForWebview();
       return;
     }
 
@@ -61,7 +65,7 @@ export class OllamaReviewPanel {
       'ollamaReview', 'Ollama Code Review', column || vscode.ViewColumn.One,
       { enableScripts: true, retainContextWhenHidden: true }
     );
-    OllamaReviewPanel.currentPanel = new OllamaReviewPanel(panel, content, diff, context);
+    OllamaReviewPanel.currentPanel = new OllamaReviewPanel(panel, content, diff, context, metrics);
   }
 
   private _syncMessages() {
@@ -160,6 +164,7 @@ export class OllamaReviewPanel {
   private _getHtmlForWebview() {
     // Pass the current history as a JSON string for the very first render
     const initialData = JSON.stringify(this._conversationHistory);
+    const metricsData = JSON.stringify(this._metrics);
 
     return `
 <!DOCTYPE html>
@@ -177,6 +182,77 @@ export class OllamaReviewPanel {
         .input-area { padding: 20px; border-top: 1px solid #333; display: flex; gap: 10px; }
         input { flex: 1; background: #222; color: white; border: 1px solid #444; padding: 8px; }
         #loading { display: none; color: gray; margin-left: 20px; }
+
+        /* Performance Metrics Styles */
+        .metrics-panel {
+            background: var(--vscode-editor-background);
+            border-top: 1px solid #333;
+            padding: 12px 20px;
+            font-size: 12px;
+            color: var(--vscode-descriptionForeground, #888);
+        }
+        .metrics-header {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            user-select: none;
+        }
+        .metrics-header:hover { color: var(--vscode-foreground, #ccc); }
+        .metrics-toggle {
+            margin-right: 8px;
+            transition: transform 0.2s;
+        }
+        .metrics-toggle.collapsed { transform: rotate(-90deg); }
+        .metrics-title { font-weight: 600; }
+        .metrics-content {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 8px 16px;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #333;
+        }
+        .metrics-content.hidden { display: none; }
+        .metric-item {
+            display: flex;
+            flex-direction: column;
+        }
+        .metric-label {
+            color: var(--vscode-descriptionForeground, #666);
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .metric-value {
+            color: var(--vscode-foreground, #ccc);
+            font-family: var(--vscode-editor-font-family, monospace);
+            font-size: 13px;
+        }
+        .metric-value.highlight { color: #4ec9b0; }
+        .metric-value.warning { color: #dcdcaa; }
+        .active-model-badge {
+            display: inline-flex;
+            align-items: center;
+            background: rgba(78, 201, 176, 0.15);
+            color: #4ec9b0;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            margin-left: auto;
+        }
+        .active-model-badge::before {
+            content: '';
+            width: 6px;
+            height: 6px;
+            background: #4ec9b0;
+            border-radius: 50%;
+            margin-right: 6px;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
     </style>
 </head>
 <body>
@@ -186,10 +262,114 @@ export class OllamaReviewPanel {
         <input type="text" id="in" placeholder="Ask a question..." />
         <button id="send">Send</button>
     </div>
+    <div class="metrics-panel" id="metrics-panel"></div>
 
     <script>
         const vscode = acquireVsCodeApi();
         let chatHistory = ${initialData};
+        let metrics = ${metricsData};
+        let metricsExpanded = true;
+
+        function formatBytes(bytes) {
+            if (!bytes) return 'N/A';
+            const gb = bytes / (1024 * 1024 * 1024);
+            if (gb >= 1) return gb.toFixed(2) + ' GB';
+            const mb = bytes / (1024 * 1024);
+            return mb.toFixed(1) + ' MB';
+        }
+
+        function formatDuration(seconds) {
+            if (!seconds) return 'N/A';
+            if (seconds < 1) return (seconds * 1000).toFixed(0) + ' ms';
+            if (seconds < 60) return seconds.toFixed(2) + ' s';
+            const mins = Math.floor(seconds / 60);
+            const secs = (seconds % 60).toFixed(1);
+            return mins + 'm ' + secs + 's';
+        }
+
+        function formatTokensPerSec(tps) {
+            if (!tps) return 'N/A';
+            return tps.toFixed(1) + ' tok/s';
+        }
+
+        function renderMetrics() {
+            const panel = document.getElementById('metrics-panel');
+            if (!metrics) {
+                panel.style.display = 'none';
+                return;
+            }
+            panel.style.display = 'block';
+
+            let metricsHtml = [];
+
+            // Provider/Model info
+            if (metrics.provider || metrics.model) {
+                const provider = metrics.provider ? metrics.provider.charAt(0).toUpperCase() + metrics.provider.slice(1) : '';
+                metricsHtml.push('<div class="metric-item"><span class="metric-label">Model</span><span class="metric-value">' + (metrics.model || 'Unknown') + '</span></div>');
+            }
+
+            // Ollama-specific metrics
+            if (metrics.provider === 'ollama') {
+                if (metrics.totalDurationSeconds) {
+                    metricsHtml.push('<div class="metric-item"><span class="metric-label">Total Duration</span><span class="metric-value">' + formatDuration(metrics.totalDurationSeconds) + '</span></div>');
+                }
+                if (metrics.tokensPerSecond) {
+                    metricsHtml.push('<div class="metric-item"><span class="metric-label">Generation Speed</span><span class="metric-value highlight">' + formatTokensPerSec(metrics.tokensPerSecond) + '</span></div>');
+                }
+                if (metrics.loadDuration) {
+                    const loadSec = metrics.loadDuration / 1e9;
+                    metricsHtml.push('<div class="metric-item"><span class="metric-label">Model Load</span><span class="metric-value">' + formatDuration(loadSec) + '</span></div>');
+                }
+            }
+
+            // Token counts (common across providers)
+            if (metrics.promptEvalCount) {
+                metricsHtml.push('<div class="metric-item"><span class="metric-label">Input Tokens</span><span class="metric-value">' + metrics.promptEvalCount.toLocaleString() + '</span></div>');
+            }
+            if (metrics.evalCount) {
+                metricsHtml.push('<div class="metric-item"><span class="metric-label">Output Tokens</span><span class="metric-value">' + metrics.evalCount.toLocaleString() + '</span></div>');
+            }
+
+            // Hugging Face rate limit info
+            if (metrics.provider === 'huggingface') {
+                if (metrics.hfRateLimitRemaining !== undefined) {
+                    const warningClass = metrics.hfRateLimitRemaining < 10 ? 'warning' : '';
+                    metricsHtml.push('<div class="metric-item"><span class="metric-label">HF Quota Remaining</span><span class="metric-value ' + warningClass + '">' + metrics.hfRateLimitRemaining + '</span></div>');
+                }
+                if (metrics.hfRateLimitReset) {
+                    const resetDate = new Date(metrics.hfRateLimitReset * 1000);
+                    metricsHtml.push('<div class="metric-item"><span class="metric-label">Quota Resets</span><span class="metric-value">' + resetDate.toLocaleTimeString() + '</span></div>');
+                }
+            }
+
+            // Active model info (Ollama)
+            let activeModelBadge = '';
+            if (metrics.activeModel) {
+                activeModelBadge = '<span class="active-model-badge">In VRAM: ' + metrics.activeModel.name + '</span>';
+                if (metrics.activeModel.sizeVram) {
+                    metricsHtml.push('<div class="metric-item"><span class="metric-label">VRAM Usage</span><span class="metric-value highlight">' + formatBytes(metrics.activeModel.sizeVram) + '</span></div>');
+                }
+            }
+
+            const toggleClass = metricsExpanded ? '' : 'collapsed';
+            const contentClass = metricsExpanded ? '' : 'hidden';
+
+            panel.innerHTML = \`
+                <div class="metrics-header" onclick="toggleMetrics()">
+                    <span class="metrics-toggle \${toggleClass}">▼</span>
+                    <span class="metrics-title">System Info</span>
+                    \${activeModelBadge}
+                </div>
+                <div class="metrics-content \${contentClass}" id="metrics-content">
+                    \${metricsHtml.join('')}
+                </div>
+            \`;
+        }
+
+        window.toggleMetrics = function() {
+            metricsExpanded = !metricsExpanded;
+            renderMetrics();
+        };
 
         function render() {
             const container = document.getElementById('chat');
@@ -212,6 +392,13 @@ export class OllamaReviewPanel {
             }
         };
 
+        // Handle Enter key to send message
+        document.getElementById('in').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                document.getElementById('send').click();
+            }
+        });
+
         // 5. This listener is now correctly wired to the extension's _syncMessages()
         window.addEventListener('message', event => {
             const msg = event.data;
@@ -232,6 +419,7 @@ export class OllamaReviewPanel {
         });
 
         render(); // Initial render
+        renderMetrics(); // Render metrics panel
     </script>
 </body>
 </html>`;

@@ -69,6 +69,7 @@ out/                      # Compiled JavaScript output
 | `ollama-code-review.glmApiKey` | `""` | Z.AI (BigModel/Zhipu) API key for GLM models |
 | `ollama-code-review.hfApiKey` | `""` | Hugging Face API token for HF Inference API |
 | `ollama-code-review.hfModel` | `Qwen/Qwen2.5-Coder-7B-Instruct` | Hugging Face model name |
+| `ollama-code-review.hfPopularModels` | (see below) | Popular HF models for quick selection |
 | `ollama-code-review.geminiApiKey` | `""` | Google AI Studio API key for Gemini models |
 | `ollama-code-review.endpoint` | `http://localhost:11434/api/generate` | Ollama API endpoint |
 | `ollama-code-review.temperature` | `0` | Model temperature (0-1) |
@@ -88,8 +89,18 @@ out/                      # Compiled JavaScript output
 
 ### Hugging Face Models (Requires HF API token)
 - `huggingface` - Use any model from Hugging Face Inference API
-  - Configure `hfModel` setting with model name (e.g., `Qwen/Qwen2.5-Coder-7B-Instruct`)
-  - Popular coding models: `codellama/CodeLlama-7b-Instruct-hf`, `bigcode/starcoder2-15b`
+  - When selecting `huggingface` from the model picker, a **submenu** appears with:
+    - **Recently Used**: Your last 5 HF models (stored in globalState)
+    - **Popular Models**: Configurable list from `hfPopularModels` setting
+    - **Custom**: Enter any HF model identifier manually
+  - Default popular models:
+    - `Qwen/Qwen2.5-Coder-7B-Instruct`
+    - `Qwen/Qwen2.5-Coder-32B-Instruct`
+    - `mistralai/Mistral-7B-Instruct-v0.3`
+    - `codellama/CodeLlama-7b-Instruct-hf`
+    - `bigcode/starcoder2-15b`
+    - `meta-llama/Llama-3.1-8B-Instruct`
+    - `deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct`
 
 ### Gemini Models (Requires Google AI Studio API key)
 - `gemini-2.5-flash` - Gemini 2.5 Flash (Free tier: 250 RPD, 15 RPM)
@@ -135,6 +146,75 @@ Any model available in your local Ollama instance will be auto-discovered.
 - `getOllamaSuggestion()` - Get code suggestions
 - `selectRepository()` - Handle multi-repo workspaces
 - `runGitCommand()` - Execute git operations
+- `getLastPerformanceMetrics()` - Retrieve captured metrics from last API call
+- `clearPerformanceMetrics()` - Reset metrics state
+- `checkActiveModels()` - Query Ollama's `/api/ps` for active model info (VRAM usage)
+- `showHfModelPicker()` - Display HF model selection submenu with recent/popular/custom options
+- `getRecentHfModels()` - Get recently used HF models from globalState
+- `addRecentHfModel()` - Add a model to recent HF models list
+
+## Performance Metrics System
+
+The extension captures and displays performance metrics from API responses in the review panel.
+
+### PerformanceMetrics Interface (src/extension.ts:19-52)
+
+```typescript
+interface PerformanceMetrics {
+  // Ollama-specific (from response body)
+  totalDuration?: number;      // Total duration in nanoseconds
+  loadDuration?: number;       // Model load duration in nanoseconds
+  promptEvalCount?: number;    // Input tokens
+  evalCount?: number;          // Output tokens
+  evalDuration?: number;       // Generation duration in nanoseconds
+
+  // Hugging Face-specific (from headers)
+  hfRateLimitRemaining?: number;
+  hfRateLimitReset?: number;   // Unix timestamp
+
+  // Claude-specific
+  claudeInputTokens?: number;
+  claudeOutputTokens?: number;
+
+  // Gemini-specific
+  geminiInputTokens?: number;
+  geminiOutputTokens?: number;
+
+  // Computed metrics
+  tokensPerSecond?: number;
+  totalDurationSeconds?: number;
+  model?: string;
+  provider?: 'ollama' | 'claude' | 'glm' | 'huggingface' | 'gemini';
+
+  // Active model info (Ollama /api/ps)
+  activeModel?: {
+    name: string;
+    sizeVram?: number;   // VRAM usage in bytes
+    sizeTotal?: number;  // Total model size
+    expiresAt?: string;
+  };
+}
+```
+
+### Metrics Capture by Provider
+
+| Provider | Metrics Captured |
+|----------|-----------------|
+| Ollama | Total duration, load time, token counts, tokens/sec, VRAM usage |
+| Claude | Input/output tokens |
+| GLM | Prompt/completion tokens |
+| Hugging Face | Token counts, rate limit remaining, rate limit reset time |
+| Gemini | Input/output tokens |
+
+### UI Display (reviewProvider.ts)
+
+Metrics are displayed in a collapsible "System Info" panel at the bottom of the review webview:
+- Model name and provider
+- Total duration (formatted as ms/s/min)
+- Generation speed (tokens/sec) for Ollama
+- Input/output token counts
+- VRAM usage with active model badge (Ollama)
+- Rate limit warnings (Hugging Face)
 
 ## Build Commands
 

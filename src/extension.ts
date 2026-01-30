@@ -14,6 +14,117 @@ const HF_API_ENDPOINT = 'https://router.huggingface.co/v1/chat/completions';
 const GEMINI_API_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
 
 /**
+ * Performance metrics captured from API responses
+ */
+export interface PerformanceMetrics {
+	// Ollama-specific metrics (from response body)
+	totalDuration?: number;      // Total duration in nanoseconds
+	loadDuration?: number;       // Model load duration in nanoseconds
+	promptEvalCount?: number;    // Number of tokens in prompt
+	evalCount?: number;          // Number of tokens generated
+	evalDuration?: number;       // Generation duration in nanoseconds
+
+	// Hugging Face-specific metrics (from response headers)
+	hfRateLimitRemaining?: number;
+	hfRateLimitReset?: number;   // Unix timestamp
+
+	// Claude-specific metrics (from response body)
+	claudeInputTokens?: number;
+	claudeOutputTokens?: number;
+
+	// Gemini-specific metrics (from response body)
+	geminiInputTokens?: number;
+	geminiOutputTokens?: number;
+
+	// Common computed metrics
+	tokensPerSecond?: number;
+	totalDurationSeconds?: number;
+	model?: string;
+	provider?: 'ollama' | 'claude' | 'glm' | 'huggingface' | 'gemini';
+
+	// Active model info (from /api/ps)
+	activeModel?: {
+		name: string;
+		sizeVram?: number;   // VRAM usage in bytes
+		sizeTotal?: number;  // Total size in bytes
+		expiresAt?: string;
+	};
+}
+
+// Global state for the last operation's metrics
+let lastPerformanceMetrics: PerformanceMetrics | null = null;
+
+/**
+ * Get the last captured performance metrics
+ */
+export function getLastPerformanceMetrics(): PerformanceMetrics | null {
+	return lastPerformanceMetrics;
+}
+
+/**
+ * Clear the performance metrics
+ */
+export function clearPerformanceMetrics(): void {
+	lastPerformanceMetrics = null;
+}
+
+/**
+ * Check currently active models using Ollama's /api/ps endpoint
+ * Returns information about models loaded in memory/VRAM
+ */
+export async function checkActiveModels(config: vscode.WorkspaceConfiguration): Promise<PerformanceMetrics['activeModel'] | undefined> {
+	const endpoint = config.get<string>('endpoint', 'http://localhost:11434/api/generate');
+	const baseUrl = endpoint.replace(/\/api\/generate\/?$/, '').replace(/\/$/, '');
+	const psUrl = `${baseUrl}/api/ps`;
+
+	try {
+		const controller = new AbortController();
+		const timeout = setTimeout(() => controller.abort(), 3000);
+
+		const response = await fetch(psUrl, { signal: controller.signal });
+		clearTimeout(timeout);
+
+		if (!response.ok) {
+			return undefined;
+		}
+
+		const data = await response.json() as {
+			models?: Array<{
+				name: string;
+				model: string;
+				size: number;
+				digest: string;
+				details?: {
+					parent_model?: string;
+					format?: string;
+					family?: string;
+					families?: string[];
+					parameter_size?: string;
+					quantization_level?: string;
+				};
+				expires_at: string;
+				size_vram: number;
+			}>;
+		};
+
+		if (data.models && data.models.length > 0) {
+			const activeModel = data.models[0];
+			return {
+				name: activeModel.name,
+				sizeVram: activeModel.size_vram,
+				sizeTotal: activeModel.size,
+				expiresAt: activeModel.expires_at
+			};
+		}
+
+		return undefined;
+	} catch {
+		// Ollama not running or /api/ps not available
+		return undefined;
+	}
+}
+
+/**
  * Check if the model is a Claude model
  */
 function isClaudeModel(model: string): boolean {
@@ -52,7 +163,7 @@ function getGlmModelName(model: string): string {
 /**
  * Call Claude API for generating responses
  */
-async function callClaudeAPI(prompt: string, config: vscode.WorkspaceConfiguration): Promise<string> {
+async function callClaudeAPI(prompt: string, config: vscode.WorkspaceConfiguration, captureMetrics = false): Promise<string> {
 	const model = getOllamaModel(config);
 	const apiKey = config.get<string>('claudeApiKey', '');
 	const temperature = config.get<number>('temperature', 0);
@@ -83,6 +194,18 @@ async function callClaudeAPI(prompt: string, config: vscode.WorkspaceConfigurati
 		}
 	);
 
+	// Capture metrics from Claude's response
+	if (captureMetrics && response.data.usage) {
+		lastPerformanceMetrics = {
+			provider: 'claude',
+			model: model,
+			claudeInputTokens: response.data.usage.input_tokens,
+			claudeOutputTokens: response.data.usage.output_tokens,
+			promptEvalCount: response.data.usage.input_tokens,
+			evalCount: response.data.usage.output_tokens
+		};
+	}
+
 	// Extract text from Claude's response format
 	const content = response.data.content;
 	if (Array.isArray(content) && content.length > 0) {
@@ -97,7 +220,7 @@ async function callClaudeAPI(prompt: string, config: vscode.WorkspaceConfigurati
 /**
  * Call GLM API (Z.AI/BigModel) for generating responses
  */
-async function callGlmAPI(prompt: string, config: vscode.WorkspaceConfiguration): Promise<string> {
+async function callGlmAPI(prompt: string, config: vscode.WorkspaceConfiguration, captureMetrics = false): Promise<string> {
 	const model = getOllamaModel(config);
 	const apiKey = config.get<string>('glmApiKey', '');
 	const temperature = config.get<number>('temperature', 0);
@@ -134,6 +257,16 @@ async function callGlmAPI(prompt: string, config: vscode.WorkspaceConfiguration)
 		}
 	);
 
+	// Capture metrics from GLM's response
+	if (captureMetrics && response.data.usage) {
+		lastPerformanceMetrics = {
+			provider: 'glm',
+			model: glmModel,
+			promptEvalCount: response.data.usage.prompt_tokens,
+			evalCount: response.data.usage.completion_tokens
+		};
+	}
+
 	// Extract text from GLM's OpenAI-compatible response format
 	const choices = response.data.choices;
 	if (Array.isArray(choices) && choices.length > 0 && choices[0].message) {
@@ -146,8 +279,9 @@ async function callGlmAPI(prompt: string, config: vscode.WorkspaceConfiguration)
 /**
  * Call Hugging Face Inference API for generating responses
  * Uses the new router.huggingface.co OpenAI-compatible endpoint
+ * Returns both the response content and performance metrics
  */
-async function callHuggingFaceAPI(prompt: string, config: vscode.WorkspaceConfiguration): Promise<string> {
+async function callHuggingFaceAPI(prompt: string, config: vscode.WorkspaceConfiguration, captureMetrics = false): Promise<string> {
 	const apiKey = config.get<string>('hfApiKey', '');
 	const hfModel = config.get<string>('hfModel', 'Qwen/Qwen2.5-Coder-7B-Instruct');
 	const temperature = config.get<number>('temperature', 0);
@@ -187,6 +321,22 @@ async function callHuggingFaceAPI(prompt: string, config: vscode.WorkspaceConfig
 			}
 		);
 
+		// Capture rate-limit metrics from headers if requested
+		if (captureMetrics) {
+			const rateLimitRemaining = response.headers['x-ratelimit-remaining'];
+			const rateLimitReset = response.headers['x-ratelimit-reset'];
+			const usage = response.data.usage;
+
+			lastPerformanceMetrics = {
+				provider: 'huggingface',
+				model: hfModel,
+				hfRateLimitRemaining: rateLimitRemaining ? parseInt(rateLimitRemaining, 10) : undefined,
+				hfRateLimitReset: rateLimitReset ? parseInt(rateLimitReset, 10) : undefined,
+				promptEvalCount: usage?.prompt_tokens,
+				evalCount: usage?.completion_tokens
+			};
+		}
+
 		// Extract text from OpenAI-compatible response format
 		const choices = response.data.choices;
 		if (Array.isArray(choices) && choices.length > 0 && choices[0].message) {
@@ -198,13 +348,23 @@ async function callHuggingFaceAPI(prompt: string, config: vscode.WorkspaceConfig
 		if (axios.isAxiosError(error)) {
 			const status = error.response?.status;
 			const errorData = error.response?.data;
+			const headers = error.response?.headers;
+
+			// Log full error details to output channel for debugging
+			console.log('[HuggingFace API Error]', {
+				status,
+				statusText: error.response?.statusText,
+				headers: headers,
+				data: errorData,
+				message: error.message
+			});
 
 			// Handle model loading (503) - wait and retry
 			if (status === 503 && errorData?.estimated_time) {
 				const waitTime = Math.min(errorData.estimated_time * 1000, 60000);
 				vscode.window.showInformationMessage(`Model is loading, please wait ${Math.ceil(waitTime / 1000)}s...`);
 				await new Promise(resolve => setTimeout(resolve, waitTime));
-				return callHuggingFaceAPI(prompt, config); // Retry
+				return callHuggingFaceAPI(prompt, config, captureMetrics); // Retry
 			}
 
 			// Provide helpful error messages
@@ -217,15 +377,18 @@ async function callHuggingFaceAPI(prompt: string, config: vscode.WorkspaceConfig
 			}
 
 			if (status === 401 || status === 403) {
+				// Log full response for auth errors
+				console.log('[HuggingFace Auth Error] Full response:', JSON.stringify(errorData, null, 2));
 				throw new Error(
-					`Hugging Face authentication failed.\n` +
+					`Hugging Face authentication failed (${status}).\n` +
+					`Response: ${JSON.stringify(errorData)}\n` +
 					`Please check your API token in Settings > Ollama Code Review > Hf Api Key`
 				);
 			}
 
 			// Re-throw with more context
 			const errorMessage = errorData?.error?.message || errorData?.error || errorData?.message || error.message;
-			throw new Error(`Hugging Face API Error (${status}): ${errorMessage}`);
+			throw new Error(`Hugging Face API Error (${status}): ${errorMessage}\nFull response: ${JSON.stringify(errorData)}`);
 		}
 		throw error;
 	}
@@ -234,7 +397,7 @@ async function callHuggingFaceAPI(prompt: string, config: vscode.WorkspaceConfig
 /**
  * Call Gemini API (Google AI Studio) for generating responses
  */
-async function callGeminiAPI(prompt: string, config: vscode.WorkspaceConfiguration): Promise<string> {
+async function callGeminiAPI(prompt: string, config: vscode.WorkspaceConfiguration, captureMetrics = false): Promise<string> {
 	const model = getOllamaModel(config);
 	const apiKey = config.get<string>('geminiApiKey', '');
 	const temperature = config.get<number>('temperature', 0);
@@ -281,6 +444,18 @@ async function callGeminiAPI(prompt: string, config: vscode.WorkspaceConfigurati
 				timeout: 120000 // 2 minute timeout
 			}
 		);
+
+		// Capture metrics from Gemini's response
+		if (captureMetrics && response.data.usageMetadata) {
+			lastPerformanceMetrics = {
+				provider: 'gemini',
+				model: model,
+				geminiInputTokens: response.data.usageMetadata.promptTokenCount,
+				geminiOutputTokens: response.data.usageMetadata.candidatesTokenCount,
+				promptEvalCount: response.data.usageMetadata.promptTokenCount,
+				evalCount: response.data.usageMetadata.candidatesTokenCount
+			};
+		}
 
 		// Extract text from Gemini's response format
 		const candidates = response.data.candidates;
@@ -522,6 +697,135 @@ const distinctByProperty = <T, K extends keyof T>(arr: T[], prop: K): T[] => {
 	});
 };
 
+// Constants for global state keys
+const HF_RECENT_MODELS_KEY = 'hfRecentModels';
+const MAX_RECENT_MODELS = 5;
+
+/**
+ * Get recently used Hugging Face models from global state
+ */
+function getRecentHfModels(context: vscode.ExtensionContext): string[] {
+	return context.globalState.get<string[]>(HF_RECENT_MODELS_KEY, []);
+}
+
+/**
+ * Add a model to the recent HF models list
+ */
+async function addRecentHfModel(context: vscode.ExtensionContext, model: string): Promise<void> {
+	const recent = getRecentHfModels(context);
+	// Remove if already exists (to move to top)
+	const filtered = recent.filter(m => m !== model);
+	// Add to beginning
+	filtered.unshift(model);
+	// Keep only MAX_RECENT_MODELS
+	const updated = filtered.slice(0, MAX_RECENT_MODELS);
+	await context.globalState.update(HF_RECENT_MODELS_KEY, updated);
+}
+
+/**
+ * Show Hugging Face model selection submenu
+ * Returns the selected model name or undefined if cancelled
+ */
+async function showHfModelPicker(context: vscode.ExtensionContext, config: vscode.WorkspaceConfiguration): Promise<string | undefined> {
+	const currentHfModel = config.get<string>('hfModel', 'Qwen/Qwen2.5-Coder-7B-Instruct');
+	const popularModels = config.get<string[]>('hfPopularModels', [
+		'Qwen/Qwen2.5-Coder-7B-Instruct',
+		'Qwen/Qwen2.5-Coder-32B-Instruct',
+		'mistralai/Mistral-7B-Instruct-v0.3',
+		'codellama/CodeLlama-7b-Instruct-hf',
+		'bigcode/starcoder2-15b',
+		'meta-llama/Llama-3.1-8B-Instruct',
+		'deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct'
+	]);
+	const recentModels = getRecentHfModels(context);
+
+	interface HfModelQuickPickItem extends vscode.QuickPickItem {
+		modelName?: string;
+		isCustom?: boolean;
+		isSeparator?: boolean;
+	}
+
+	const items: HfModelQuickPickItem[] = [];
+
+	// Add recent models section if any
+	if (recentModels.length > 0) {
+		items.push({
+			label: '$(history) Recently Used',
+			kind: vscode.QuickPickItemKind.Separator
+		});
+
+		for (const model of recentModels) {
+			const isCurrent = model === currentHfModel;
+			items.push({
+				label: `${isCurrent ? '$(check) ' : ''}${model}`,
+				description: isCurrent ? '(current)' : undefined,
+				modelName: model
+			});
+		}
+	}
+
+	// Add popular models section
+	items.push({
+		label: '$(star) Popular Models',
+		kind: vscode.QuickPickItemKind.Separator
+	});
+
+	for (const model of popularModels) {
+		// Skip if already in recent
+		if (recentModels.includes(model)) {
+			continue;
+		}
+		const isCurrent = model === currentHfModel && !recentModels.includes(model);
+		items.push({
+			label: `${isCurrent ? '$(check) ' : ''}${model}`,
+			description: isCurrent ? '(current)' : undefined,
+			modelName: model
+		});
+	}
+
+	// Add custom input option
+	items.push({
+		label: '$(edit) Custom',
+		kind: vscode.QuickPickItemKind.Separator
+	});
+
+	items.push({
+		label: '$(pencil) Enter custom model name...',
+		description: 'Type any Hugging Face model identifier',
+		isCustom: true
+	});
+
+	const selected = await vscode.window.showQuickPick(items, {
+		placeHolder: `Current: ${currentHfModel} | Select Hugging Face model`,
+		matchOnDescription: true
+	});
+
+	if (!selected) {
+		return undefined;
+	}
+
+	if (selected.isCustom) {
+		// Show input box for custom model
+		const customModel = await vscode.window.showInputBox({
+			prompt: 'Enter Hugging Face model name',
+			placeHolder: 'e.g., organization/model-name',
+			value: currentHfModel,
+			validateInput: (value) => {
+				if (!value || !value.trim()) {
+					return 'Model name cannot be empty';
+				}
+				if (!value.includes('/')) {
+					return 'Model name should be in format: organization/model-name';
+				}
+				return undefined;
+			}
+		});
+		return customModel?.trim();
+	}
+
+	return selected.modelName;
+}
+
 export async function activate(context: vscode.ExtensionContext) {
 	const skillsService = await SkillsService.create(context);
 	outputChannel = vscode.window.createOutputChannel("Ollama Code Review");
@@ -545,7 +849,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			{ label: 'qwen3-coder:480b-cloud', description: 'Cloud coding model' },
 			{ label: 'glm-4.7:cloud', description: 'GLM cloud model' },
 			{ label: 'glm-4.7-flash', description: 'GLM 4.7 Flash - Free tier (Z.AI)' },
-			{ label: 'huggingface', description: 'Hugging Face Inference API (configure model in settings)' },
+			{ label: 'huggingface', description: 'Hugging Face Inference API (select model →)' },
 			{ label: 'gemini-2.5-flash', description: 'Gemini 2.5 Flash - Free tier (Google AI)' },
 			{ label: 'gemini-2.5-pro', description: 'Gemini 2.5 Pro - Free tier (Google AI)' },
 			{ label: 'claude-sonnet-4-20250514', description: 'Claude Sonnet 4 (Anthropic)' },
@@ -622,6 +926,19 @@ export async function activate(context: vscode.ExtensionContext) {
 			});
 
 			if (selected) {
+				// If Hugging Face is selected, show the HF model picker
+				if (selected.label === 'huggingface') {
+					const hfModel = await showHfModelPicker(context, config);
+					if (hfModel) {
+						await config.update('model', 'huggingface', vscode.ConfigurationTarget.Global);
+						await config.update('hfModel', hfModel, vscode.ConfigurationTarget.Global);
+						await addRecentHfModel(context, hfModel);
+						updateModelStatusBar(modelStatusBarItem);
+						vscode.window.showInformationMessage(`Hugging Face model changed to: ${hfModel}`);
+					}
+					return;
+				}
+
 				await config.update('model', selected.label, vscode.ConfigurationTarget.Global);
 				updateModelStatusBar(modelStatusBarItem);
 				vscode.window.showInformationMessage(`Ollama model changed to: ${selected.label}`);
@@ -652,6 +969,19 @@ export async function activate(context: vscode.ExtensionContext) {
 			});
 
 			if (selected) {
+				// If Hugging Face is selected, show the HF model picker
+				if (selected.label === 'huggingface') {
+					const hfModel = await showHfModelPicker(context, config);
+					if (hfModel) {
+						await config.update('model', 'huggingface', vscode.ConfigurationTarget.Global);
+						await config.update('hfModel', hfModel, vscode.ConfigurationTarget.Global);
+						await addRecentHfModel(context, hfModel);
+						updateModelStatusBar(modelStatusBarItem);
+						vscode.window.showInformationMessage(`Hugging Face model changed to: ${hfModel}`);
+					}
+					return;
+				}
+
 				await config.update('model', selected.label, vscode.ConfigurationTarget.Global);
 				updateModelStatusBar(modelStatusBarItem);
 				vscode.window.showInformationMessage(`Ollama model changed to: ${selected.label}`);
@@ -1185,8 +1515,20 @@ async function runReview(diff: string, context: vscode.ExtensionContext) {
 		progress.report({ message: `Asking Ollama for a review (${filterResult.stats.includedFiles} files)...` });
 		const review = await getOllamaReview(filteredDiff, context);
 
+		// Get performance metrics and check for active model
+		const metrics = getLastPerformanceMetrics();
+		const config = vscode.workspace.getConfiguration('ollama-code-review');
+
+		// Check active models for Ollama provider
+		if (metrics && metrics.provider === 'ollama') {
+			const activeModel = await checkActiveModels(config);
+			if (activeModel) {
+				metrics.activeModel = activeModel;
+			}
+		}
+
 		progress.report({ message: "Displaying review..." });
-		OllamaReviewPanel.createOrShow(review, filteredDiff, context);
+		OllamaReviewPanel.createOrShow(review, filteredDiff, context, metrics);
 	});
 }
 
@@ -1243,24 +1585,27 @@ async function getOllamaReview(diff: string, context?: vscode.ExtensionContext):
 
 
 	try {
+		// Clear previous metrics
+		clearPerformanceMetrics();
+
 		// Use Claude API if a Claude model is selected
 		if (isClaudeModel(model)) {
-			return await callClaudeAPI(prompt, config);
+			return await callClaudeAPI(prompt, config, true);
 		}
 
 		// Use GLM API if a GLM model is selected
 		if (isGlmModel(model)) {
-			return await callGlmAPI(prompt, config);
+			return await callGlmAPI(prompt, config, true);
 		}
 
 		// Use Hugging Face API if huggingface is selected
 		if (isHuggingFaceModel(model)) {
-			return await callHuggingFaceAPI(prompt, config);
+			return await callHuggingFaceAPI(prompt, config, true);
 		}
 
 		// Use Gemini API if a Gemini model is selected
 		if (isGeminiModel(model)) {
-			return await callGeminiAPI(prompt, config);
+			return await callGeminiAPI(prompt, config, true);
 		}
 
 		// Otherwise use Ollama API
@@ -1270,7 +1615,29 @@ async function getOllamaReview(diff: string, context?: vscode.ExtensionContext):
 			stream: false,
 			options: { temperature }
 		});
-		return response.data.response.trim();
+
+		// Capture Ollama performance metrics from response
+		const data = response.data;
+		if (data) {
+			const evalDuration = data.eval_duration || 0;
+			const evalCount = data.eval_count || 0;
+			const tokensPerSecond = evalDuration > 0 ? (evalCount / (evalDuration / 1e9)) : undefined;
+			const totalDurationSeconds = data.total_duration ? data.total_duration / 1e9 : undefined;
+
+			lastPerformanceMetrics = {
+				provider: 'ollama',
+				model: model,
+				totalDuration: data.total_duration,
+				loadDuration: data.load_duration,
+				promptEvalCount: data.prompt_eval_count,
+				evalCount: data.eval_count,
+				evalDuration: data.eval_duration,
+				tokensPerSecond: tokensPerSecond,
+				totalDurationSeconds: totalDurationSeconds
+			};
+		}
+
+		return data.response.trim();
 	} catch (error) {
 		throw error;
 	}

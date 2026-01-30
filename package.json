@@ -166,6 +166,22 @@
           "default": "Qwen/Qwen2.5-Coder-7B-Instruct",
           "description": "The Hugging Face model to use (e.g., Qwen/Qwen2.5-Coder-7B-Instruct, codellama/CodeLlama-7b-Instruct-hf, etc.)"
         },
+        "ollama-code-review.hfPopularModels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "Qwen/Qwen2.5-Coder-7B-Instruct",
+            "Qwen/Qwen2.5-Coder-32B-Instruct",
+            "mistralai/Mistral-7B-Instruct-v0.3",
+            "codellama/CodeLlama-7b-Instruct-hf",
+            "bigcode/starcoder2-15b",
+            "meta-llama/Llama-3.1-8B-Instruct",
+            "deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct"
+          ],
+          "description": "Popular Hugging Face models for quick selection in the model picker"
+        },
         "ollama-code-review.geminiApiKey": {
           "type": "string",
           "default": "",
