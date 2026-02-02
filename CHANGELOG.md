@@ -1,3 +1,10 @@
+# [1.19.0](https://github.com/glorynguyen/ollama-code-review/compare/v1.18.0...v1.19.0) (2026-02-02)
+
+
+### Features
+
+* **skills:** add support for multiple skill repositories ([e01f914](https://github.com/glorynguyen/ollama-code-review/commit/e01f914dd70c0da4434fbadfd9f7d8099d7cce13))
+
 # [1.18.0](https://github.com/glorynguyen/ollama-code-review/compare/v1.17.0...v1.18.0) (2026-01-30)
 
 
