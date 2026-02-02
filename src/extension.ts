@@ -74,6 +74,9 @@ export interface PerformanceMetrics {
 // Global state for the last operation's metrics
 let lastPerformanceMetrics: PerformanceMetrics | null = null;
 
+// Global reference to the skills service for cleanup on deactivation
+let skillsServiceInstance: SkillsService | null = null;
+
 /**
  * Get the last captured performance metrics
  */
@@ -944,6 +947,8 @@ async function showHfModelPicker(context: vscode.ExtensionContext, config: vscod
 
 export async function activate(context: vscode.ExtensionContext) {
 	const skillsService = await SkillsService.create(context);
+	// Store reference for cleanup on deactivation
+	skillsServiceInstance = skillsService;
 	outputChannel = vscode.window.createOutputChannel("Ollama Code Review");
 	const suggestionProvider = new SuggestionContentProvider();
 
@@ -1129,9 +1134,9 @@ export async function activate(context: vscode.ExtensionContext) {
 					title: 'Loading Agent Skills',
 					cancellable: false
 				}, async (progress) => {
-					progress.report({ message: 'Fetching skills from GitHub...' });
+					progress.report({ message: 'Fetching skills from configured repositories...' });
 
-					const skills = await skillsService.fetchAvailableSkills();
+					const skills = await skillsService.fetchAvailableSkillsFromAllRepos(true);
 
 					progress.report({ message: 'Opening skills browser...' });
 					await SkillsBrowserPanel.createOrShow(skillsService, skills);
@@ -2381,6 +2386,12 @@ export function deactivate() {
 	}
 	if (DocumentationPreviewPanel.currentPanel) {
 		DocumentationPreviewPanel.currentPanel.dispose();
+	}
+
+	// Dispose skills service (clears in-memory caches)
+	if (skillsServiceInstance) {
+		skillsServiceInstance.dispose();
+		skillsServiceInstance = null;
 	}
 
 	// Dispose output channel

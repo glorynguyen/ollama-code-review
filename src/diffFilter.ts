@@ -139,7 +139,7 @@ function parseDiffIntoFiles(diff: string): Map<string, string> {
 	const fileDiffs = diff.split(/(?=^diff --git)/m);
 
 	for (const fileDiff of fileDiffs) {
-		if (!fileDiff.trim()) continue;
+		if (!fileDiff.trim()) {continue;}
 
 		// Extract file path from diff header
 		const match = fileDiff.match(/^diff --git a\/(.+?) b\/(.+?)$/m);

@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { extractSymbolName } from './types';
+import { escapeHtml } from '../utils';
 
 /**
  * Code Action Provider for "Generate Tests" functionality
@@ -176,8 +177,8 @@ export class GenerateTestsPanel {
 	}
 
 	private _getHtmlForWebview(testCode: string, testFileName: string, explanation: string, languageId: string): string {
-		const escapedCode = this._escapeHtml(testCode);
-		const escapedExplanation = this._escapeHtml(explanation);
+		const escapedCode = escapeHtml(testCode);
+		const escapedExplanation = escapeHtml(explanation);
 
 		return `
 <!DOCTYPE html>
@@ -265,7 +266,7 @@ export class GenerateTestsPanel {
 <body>
 	<div class="header">
 		<h2>Generated Tests</h2>
-		<span class="file-name">${this._escapeHtml(testFileName)}</span>
+		<span class="file-name">${escapeHtml(testFileName)}</span>
 	</div>
 	<div class="actions">
 		<button onclick="createFile()">Create Test File</button>
@@ -297,15 +298,6 @@ export class GenerateTestsPanel {
 	</script>
 </body>
 </html>`;
-	}
-
-	private _escapeHtml(text: string): string {
-		return text
-			.replace(/&/g, '&amp;')
-			.replace(/</g, '&lt;')
-			.replace(/>/g, '&gt;')
-			.replace(/"/g, '&quot;')
-			.replace(/'/g, '&#039;');
 	}
 
 	public dispose() {

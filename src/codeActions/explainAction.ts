@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { escapeHtml } from '../utils';
 
 /**
  * Code Action Provider for "Explain This Code" functionality
@@ -67,8 +68,8 @@ export class ExplainCodePanel {
 	}
 
 	private _getHtmlForWebview(code: string, explanation: string, languageId: string): string {
-		const escapedCode = this._escapeHtml(code);
-		const escapedExplanation = this._escapeHtml(explanation);
+		const escapedCode = escapeHtml(code);
+		const escapedExplanation = escapeHtml(explanation);
 
 		return `
 <!DOCTYPE html>
@@ -144,15 +145,6 @@ export class ExplainCodePanel {
 	</script>
 </body>
 </html>`;
-	}
-
-	private _escapeHtml(text: string): string {
-		return text
-			.replace(/&/g, '&amp;')
-			.replace(/</g, '&lt;')
-			.replace(/>/g, '&gt;')
-			.replace(/"/g, '&quot;')
-			.replace(/'/g, '&#039;');
 	}
 
 	public dispose() {

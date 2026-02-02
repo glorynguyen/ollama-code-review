@@ -145,7 +145,15 @@
         "ollama-code-review.skills.defaultRepository": {
           "type": "string",
           "default": "vercel-labs/agent-skills",
-          "description": "Default GitHub repository for agent skills"
+          "description": "Default GitHub repository for agent skills (format: owner/repo)"
+        },
+        "ollama-code-review.skills.additionalRepositories": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Additional GitHub repositories for agent skills (format: owner/repo). Skills from all repositories will be combined."
         },
         "ollama-code-review.skills.autoApply": {
           "type": "boolean",

@@ -7,3 +7,17 @@ export function getOllamaModel(config: vscode.WorkspaceConfiguration): string {
     }
     return model;
 }
+
+/**
+ * Escapes HTML special characters to prevent XSS in webview content.
+ * @param text - The text to escape
+ * @returns The escaped text safe for HTML rendering
+ */
+export function escapeHtml(text: string): string {
+    return text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}

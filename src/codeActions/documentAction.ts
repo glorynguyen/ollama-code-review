@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { extractSymbolName } from './types';
+import { escapeHtml } from '../utils';
 
 /**
  * Code Action Provider for "Add Documentation" functionality
@@ -158,13 +159,13 @@ export class DocumentationPreviewPanel {
 		explanation: string,
 		languageId: string
 	): string {
-		const escapedDoc = this._escapeHtml(documentation);
-		const escapedCode = this._escapeHtml(originalCode);
-		const escapedExplanation = this._escapeHtml(explanation);
+		const escapedDoc = escapeHtml(documentation);
+		const escapedCode = escapeHtml(originalCode);
+		const escapedExplanation = escapeHtml(explanation);
 
 		// Create combined preview
 		const combinedCode = documentation + '\n' + originalCode;
-		const escapedCombined = this._escapeHtml(combinedCode);
+		const escapedCombined = escapeHtml(combinedCode);
 
 		return `
 <!DOCTYPE html>
@@ -335,15 +336,6 @@ export class DocumentationPreviewPanel {
 	</script>
 </body>
 </html>`;
-	}
-
-	private _escapeHtml(text: string): string {
-		return text
-			.replace(/&/g, '&amp;')
-			.replace(/</g, '&lt;')
-			.replace(/>/g, '&gt;')
-			.replace(/"/g, '&quot;')
-			.replace(/'/g, '&#039;');
 	}
 
 	public dispose() {

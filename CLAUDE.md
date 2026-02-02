@@ -91,7 +91,8 @@ out/                      # Compiled JavaScript output
 | `ollama-code-review.endpoint` | `http://localhost:11434/api/generate` | Ollama API endpoint |
 | `ollama-code-review.temperature` | `0` | Model temperature (0-1) |
 | `ollama-code-review.frameworks` | `["React"]` | Target frameworks for context |
-| `ollama-code-review.skills.defaultRepository` | `vercel-labs/agent-skills` | GitHub repo for skills |
+| `ollama-code-review.skills.defaultRepository` | `vercel-labs/agent-skills` | Default GitHub repo for skills |
+| `ollama-code-review.skills.additionalRepositories` | `[]` | Additional GitHub repos for skills |
 | `ollama-code-review.skills.autoApply` | `true` | Auto-apply selected skill |
 
 ## Supported Models
@@ -312,10 +313,14 @@ yarn release    # Semantic release
 
 ## Agent Skills System
 
-- Skills fetched from GitHub (default: vercel-labs/agent-skills)
+- Skills fetched from GitHub repositories (supports multiple repos)
+  - Default repository: `vercel-labs/agent-skills`
+  - Additional repositories can be configured via `skills.additionalRepositories` setting
+  - Skills from all configured repositories are combined in the browser
 - Cached locally in extension global storage
 - YAML frontmatter parsed for metadata
 - Can be applied to enhance review prompts
+- Skills browser shows repository source for each skill and supports filtering by repo
 
 ## Notes
 

@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import { escapeHtml } from '../utils';
 
 /**
  * Code Action Provider for "Fix This Issue" functionality
@@ -245,10 +246,10 @@ export class FixPreviewPanel {
 		issue: string,
 		languageId: string
 	): string {
-		const escapedOriginal = this._escapeHtml(originalCode);
-		const escapedFixed = this._escapeHtml(fixedCode);
-		const escapedExplanation = this._escapeHtml(explanation);
-		const escapedIssue = this._escapeHtml(issue);
+		const escapedOriginal = escapeHtml(originalCode);
+		const escapedFixed = escapeHtml(fixedCode);
+		const escapedExplanation = escapeHtml(explanation);
+		const escapedIssue = escapeHtml(issue);
 
 		return `
 <!DOCTYPE html>
@@ -406,15 +407,6 @@ export class FixPreviewPanel {
 	</script>
 </body>
 </html>`;
-	}
-
-	private _escapeHtml(text: string): string {
-		return text
-			.replace(/&/g, '&amp;')
-			.replace(/</g, '&lt;')
-			.replace(/>/g, '&gt;')
-			.replace(/"/g, '&quot;')
-			.replace(/'/g, '&#039;');
 	}
 
 	public dispose() {
