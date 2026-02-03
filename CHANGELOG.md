@@ -1,3 +1,10 @@
+# [1.20.0](https://github.com/glorynguyen/ollama-code-review/compare/v1.19.0...v1.20.0) (2026-02-03)
+
+
+### Features
+
+* **ollama-code-review:** add multi-skill selection and clear functionality ([8d955a0](https://github.com/glorynguyen/ollama-code-review/commit/8d955a07d6bf2886891bd5756b2ef05a680ef77b))
+
 # [1.19.0](https://github.com/glorynguyen/ollama-code-review/compare/v1.18.0...v1.19.0) (2026-02-02)
 
 
