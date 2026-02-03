@@ -66,12 +66,18 @@ All feedback from Ollama is displayed in a dedicated "Ollama Code Review" output
 
 ![Code Review Output](images/feature-output-panel.png)
 
-### 8. Agent Skills
+### 8. Agent Skills (Multi-Skill Support)
 - **Command**: `Ollama Code Review: Browse Agent Skills`
-- **Command**: `Ollama Code Review: Apply Skill to Review`
-- Enhance your code reviews by downloading specialized "skills" from GitHub (defaulting to `vercel-labs/agent-skills`). 
+- **Command**: `Ollama Code Review: Apply Skills to Review`
+- **Command**: `Ollama Code Review: Clear Selected Skills`
+- Enhance your code reviews by downloading specialized "skills" from GitHub (defaulting to `vercel-labs/agent-skills`).
 - These skills provide the AI with specific context or specialized rules (e.g., "Performance Expert," "Security Auditor," or "Accessibility Specialist").
-- **Workflow**: Browse the library, download a skill, and it will be applied to your next review to provide more targeted feedback.
+- **Multi-Skill Selection**: Select multiple skills simultaneously to combine their expertise in a single review. For example, apply both "Security Auditor" and "Performance Expert" skills together.
+- **Workflow**:
+  1. Browse the library and download skills you want to use
+  2. Use "Apply Skills to Review" to select one or more skills (previously selected skills are pre-checked)
+  3. Run your code review - all selected skills will be applied
+  4. Use "Clear Selected Skills" to quickly deselect all skills
 
 ![Agent Skills](images/apply-skills-to-review.gif)
 
@@ -223,8 +229,12 @@ This extension contributes the following settings to your VS Code `settings.json
     * **Default**: `"http://localhost:11434/api/generate"`
 * `ollama-code-review.skills.defaultRepository`: The GitHub repository to fetch skills from.
     * **Default**: `"vercel-labs/agent-skills"`
-* `ollama-code-review.skills.autoApply`: If enabled, the selected skill is automatically applied to all subsequent reviews.
+* `ollama-code-review.skills.additionalRepositories`: Additional GitHub repositories to fetch skills from (combined with default).
+    * **Type**: `array`
+    * **Default**: `[]`
+* `ollama-code-review.skills.autoApply`: If enabled, selected skills are automatically applied to all subsequent reviews.
     * **Default**: `true`
+    * **Note**: Multiple skills can be selected and will be combined in reviews.
 * `ollama-code-review.temperature`: The creativity of the AI's response (0.0 for deterministic, 1.0 for very creative).
     * **Type**: `number`
     * **Default**: `0`

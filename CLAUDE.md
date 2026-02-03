@@ -73,7 +73,8 @@ out/                      # Compiled JavaScript output
 | `ollama-code-review.fixIssue` | Fix diagnostics or selected code with diff preview |
 | `ollama-code-review.addDocumentation` | Generate JSDoc/TSDoc for functions/classes |
 | `ollama-code-review.browseAgentSkills` | Browse and download agent skills |
-| `ollama-code-review.applySkillToReview` | Apply a skill to reviews |
+| `ollama-code-review.applySkillToReview` | Apply multiple skills to reviews (multi-select supported) |
+| `ollama-code-review.clearSelectedSkills` | Clear all selected skills |
 
 ## Configuration Settings
 
@@ -319,8 +320,31 @@ yarn release    # Semantic release
   - Skills from all configured repositories are combined in the browser
 - Cached locally in extension global storage
 - YAML frontmatter parsed for metadata
-- Can be applied to enhance review prompts
+- **Multi-skill selection supported**: Users can select multiple skills to apply simultaneously
+  - Skills are combined in the prompt with numbered headers (Skill 1, Skill 2, etc.)
+  - Previously selected skills are pre-checked in the QuickPick dialog
+  - Use `clearSelectedSkills` command to deselect all skills
 - Skills browser shows repository source for each skill and supports filtering by repo
+
+### Multi-Skill Storage
+
+Selected skills are stored in VS Code's globalState as an array:
+```typescript
+// Storage key: 'selectedSkills' (array of AgentSkill objects)
+context.globalState.get<AgentSkill[]>('selectedSkills', []);
+```
+
+### Skill Injection in Prompts
+
+When multiple skills are selected, they are combined into the review prompt:
+```
+Additional Review Guidelines (N skill(s) applied):
+### Skill 1: skill-name
+[skill content]
+
+### Skill 2: another-skill
+[skill content]
+```
 
 ## Notes
 

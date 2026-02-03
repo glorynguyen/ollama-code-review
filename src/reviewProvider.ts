@@ -96,8 +96,18 @@ export class OllamaReviewPanel {
   private async _getFollowUpResponse(): Promise<string> {
     const config = vscode.workspace.getConfiguration('ollama-code-review');
     const model = getOllamaModel(config);
-    const selectedSkill = this._context.globalState.get<any>('selectedSkill');
-    const systemContent = `You are an expert code reviewer. You are discussing this code diff:\n\n${this._originalDiff}${selectedSkill ? `\n\nReview Guidelines: ${selectedSkill.content}` : ''}`;
+    const selectedSkills = this._context.globalState.get<any[]>('selectedSkills', []);
+
+    // Build skill guidelines from multiple selected skills
+    let skillGuidelines = '';
+    if (selectedSkills && selectedSkills.length > 0) {
+      const skillContents = selectedSkills.map((skill, index) =>
+        `### Skill ${index + 1}: ${skill.name}\n${skill.content}`
+      ).join('\n\n');
+      skillGuidelines = `\n\nReview Guidelines (${selectedSkills.length} skill(s) applied):\n${skillContents}`;
+    }
+
+    const systemContent = `You are an expert code reviewer. You are discussing this code diff:\n\n${this._originalDiff}${skillGuidelines}`;
 
     // Use Claude API if a Claude model is selected
     if (isClaudeModel(model)) {

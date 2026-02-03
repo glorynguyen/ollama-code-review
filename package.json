@@ -37,7 +37,12 @@
       },
       {
         "command": "ollama-code-review.applySkillToReview",
-        "title": "Apply Skill to Review",
+        "title": "Apply Skills to Review",
+        "category": "Ollama Code Review"
+      },
+      {
+        "command": "ollama-code-review.clearSelectedSkills",
+        "title": "Clear Selected Skills",
         "category": "Ollama Code Review"
       },
       {

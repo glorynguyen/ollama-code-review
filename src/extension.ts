@@ -1149,7 +1149,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 	);
 
-	// Apply Skill to Code Review Command
+	// Apply Skill to Code Review Command (supports multiple skills)
 	const applySkillCommand = vscode.commands.registerCommand(
 		'ollama-code-review.applySkillToReview',
 		async () => {
@@ -1168,26 +1168,53 @@ export async function activate(context: vscode.ExtensionContext) {
 				return;
 			}
 
-			const selectedSkill = await vscode.window.showQuickPick(
+			// Get currently selected skills to pre-select them
+			const currentlySelected = context.globalState.get<any[]>('selectedSkills', []);
+			const currentlySelectedNames = new Set(currentlySelected.map(s => `${s.repository}/${s.name}`));
+
+			const selectedSkills = await vscode.window.showQuickPick(
 				cachedSkills.map(skill => ({
 					label: skill.name,
-					description: skill.description,
-					skill: skill
+					description: `${skill.description} (${skill.repository})`,
+					skill: skill,
+					picked: currentlySelectedNames.has(`${skill.repository}/${skill.name}`)
 				})),
-				{ placeHolder: 'Select a skill to apply to code review' }
+				{
+					placeHolder: 'Select skills to apply to code review (multiple allowed)',
+					canPickMany: true
+				}
 			);
 
-			if (selectedSkill) {
+			if (selectedSkills && selectedSkills.length > 0) {
+				const skillNames = selectedSkills.map(s => s.skill.name).join(', ');
 				vscode.window.showInformationMessage(
-					`Skill "${selectedSkill.skill.name}" will be applied to next review`
+					`${selectedSkills.length} skill(s) will be applied to next review: ${skillNames}`
 				);
-				// Store selected skill for next review
-				context.globalState.update('selectedSkill', selectedSkill.skill);
+				// Store selected skills array for next review
+				context.globalState.update('selectedSkills', selectedSkills.map(s => s.skill));
+			} else if (selectedSkills && selectedSkills.length === 0) {
+				// User explicitly deselected all skills
+				vscode.window.showInformationMessage('All skills have been deselected');
+				context.globalState.update('selectedSkills', []);
 			}
 		}
 	);
 
-	context.subscriptions.push(browseSkillsCommand, applySkillCommand);
+	// Clear Selected Skills Command
+	const clearSkillsCommand = vscode.commands.registerCommand(
+		'ollama-code-review.clearSelectedSkills',
+		async () => {
+			const currentSkills = context.globalState.get<any[]>('selectedSkills', []);
+			if (currentSkills.length === 0) {
+				vscode.window.showInformationMessage('No skills are currently selected');
+				return;
+			}
+			context.globalState.update('selectedSkills', []);
+			vscode.window.showInformationMessage(`Cleared ${currentSkills.length} selected skill(s)`);
+		}
+	);
+
+	context.subscriptions.push(browseSkillsCommand, applySkillCommand, clearSkillsCommand);
 	context.subscriptions.push(
 		vscode.workspace.registerTextDocumentContentProvider('ollama-suggestion', suggestionProvider)
 	);
@@ -1886,9 +1913,12 @@ async function getOllamaReview(diff: string, context?: vscode.ExtensionContext):
 	let skillContext = '';
 
 	if (context) {
-		const selectedSkill = context.globalState.get<any>('selectedSkill');
-		if (selectedSkill) {
-			skillContext = `\n\nAdditional Review Guidelines:\n${selectedSkill.content}\n`;
+		const selectedSkills = context.globalState.get<any[]>('selectedSkills', []);
+		if (selectedSkills && selectedSkills.length > 0) {
+			const skillContents = selectedSkills.map((skill, index) =>
+				`### Skill ${index + 1}: ${skill.name}\n${skill.content}`
+			).join('\n\n');
+			skillContext = `\n\nAdditional Review Guidelines (${selectedSkills.length} skill(s) applied):\n${skillContents}\n`;
 		}
 	}
 
