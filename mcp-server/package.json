@@ -1,0 +1,46 @@
+{
+  "name": "ollama-code-review-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for AI-powered code reviews - use with Claude Desktop",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "ollama-code-review-mcp": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "prepare": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "claude",
+    "code-review",
+    "ollama",
+    "ai"
+  ],
+  "author": "Vinh Nguyen",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@octokit/rest": "^22.0.1",
+    "glob": "^11.0.0",
+    "js-yaml": "^4.1.0",
+    "minimatch": "^10.0.1",
+    "simple-git": "^3.27.0"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "dist"
+  ]
+}
