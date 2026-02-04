@@ -38,19 +38,7 @@ src/
 └── test/
     └── extension.test.ts # Mocha test suite
 
-mcp-server/               # MCP Server for Claude Desktop integration
-├── src/
-│   ├── index.ts          # MCP server entry point (16 tools)
-│   ├── prompts.ts        # Prompt templates (shared with extension)
-│   ├── skills.ts         # Skills service (GitHub fetching/caching)
-│   ├── git.ts            # Git operations (diff, commits, branches)
-│   ├── diffFilter.ts     # Diff filtering logic
-│   └── config.ts         # Configuration management
-├── dist/                 # Compiled JavaScript
-├── package.json
-└── README.md
-
-out/                      # Compiled JavaScript output (VS Code extension)
+out/                      # Compiled JavaScript output
 .github/workflows/        # CI/CD (semantic-release)
 ```
 
@@ -68,10 +56,6 @@ out/                      # Compiled JavaScript output (VS Code extension)
 | `src/codeActions/fixAction.ts` | ~449 | Fix Issue action with diff preview |
 | `src/codeActions/documentAction.ts` | ~377 | Add Documentation action with preview |
 | `src/codeActions/types.ts` | ~103 | Common types and parsing utilities |
-| `mcp-server/src/index.ts` | ~850 | MCP server with 16 tools for Claude Desktop |
-| `mcp-server/src/prompts.ts` | ~200 | Prompt templates for MCP tools |
-| `mcp-server/src/skills.ts` | ~200 | Skills service for MCP server |
-| `mcp-server/src/git.ts` | ~250 | Git operations for MCP server |
 
 ## Commands
 
@@ -362,55 +346,13 @@ Additional Review Guidelines (N skill(s) applied):
 [skill content]
 ```
 
-## MCP Server (Claude Desktop Integration)
+## Related Projects
 
-The project includes a standalone MCP (Model Context Protocol) server that allows Claude Desktop to directly access code review functionality without copy-pasting diffs.
+### MCP Server for Claude Desktop
 
-### MCP Server Tools (16 total)
+A standalone MCP (Model Context Protocol) server is available as a separate project, allowing Claude Desktop to directly access code review functionality without copy-pasting diffs.
 
-| Category | Tools |
-|----------|-------|
-| **Code Review** | `review_staged_changes`, `review_commit`, `review_commit_range`, `review_branches` |
-| **Generation** | `generate_commit_message` |
-| **Code Analysis** | `explain_code`, `suggest_refactoring`, `generate_tests`, `fix_code`, `generate_documentation` |
-| **Skills** | `list_skills`, `select_skills`, `clear_skills` |
-| **Git Info** | `get_git_status`, `list_commits`, `list_branches` |
-
-### MCP Server Setup
-
-1. Build the MCP server:
-   ```bash
-   cd mcp-server
-   npm install
-   npm run build
-   ```
-
-2. Add to Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json`):
-   ```json
-   {
-     "mcpServers": {
-       "ollama-code-review": {
-         "command": "node",
-         "args": ["/path/to/ollama-code-review/mcp-server/dist/index.js"],
-         "env": {
-           "CODE_REVIEW_WORKING_DIR": "/path/to/default/repo"
-         }
-       }
-     }
-   }
-   ```
-
-3. Restart Claude Desktop
-
-### MCP Server Configuration
-
-| Environment Variable | Description |
-|---------------------|-------------|
-| `GITHUB_TOKEN` | GitHub token for skill fetching (avoids rate limits) |
-| `CODE_REVIEW_FRAMEWORKS` | Comma-separated list of frameworks |
-| `CODE_REVIEW_WORKING_DIR` | Default repository path |
-
-Config file: `~/.config/ollama-code-review-mcp/config.json`
+**Repository:** [ollama-code-review-mcp](https://github.com/pinkpixel-dev/ollama-code-review-mcp)
 
 ## Notes
 
@@ -418,7 +360,6 @@ Config file: `~/.config/ollama-code-review-mcp/config.json`
 - Conventional Commits format for generated messages
 - Status bar shows current model with click-to-switch
 - Reviews support follow-up questions via chat interface
-- MCP server provides same functionality for Claude Desktop users
 
 ## Roadmap & Future Development
 

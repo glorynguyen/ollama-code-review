@@ -173,34 +173,15 @@ Reduce noise in your code reviews by filtering out irrelevant changes:
 
 Configure in settings under `ollama-code-review.diffFilter`.
 
-### 18. MCP Server for Claude Desktop (New!)
-Use the code review functionality directly in Claude Desktop without copy-pasting diffs:
+### 18. MCP Server for Claude Desktop
+Use the code review functionality directly in Claude Desktop without copy-pasting diffs. The MCP server is available as a separate project:
 
+**Repository:** [gitsage](https://github.com/glorynguyen/gitsage)
+
+Features include:
 - **16 Tools Available**: Review staged changes, commits, branches, generate commit messages, explain code, and more
 - **Skills Support**: Apply agent skills to enhance reviews
 - **Git Integration**: Full access to repository status, commits, and branches
-
-**Quick Setup:**
-1. Build the MCP server:
-   ```bash
-   cd mcp-server && npm install && npm run build
-   ```
-
-2. Add to Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json`):
-   ```json
-   {
-     "mcpServers": {
-       "ollama-code-review": {
-         "command": "node",
-         "args": ["/path/to/ollama-code-review/mcp-server/dist/index.js"]
-       }
-     }
-   }
-   ```
-
-3. Restart Claude Desktop and ask: *"Review my staged changes in /path/to/project"*
-
-See [mcp-server/README.md](mcp-server/README.md) for detailed documentation.
 
 ---
 
