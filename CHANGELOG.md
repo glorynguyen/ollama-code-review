@@ -1,3 +1,23 @@
+# [2.0.0](https://github.com/glorynguyen/ollama-code-review/compare/v1.20.0...v2.0.0) (2026-02-04)
+
+
+### chore
+
+* **mcp-server:** remove deprecated MCP server implementation ([52e71af](https://github.com/glorynguyen/ollama-code-review/commit/52e71af0f1832d7da5f6622e6c913e39c60b81bc))
+
+
+### Features
+
+* **mcp-server:** add Claude Desktop integration with 16 MCP tools ([e010771](https://github.com/glorynguyen/ollama-code-review/commit/e0107711cafc64f50e344f2028b1b57d32913aa2))
+
+
+### BREAKING CHANGES
+
+* **mcp-server:** This removes the entire MCP server functionality. Any
+integrations using this server will need to be updated to use the new
+implementation. The server's tools, resources, and prompts are no longer
+available.
+
 # [1.20.0](https://github.com/glorynguyen/ollama-code-review/compare/v1.19.0...v1.20.0) (2026-02-03)
 
 
