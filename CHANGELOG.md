@@ -1,3 +1,10 @@
+# [2.1.0](https://github.com/glorynguyen/ollama-code-review/compare/v2.0.0...v2.1.0) (2026-02-07)
+
+
+### Features
+
+* **prompts:** Add custom prompt templates ([e1cf00f](https://github.com/glorynguyen/ollama-code-review/commit/e1cf00f6b01c52c663c80f11e52818e26fec568f))
+
 # [2.0.0](https://github.com/glorynguyen/ollama-code-review/compare/v1.20.0...v2.0.0) (2026-02-04)
 
 
