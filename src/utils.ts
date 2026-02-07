@@ -21,3 +21,13 @@ export function escapeHtml(text: string): string {
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
 }
+
+/**
+ * Resolves a prompt template by replacing ${variable} placeholders with provided values.
+ * Unknown variables are left as-is in the template.
+ */
+export function resolvePrompt(template: string, variables: Record<string, string>): string {
+    return template.replace(/\$\{(\w+)\}/g, (match, name) => {
+        return name in variables ? variables[name] : match;
+    });
+}

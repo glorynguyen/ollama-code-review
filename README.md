@@ -164,7 +164,22 @@ To use Hugging Face models:
 - `meta-llama/Llama-3.1-8B-Instruct`
 - `deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct`
 
-### 17. Smart Diff Filtering
+### 17. Custom Prompt Templates
+Customize the AI prompts used for code reviews and commit message generation:
+- **Review Prompt**: Override the default code review prompt with your own template
+- **Commit Message Prompt**: Customize how commit messages are generated
+
+Use variable placeholders that get replaced at runtime:
+- **Review**: `${code}` (the diff), `${frameworks}` (selected frameworks), `${skills}` (active agent skills)
+- **Commit Message**: `${diff}` (staged diff), `${draftMessage}` (developer's draft)
+
+Configure in settings:
+- `ollama-code-review.prompt.review` — multiline text area in Settings UI
+- `ollama-code-review.prompt.commitMessage` — multiline text area in Settings UI
+
+> **Note:** If you remove `${skills}` from your custom review prompt, active agent skills will still be appended automatically to ensure skill compatibility.
+
+### 18. Smart Diff Filtering
 Reduce noise in your code reviews by filtering out irrelevant changes:
 - **Ignore paths**: Skip `node_modules`, lock files, build outputs
 - **Ignore patterns**: Exclude minified files, source maps, generated code
@@ -173,7 +188,7 @@ Reduce noise in your code reviews by filtering out irrelevant changes:
 
 Configure in settings under `ollama-code-review.diffFilter`.
 
-### 18. MCP Server for Claude Desktop
+### 19. MCP Server for Claude Desktop
 Use the code review functionality directly in Claude Desktop without copy-pasting diffs. The MCP server is available as a separate project:
 
 **Repository:** [gitsage](https://github.com/glorynguyen/gitsage)
@@ -252,6 +267,10 @@ This extension contributes the following settings to your VS Code `settings.json
     * **Type**: `array`
     * **Default**: `["React"]`
 ![Config Frameworks](images/setting-frameworks.png)
+* `ollama-code-review.prompt.review`: Custom prompt template for code reviews. Use `${code}`, `${frameworks}`, and `${skills}` as placeholders. Leave empty to use the built-in default.
+    * **Type**: `string` (multiline)
+* `ollama-code-review.prompt.commitMessage`: Custom prompt template for commit message generation. Use `${diff}` and `${draftMessage}` as placeholders. Leave empty to use the built-in default.
+    * **Type**: `string` (multiline)
 * `ollama-code-review.diffFilter`: Configure diff filtering to exclude noise from reviews.
     * `ignorePaths`: Glob patterns for paths to ignore (default: `node_modules`, lock files, `dist`, `build`, `out`)
     * `ignorePatterns`: File name patterns to ignore (default: `*.min.js`, `*.min.css`, `*.map`, `*.generated.*`)

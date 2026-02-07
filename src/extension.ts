@@ -5,7 +5,7 @@ import * as path from 'path';
 import { OllamaReviewPanel } from './reviewProvider';
 import { SkillsService } from './skillsService';
 import { SkillsBrowserPanel } from './skillsBrowserPanel';
-import { getOllamaModel } from './utils';
+import { getOllamaModel, resolvePrompt } from './utils';
 import { filterDiff, getFilterSummary } from './diffFilter';
 import {
 	ExplainCodeActionProvider,
@@ -90,6 +90,11 @@ export function getLastPerformanceMetrics(): PerformanceMetrics | null {
 export function clearPerformanceMetrics(): void {
 	lastPerformanceMetrics = null;
 }
+
+// Default prompt templates (used when settings are empty)
+const DEFAULT_REVIEW_PROMPT = "You are an expert software engineer and code reviewer with deep knowledge of the following frameworks and libraries: **${frameworks}**.\nYour task is to analyze the following code changes (in git diff format) and provide constructive, actionable feedback tailored to the conventions, best practices, and common pitfalls of these technologies.\n${skills}\n**How to Read the Git Diff Format:**\n- Lines starting with `---` and `+++` indicate the file names before and after the changes.\n- Lines starting with `@@` (e.g., `@@ -15,7 +15,9 @@`) denote the location of the changes within the file.\n- Lines starting with a `-` are lines that were DELETED.\n- Lines starting with a `+` are lines that were ADDED.\n- Lines without a prefix (starting with a space) are for context and have not been changed. **Please focus your review on the added (`+`) and deleted (`-`) lines.**\n\n**Review Focus:**\n- Potential bugs or logical errors specific to the frameworks/libraries (${frameworks}).\n- Performance optimizations, considering framework-specific patterns.\n- Code style inconsistencies or deviations from ${frameworks} best practices.\n- Security vulnerabilities, especially those common in ${frameworks}.\n- Improvements to maintainability and readability, aligned with ${frameworks} conventions.\n\n**Feedback Requirements:**\n1. Explain any issues clearly and concisely, referencing ${frameworks} where relevant.\n2. Suggest specific code changes or improvements. Include code snippets for examples where appropriate.\n3. Use Markdown for clear formatting.\n\nIf you find no issues, please respond with the single sentence: \"I have reviewed the changes and found no significant issues.\"\n\nHere is the code diff to review:\n---\n${code}\n---";
+
+const DEFAULT_COMMIT_MESSAGE_PROMPT = "You are an expert at writing git commit messages for Semantic Release.\nGenerate a commit message based on the git diff below following the Conventional Commits specification.\n\n### Structural Requirements:\n1. **Subject Line**: <type>(<scope>): <short description>\n   - Keep under 50 characters.\n   - Use imperative mood (\"add\" not \"added\").\n   - Types: feat (new feature), fix (bug fix), docs, style, refactor, perf, test, build, ci, chore, revert.\n2. **Body**: Explain 'what' and 'why'. Required if the change is complex.\n3. **Breaking Changes**: If the diff contains breaking changes, the footer MUST start with \"BREAKING CHANGE:\" followed by a description.\n\n### Rules:\n- If the user's draft mentions a breaking change, prioritize documenting it in the footer.\n- Semantic Release triggers: 'feat' for MINOR, 'fix' for PATCH, and 'BREAKING CHANGE' in footer for MAJOR.\n- Output ONLY the raw commit message text. No markdown blocks, no \"Here is your message,\" no preamble.\n\nDeveloper's draft message (may reflect intent):\n${draftMessage}\n\nStaged git diff:\n---\n${diff}\n---";
 
 /**
  * Check currently active models using Ollama's /api/ps endpoint
@@ -1922,36 +1927,21 @@ async function getOllamaReview(diff: string, context?: vscode.ExtensionContext):
 		}
 	}
 
-	const prompt = `
-		You are an expert software engineer and code reviewer with deep knowledge of the following frameworks and libraries: **${frameworksList}**.
-		Your task is to analyze the following code changes (in git diff format) and provide constructive, actionable feedback tailored to the conventions, best practices, and common pitfalls of these technologies.
-		${skillContext}
-		**How to Read the Git Diff Format:**
-		- Lines starting with \`---\` and \`+++\` indicate the file names before and after the changes.
-		- Lines starting with \`@@\` (e.g., \`@@ -15,7 +15,9 @@\`) denote the location of the changes within the file.
-		- Lines starting with a \`-\` are lines that were DELETED.
-		- Lines starting with a \`+\` are lines that were ADDED.
-		- Lines without a prefix (starting with a space) are for context and have not been changed. **Please focus your review on the added (\`+\`) and deleted (\`-\`) lines.**
+	// Read custom prompt template from settings, fall back to built-in default
+	const promptTemplate = config.get<string>('prompt.review', '') || DEFAULT_REVIEW_PROMPT;
 
-		**Review Focus:**
-		- Potential bugs or logical errors specific to the frameworks/libraries (${frameworksList}).
-		- Performance optimizations, considering framework-specific patterns.
-		- Code style inconsistencies or deviations from ${frameworksList} best practices.
-		- Security vulnerabilities, especially those common in ${frameworksList}.
-		- Improvements to maintainability and readability, aligned with ${frameworksList} conventions.
+	const variables: Record<string, string> = {
+		code: diff,
+		frameworks: frameworksList,
+		skills: skillContext,
+	};
 
-		**Feedback Requirements:**
-		1. Explain any issues clearly and concisely, referencing ${frameworksList} where relevant.
-		2. Suggest specific code changes or improvements. Include code snippets for examples where appropriate.
-		3. Use Markdown for clear formatting.
+	let prompt = resolvePrompt(promptTemplate, variables);
 
-		If you find no issues, please respond with the single sentence: "I have reviewed the changes and found no significant issues."
-
-		Here is the code diff to review:
-		---
-		${diff}
-		---
-		`;
+	// Safety: if the user's custom template omits ${skills} but skills are active, append them
+	if (skillContext && !promptTemplate.includes('${skills}')) {
+		prompt += '\n' + skillContext;
+	}
 
 
 	try {
@@ -2024,31 +2014,15 @@ async function getOllamaCommitMessage(diff: string, existingMessage?: string): P
 	const endpoint = config.get<string>('endpoint', 'http://localhost:11434/api/generate');
 	const temperature = config.get<number>('temperature', 0.2); // Slightly more creative for commit messages
 
-	const prompt = `
-        You are an expert at writing git commit messages for Semantic Release.
-        Generate a commit message based on the git diff below following the Conventional Commits specification.
+	// Read custom prompt template from settings, fall back to built-in default
+	const promptTemplate = config.get<string>('prompt.commitMessage', '') || DEFAULT_COMMIT_MESSAGE_PROMPT;
 
-        ### Structural Requirements:
-        1. **Subject Line**: <type>(<scope>): <short description>
-           - Keep under 50 characters.
-           - Use imperative mood ("add" not "added").
-           - Types: feat (new feature), fix (bug fix), docs, style, refactor, perf, test, build, ci, chore, revert.
-        2. **Body**: Explain 'what' and 'why'. Required if the change is complex.
-        3. **Breaking Changes**: If the diff contains breaking changes, the footer MUST start with "BREAKING CHANGE:" followed by a description.
+	const variables: Record<string, string> = {
+		diff: diff,
+		draftMessage: existingMessage && existingMessage.trim() ? existingMessage : '(none provided)',
+	};
 
-        ### Rules:
-        - If the user's draft mentions a breaking change, prioritize documenting it in the footer.
-        - Semantic Release triggers: 'feat' for MINOR, 'fix' for PATCH, and 'BREAKING CHANGE' in footer for MAJOR.
-        - Output ONLY the raw commit message text. No markdown blocks, no "Here is your message," no preamble.
-
-		Developer's draft message (may reflect intent):
-		${existingMessage && existingMessage.trim() ? existingMessage : "(none provided)"}
-
-        Staged git diff:
-        ---
-        ${diff}
-        ---
-        `;
+	const prompt = resolvePrompt(promptTemplate, variables);
 
 	try {
 		let message: string;

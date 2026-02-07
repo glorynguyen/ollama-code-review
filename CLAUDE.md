@@ -50,7 +50,7 @@ out/                      # Compiled JavaScript output
 | `src/reviewProvider.ts` | ~196 | Webview for displaying reviews with chat interface |
 | `src/skillsService.ts` | ~204 | Fetches/caches agent skills from GitHub repos |
 | `src/skillsBrowserPanel.ts` | ~255 | UI for browsing and downloading skills |
-| `src/utils.ts` | ~9 | Helper for resolving model configuration |
+| `src/utils.ts` | ~33 | Helper for model config, HTML escaping, and prompt template resolution |
 | `src/codeActions/explainAction.ts` | ~168 | Explain Code action with preview panel |
 | `src/codeActions/testAction.ts` | ~369 | Generate Tests action with framework detection |
 | `src/codeActions/fixAction.ts` | ~449 | Fix Issue action with diff preview |
@@ -92,6 +92,8 @@ out/                      # Compiled JavaScript output
 | `ollama-code-review.endpoint` | `http://localhost:11434/api/generate` | Ollama API endpoint |
 | `ollama-code-review.temperature` | `0` | Model temperature (0-1) |
 | `ollama-code-review.frameworks` | `["React"]` | Target frameworks for context |
+| `ollama-code-review.prompt.review` | (built-in review prompt) | Custom prompt template for code reviews. Variables: `${code}`, `${frameworks}`, `${skills}` |
+| `ollama-code-review.prompt.commitMessage` | (built-in commit prompt) | Custom prompt template for commit messages. Variables: `${diff}`, `${draftMessage}` |
 | `ollama-code-review.skills.defaultRepository` | `vercel-labs/agent-skills` | Default GitHub repo for skills |
 | `ollama-code-review.skills.additionalRepositories` | `[]` | Additional GitHub repos for skills |
 | `ollama-code-review.skills.autoApply` | `true` | Auto-apply selected skill |
@@ -181,6 +183,12 @@ Any model available in your local Ollama instance will be auto-discovered.
 - `showHfModelPicker()` - Display HF model selection submenu with recent/popular/custom options
 - `getRecentHfModels()` - Get recently used HF models from globalState
 - `addRecentHfModel()` - Add a model to recent HF models list
+
+## Key Functions in utils.ts
+
+- `getOllamaModel()` - Resolve model name from config, handling 'custom' option
+- `escapeHtml()` - XSS prevention for webview content rendering
+- `resolvePrompt(template, variables)` - Replace `${variable}` placeholders in prompt templates
 
 ## Inline Code Actions (F-005)
 
@@ -360,6 +368,7 @@ A standalone MCP (Model Context Protocol) server is available as a separate proj
 - Conventional Commits format for generated messages
 - Status bar shows current model with click-to-switch
 - Reviews support follow-up questions via chat interface
+- Custom prompt templates supported via settings; agent skills are always appended if `${skills}` placeholder is missing from template
 
 ## Roadmap & Future Development
 
@@ -376,8 +385,8 @@ See [docs/roadmap/](./docs/roadmap/) for comprehensive planning documents:
 | Phase | Features | Target |
 |-------|----------|--------|
 | v2.0 | Review Profiles, Export Options | Q1 2026 |
-| v2.5 | GitHub PR Integration, ~~Inline Code Actions~~ ✓, Custom Prompts | Q2 2026 |
+| v2.5 | GitHub PR Integration, ~~Inline Code Actions~~ ✓, ~~Custom Prompts~~ ✓ | Q2 2026 |
 | v3.0 | Agentic Multi-Step Reviews, RAG-Enhanced Reviews | Q3 2026 |
 | v4.0 | CI/CD Integration, Analytics, Team Knowledge Base | Q4 2026 |
 
-**Note:** Inline Code Actions (F-005) has been implemented ahead of schedule.
+**Note:** Inline Code Actions (F-005) and Custom Prompt Templates (F-013) have been implemented ahead of schedule.
