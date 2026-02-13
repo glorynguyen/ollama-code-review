@@ -4,12 +4,20 @@ import { getOllamaModel } from './utils';
 import { PerformanceMetrics } from './extension';
 
 const CLAUDE_API_ENDPOINT = 'https://api.anthropic.com/v1/messages';
+const MINIMAX_API_ENDPOINT = 'https://api.minimax.io/v1/text/chatcompletion_v2';
 
 /**
  * Check if the model is a Claude model
  */
 function isClaudeModel(model: string): boolean {
   return model.startsWith('claude-');
+}
+
+/**
+ * Check if the model is a MiniMax model
+ */
+function isMiniMaxModel(model: string): boolean {
+  return model.toLocaleLowerCase().startsWith('minimax-');
 }
 
 export class OllamaReviewPanel {
@@ -145,6 +153,50 @@ export class OllamaReviewPanel {
         return content.map((block: { type: string; text: string }) =>
           block.type === 'text' ? block.text : ''
         ).join('').trim();
+      }
+      return '';
+    }
+
+    // Use MiniMax API if a MiniMax model is selected
+    if (isMiniMaxModel(model)) {
+      const apiKey = config.get<string>('minimaxApiKey', '');
+      if (!apiKey) {
+        throw new Error('MiniMax API key is not configured. Please set it in Settings > Ollama Code Review > Minimax Api Key');
+      }
+
+      const minimaxModel = model;
+
+      const minimaxMessages = [
+        {
+          role: 'system' as const,
+          content: systemContent
+        },
+        ...this._conversationHistory.map(m => ({
+          role: m.role as 'user' | 'assistant',
+          content: m.content
+        }))
+      ];
+
+      const response = await axios.post(
+        MINIMAX_API_ENDPOINT,
+        {
+          model: minimaxModel,
+          messages: minimaxMessages,
+          temperature: config.get('temperature', 0),
+          max_tokens: 8192
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: 120000
+        }
+      );
+
+      const choices = response.data.choices;
+      if (Array.isArray(choices) && choices.length > 0 && choices[0].message) {
+        return choices[0].message.content?.trim() || '';
       }
       return '';
     }

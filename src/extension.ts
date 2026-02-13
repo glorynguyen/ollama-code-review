@@ -28,6 +28,7 @@ const GLM_API_ENDPOINT = 'https://api.z.ai/api/paas/v4/chat/completions';
 const HF_API_ENDPOINT = 'https://router.huggingface.co/v1/chat/completions';
 const GEMINI_API_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
 const MISTRAL_API_ENDPOINT = 'https://api.mistral.ai/v1/chat/completions';
+const MINIMAX_API_ENDPOINT = 'https://api.minimax.io/v1/text/chatcompletion_v2';
 
 /**
  * Performance metrics captured from API responses
@@ -56,11 +57,15 @@ export interface PerformanceMetrics {
 	mistralInputTokens?: number;
 	mistralOutputTokens?: number;
 
+	// MiniMax-specific metrics (from response body)
+	minimaxInputTokens?: number;
+	minimaxOutputTokens?: number;
+
 	// Common computed metrics
 	tokensPerSecond?: number;
 	totalDurationSeconds?: number;
 	model?: string;
-	provider?: 'ollama' | 'claude' | 'glm' | 'huggingface' | 'gemini' | 'mistral';
+	provider?: 'ollama' | 'claude' | 'glm' | 'huggingface' | 'gemini' | 'mistral' | 'minimax';
 
 	// Active model info (from /api/ps)
 	activeModel?: {
@@ -185,6 +190,13 @@ function isGeminiModel(model: string): boolean {
  */
 function isMistralModel(model: string): boolean {
 	return model.startsWith('mistral-') || model.startsWith('codestral-');
+}
+
+/**
+ * Check if the model is a MiniMax model
+ */
+function isMiniMaxModel(model: string): boolean {
+	return model.toLocaleLowerCase().startsWith('minimax-');
 }
 
 /**
@@ -628,6 +640,98 @@ async function callMistralAPI(prompt: string, config: vscode.WorkspaceConfigurat
 	}
 }
 
+/**
+ * Call MiniMax API for generating responses
+ */
+async function callMiniMaxAPI(prompt: string, config: vscode.WorkspaceConfiguration, captureMetrics = false): Promise<string> {
+	const model = getOllamaModel(config);
+	const apiKey = config.get<string>('minimaxApiKey', '');
+	const temperature = config.get<number>('temperature', 0);
+
+	if (!apiKey) {
+		throw new Error('MiniMax API key is not configured. Please set it in Settings > Ollama Code Review > Minimax Api Key');
+	}
+
+	// Use the model name as-is for the MiniMax API (e.g., "MiniMax-M2.5")
+	const minimaxModel = model;
+
+	try {
+		const response = await axios.post(
+			MINIMAX_API_ENDPOINT,
+			{
+				model: minimaxModel,
+				messages: [
+					{
+						role: 'system',
+						content: 'You are an expert software engineer and code reviewer.'
+					},
+					{
+						role: 'user',
+						content: prompt
+					}
+				],
+				temperature: temperature,
+				max_tokens: 8192
+			},
+			{
+				headers: {
+					'Authorization': `Bearer ${apiKey}`,
+					'Content-Type': 'application/json'
+				},
+				timeout: 120000 // 2 minute timeout
+			}
+		);
+
+		// Capture metrics from MiniMax's response
+		if (captureMetrics && response.data.usage) {
+			lastPerformanceMetrics = {
+				provider: 'minimax',
+				model: model,
+				minimaxInputTokens: response.data.usage.prompt_tokens,
+				minimaxOutputTokens: response.data.usage.completion_tokens,
+				promptEvalCount: response.data.usage.prompt_tokens,
+				evalCount: response.data.usage.completion_tokens
+			};
+		}
+
+		// Extract text from MiniMax's OpenAI-compatible response format
+		const choices = response.data.choices;
+		if (Array.isArray(choices) && choices.length > 0 && choices[0].message) {
+			return choices[0].message.content?.trim() || '';
+		}
+
+		return '';
+	} catch (error) {
+		if (axios.isAxiosError(error)) {
+			const status = error.response?.status;
+			const errorData = error.response?.data;
+
+			if (status === 401) {
+				throw new Error(
+					`MiniMax authentication failed.\n` +
+					`Please check your API key in Settings > Ollama Code Review > Minimax Api Key`
+				);
+			}
+
+			if (status === 429) {
+				throw new Error(
+					`MiniMax rate limit exceeded. Please wait and try again.`
+				);
+			}
+
+			if (status === 503) {
+				throw new Error(
+					`MiniMax service temporarily unavailable. Please try again in a moment.`
+				);
+			}
+
+			const errorMessage = errorData?.error?.message || errorData?.message || error.message;
+			throw new Error(`MiniMax API Error (${status}): ${errorMessage}`);
+		}
+		throw error;
+	}
+}
+
 
 let outputChannel: vscode.OutputChannel;
 
@@ -981,6 +1085,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			{ label: 'mistral-large-latest', description: 'Mistral Large - Most capable (Mistral AI)' },
 			{ label: 'mistral-small-latest', description: 'Mistral Small - Fast & efficient (Mistral AI)' },
 			{ label: 'codestral-latest', description: 'Codestral - Optimized for code (Mistral AI)' },
+			{ label: 'MiniMax-M2.5', description: 'MiniMax M2.5 (MiniMax)' },
 			{ label: 'claude-sonnet-4-20250514', description: 'Claude Sonnet 4 (Anthropic)' },
 			{ label: 'claude-opus-4-20250514', description: 'Claude Opus 4 (Anthropic)' },
 			{ label: 'claude-3-7-sonnet-20250219', description: 'Claude 3.7 Sonnet (Anthropic)' }
@@ -1973,6 +2078,11 @@ async function getOllamaReview(diff: string, context?: vscode.ExtensionContext):
 			return await callMistralAPI(prompt, config, true);
 		}
 
+		// Use MiniMax API if a MiniMax model is selected
+		if (isMiniMaxModel(model)) {
+			return await callMiniMaxAPI(prompt, config, true);
+		}
+
 		// Otherwise use Ollama API
 		const response = await axios.post(endpoint, {
 			model: model,
@@ -2042,6 +2152,9 @@ async function getOllamaCommitMessage(diff: string, existingMessage?: string): P
 		} else if (isMistralModel(model)) {
 			// Use Mistral API if a Mistral model is selected
 			message = await callMistralAPI(prompt, config);
+		} else if (isMiniMaxModel(model)) {
+			// Use MiniMax API if a MiniMax model is selected
+			message = await callMiniMaxAPI(prompt, config);
 		} else {
 			// Otherwise use Ollama API
 			const response = await axios.post(endpoint, {
@@ -2112,6 +2225,11 @@ async function getOllamaSuggestion(codeSnippet: string, languageId: string): Pro
 		// Use Mistral API if a Mistral model is selected
 		if (isMistralModel(model)) {
 			return await callMistralAPI(prompt, config);
+		}
+
+		// Use MiniMax API if a MiniMax model is selected
+		if (isMiniMaxModel(model)) {
+			return await callMiniMaxAPI(prompt, config);
 		}
 
 		// Otherwise use Ollama API
@@ -2308,6 +2426,10 @@ async function callAIProvider(prompt: string, config: vscode.WorkspaceConfigurat
 		return await callMistralAPI(prompt, config);
 	}
 
+	if (isMiniMaxModel(model)) {
+		return await callMiniMaxAPI(prompt, config);
+	}
+
 	// Default to Ollama API
 	const response = await axios.post(endpoint, {
 		model: model,
@@ -2351,6 +2473,12 @@ function handleError(error: unknown, contextMessage: string) {
 		} else if (url.includes('api.mistral.ai')) {
 			const mistralError = responseData?.error?.message || responseData?.message || error.message;
 			errorMessage += `Mistral API Error (${status}): ${mistralError}`;
+			if (status === 429) {
+				errorMessage += '\nRate limit exceeded. Please wait and try again.';
+			}
+		} else if (url.includes('api.minimax.io')) {
+			const minimaxError = responseData?.error?.message || responseData?.message || error.message;
+			errorMessage += `MiniMax API Error (${status}): ${minimaxError}`;
 			if (status === 429) {
 				errorMessage += '\nRate limit exceeded. Please wait and try again.';
 			}

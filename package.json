@@ -178,6 +178,7 @@
             "mistral-large-latest",
             "mistral-small-latest",
             "codestral-latest",
+            "MiniMax-M2.5",
             "qwen2.5-coder:14b-instruct-q4_0",
             "claude-sonnet-4-20250514",
             "claude-opus-4-20250514",
@@ -232,6 +233,11 @@
           "type": "string",
           "default": "",
           "description": "Your Mistral AI API key. Get one at https://console.mistral.ai/"
+        },
+        "ollama-code-review.minimaxApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Your MiniMax API key. Get one at https://platform.minimaxi.com/"
         },
         "ollama-code-review.customModel": {
           "type": "string",

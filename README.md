@@ -1,6 +1,6 @@
 # Ollama Code Review
 
-Get lightning-fast, expert code reviews and AI-generated commit messages directly in your editor using local Ollama models or cloud AI providers like **Claude (Anthropic)**, **Gemini (Google AI)**, **Mistral AI**, **GLM (Z.AI)**, and **Hugging Face**. This extension analyzes your code changes before you commit, helping you catch bugs, improve code quality, and write consistent, informative commit messages.
+Get lightning-fast, expert code reviews and AI-generated commit messages directly in your editor using local Ollama models or cloud AI providers like **Claude (Anthropic)**, **Gemini (Google AI)**, **Mistral AI**, **MiniMax**, **GLM (Z.AI)**, and **Hugging Face**. This extension analyzes your code changes before you commit, helping you catch bugs, improve code quality, and write consistent, informative commit messages.
 
 It leverages the power of local large language models to provide feedback on:
 - Potential bugs and logical errors
@@ -140,7 +140,16 @@ To use Mistral models:
 2. Set your API key in settings: `ollama-code-review.mistralApiKey`
 3. Select `mistral-large-latest`, `mistral-small-latest`, or `codestral-latest` from the model picker
 
-### 16. Hugging Face Support
+### 16. MiniMax Support
+Use MiniMax's models for code reviews:
+- **MiniMax M2.5** - Powerful model for code review and analysis
+
+To use MiniMax models:
+1. Get your API key from [MiniMax Platform](https://platform.minimaxi.com/)
+2. Set your API key in settings: `ollama-code-review.minimaxApiKey`
+3. Select `MiniMax-M2.5` from the model picker
+
+### 17. Hugging Face Support
 Use any model from the Hugging Face Inference API:
 - Access thousands of open-source models
 - **Smart Model Picker**: When selecting `huggingface`, a submenu appears with:
@@ -164,7 +173,7 @@ To use Hugging Face models:
 - `meta-llama/Llama-3.1-8B-Instruct`
 - `deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct`
 
-### 17. Custom Prompt Templates
+### 18. Custom Prompt Templates
 Customize the AI prompts used for code reviews and commit message generation:
 - **Review Prompt**: Override the default code review prompt with your own template
 - **Commit Message Prompt**: Customize how commit messages are generated
@@ -179,7 +188,7 @@ Configure in settings:
 
 > **Note:** If you remove `${skills}` from your custom review prompt, active agent skills will still be appended automatically to ensure skill compatibility.
 
-### 18. Smart Diff Filtering
+### 19. Smart Diff Filtering
 Reduce noise in your code reviews by filtering out irrelevant changes:
 - **Ignore paths**: Skip `node_modules`, lock files, build outputs
 - **Ignore patterns**: Exclude minified files, source maps, generated code
@@ -188,7 +197,7 @@ Reduce noise in your code reviews by filtering out irrelevant changes:
 
 Configure in settings under `ollama-code-review.diffFilter`.
 
-### 19. MCP Server for Claude Desktop
+### 20. MCP Server for Claude Desktop
 Use the code review functionality directly in Claude Desktop without copy-pasting diffs. The MCP server is available as a separate project:
 
 **Repository:** [gitsage](https://github.com/glorynguyen/gitsage)
@@ -227,6 +236,10 @@ You must have the following software installed and configured for this extension
 1.  **Mistral AI API Key**: Get one from [console.mistral.ai](https://console.mistral.ai/)
 2.  **Configure the key** in VS Code settings: `ollama-code-review.mistralApiKey`
 
+### For MiniMax Models (Alternative)
+1.  **MiniMax API Key**: Get one from [platform.minimaxi.com](https://platform.minimaxi.com/)
+2.  **Configure the key** in VS Code settings: `ollama-code-review.minimaxApiKey`
+
 ### For Hugging Face Models (Alternative)
 1.  **Hugging Face API Token**: Get one from [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)
 2.  **Configure the token** in VS Code settings: `ollama-code-review.hfApiKey`
@@ -240,7 +253,7 @@ You must have the following software installed and configured for this extension
 
 This extension contributes the following settings to your VS Code `settings.json`:
 
-* `ollama-code-review.model`: Supports local Ollama models, cloud models (`kimi-k2.5:cloud`, `qwen3-coder:480b-cloud`, `glm-4.7:cloud`), Claude models (`claude-sonnet-4-20250514`, `claude-opus-4-20250514`, `claude-3-7-sonnet-20250219`), Gemini models (`gemini-2.5-flash`, `gemini-2.5-pro`), Mistral models (`mistral-large-latest`, `mistral-small-latest`, `codestral-latest`), GLM models (`glm-4.7-flash`), Hugging Face (`huggingface`), or `custom`.
+* `ollama-code-review.model`: Supports local Ollama models, cloud models (`kimi-k2.5:cloud`, `qwen3-coder:480b-cloud`, `glm-4.7:cloud`), Claude models (`claude-sonnet-4-20250514`, `claude-opus-4-20250514`, `claude-3-7-sonnet-20250219`), Gemini models (`gemini-2.5-flash`, `gemini-2.5-pro`), Mistral models (`mistral-large-latest`, `mistral-small-latest`, `codestral-latest`), MiniMax models (`MiniMax-M2.5`), GLM models (`glm-4.7-flash`), Hugging Face (`huggingface`), or `custom`.
 * `ollama-code-review.customModel`: Specify your own model name if you select "custom" in the model setting.
 * `ollama-code-review.claudeApiKey`: Your Anthropic API key for Claude models.
 * `ollama-code-review.glmApiKey`: Your Z.AI (BigModel/Zhipu) API key for GLM models.
@@ -249,6 +262,7 @@ This extension contributes the following settings to your VS Code `settings.json
 * `ollama-code-review.hfPopularModels`: Customize the list of popular Hugging Face models shown in the model picker submenu.
 * `ollama-code-review.geminiApiKey`: Your Google AI Studio API key for Gemini models.
 * `ollama-code-review.mistralApiKey`: Your Mistral AI API key for Mistral models.
+* `ollama-code-review.minimaxApiKey`: Your MiniMax API key for MiniMax models.
 * `ollama-code-review.endpoint`: The API endpoint for your local Ollama instance's generate API.
     * **Type**: `string`
     * **Default**: `"http://localhost:11434/api/generate"`

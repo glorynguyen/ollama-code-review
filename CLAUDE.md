@@ -89,6 +89,7 @@ out/                      # Compiled JavaScript output
 | `ollama-code-review.hfPopularModels` | (see below) | Popular HF models for quick selection |
 | `ollama-code-review.geminiApiKey` | `""` | Google AI Studio API key for Gemini models |
 | `ollama-code-review.mistralApiKey` | `""` | Mistral AI API key for Mistral models |
+| `ollama-code-review.minimaxApiKey` | `""` | MiniMax API key for MiniMax models |
 | `ollama-code-review.endpoint` | `http://localhost:11434/api/generate` | Ollama API endpoint |
 | `ollama-code-review.temperature` | `0` | Model temperature (0-1) |
 | `ollama-code-review.frameworks` | `["React"]` | Target frameworks for context |
@@ -134,6 +135,10 @@ out/                      # Compiled JavaScript output
 - `mistral-small-latest` - Mistral Small (fast & efficient)
 - `codestral-latest` - Codestral (optimized for code)
   - Get API key at https://console.mistral.ai/
+
+### MiniMax Models (Requires MiniMax API key)
+- `MiniMax-M2.5` - MiniMax M2.5
+  - Get API key at https://platform.minimaxi.com/
 
 ### Claude Models (Requires Anthropic API key)
 - `claude-sonnet-4-20250514` - Claude Sonnet 4
@@ -272,11 +277,15 @@ interface PerformanceMetrics {
   mistralInputTokens?: number;
   mistralOutputTokens?: number;
 
+  // MiniMax-specific
+  minimaxInputTokens?: number;
+  minimaxOutputTokens?: number;
+
   // Computed metrics
   tokensPerSecond?: number;
   totalDurationSeconds?: number;
   model?: string;
-  provider?: 'ollama' | 'claude' | 'glm' | 'huggingface' | 'gemini' | 'mistral';
+  provider?: 'ollama' | 'claude' | 'glm' | 'huggingface' | 'gemini' | 'mistral' | 'minimax';
 
   // Active model info (Ollama /api/ps)
   activeModel?: {
@@ -298,6 +307,7 @@ interface PerformanceMetrics {
 | Hugging Face | Token counts, rate limit remaining, rate limit reset time |
 | Gemini | Input/output tokens |
 | Mistral | Input/output tokens |
+| MiniMax | Input/output tokens |
 
 ### UI Display (reviewProvider.ts)
 
