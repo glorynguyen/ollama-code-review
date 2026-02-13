@@ -1,3 +1,15 @@
+# [3.0.0](https://github.com/glorynguyen/ollama-code-review/compare/v2.1.0...v3.0.0) (2026-02-13)
+
+
+### Features
+
+* **extension:** add support for MiniMax AI models ([c53d1c3](https://github.com/glorynguyen/ollama-code-review/commit/c53d1c3dfe798426e3317e8526ba6281684658db))
+
+
+### BREAKING CHANGES
+
+* **extension:** The provider type in PerformanceMetrics now includes 'minimax' as a valid value.
+
 # [2.1.0](https://github.com/glorynguyen/ollama-code-review/compare/v2.0.0...v2.1.0) (2026-02-07)
 
 
