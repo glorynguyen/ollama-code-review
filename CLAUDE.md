@@ -3,7 +3,7 @@
 ## Project Overview
 
 - **Name:** Ollama Code Review VS Code Extension
-- **Version:** 1.9.0
+- **Version:** 3.0.0
 - **Purpose:** AI-powered code reviews and commit message generation using local Ollama or cloud models
 - **Author:** Vinh Nguyen (vincent)
 - **License:** MIT
@@ -27,6 +27,7 @@ src/
 ├── reviewProvider.ts     # Webview panel for review results & interactive chat
 ├── skillsService.ts      # Agent skills download/caching from GitHub
 ├── skillsBrowserPanel.ts # Skills browser UI webview
+├── diffFilter.ts         # Diff filtering & ignore patterns (F-002)
 ├── utils.ts              # Config helper functions
 ├── codeActions/          # Inline AI code actions (F-005)
 │   ├── index.ts          # Module exports
@@ -46,15 +47,17 @@ out/                      # Compiled JavaScript output
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `src/extension.ts` | ~2,369 | Main extension logic, all commands, Git operations |
-| `src/reviewProvider.ts` | ~196 | Webview for displaying reviews with chat interface |
-| `src/skillsService.ts` | ~204 | Fetches/caches agent skills from GitHub repos |
-| `src/skillsBrowserPanel.ts` | ~255 | UI for browsing and downloading skills |
+| `src/extension.ts` | ~2,533 | Main extension logic, all commands, Git operations |
+| `src/reviewProvider.ts` | ~497 | Webview for displaying reviews with chat interface |
+| `src/skillsService.ts` | ~593 | Fetches/caches agent skills from GitHub repos |
+| `src/skillsBrowserPanel.ts` | ~516 | UI for browsing and downloading skills |
+| `src/diffFilter.ts` | ~221 | Diff filtering with ignore patterns and formatting detection |
 | `src/utils.ts` | ~33 | Helper for model config, HTML escaping, and prompt template resolution |
-| `src/codeActions/explainAction.ts` | ~168 | Explain Code action with preview panel |
-| `src/codeActions/testAction.ts` | ~369 | Generate Tests action with framework detection |
-| `src/codeActions/fixAction.ts` | ~449 | Fix Issue action with diff preview |
-| `src/codeActions/documentAction.ts` | ~377 | Add Documentation action with preview |
+| `src/codeActions/index.ts` | ~34 | Module barrel exports for code actions |
+| `src/codeActions/explainAction.ts` | ~160 | Explain Code action with preview panel |
+| `src/codeActions/testAction.ts` | ~367 | Generate Tests action with framework detection |
+| `src/codeActions/fixAction.ts` | ~422 | Fix Issue action with diff preview |
+| `src/codeActions/documentAction.ts` | ~369 | Add Documentation action with preview |
 | `src/codeActions/types.ts` | ~103 | Common types and parsing utilities |
 
 ## Commands
@@ -71,6 +74,7 @@ out/                      # Compiled JavaScript output
 | `ollama-code-review.explainCode` | Explain selected code in preview panel |
 | `ollama-code-review.generateTests` | Generate unit tests for selected code |
 | `ollama-code-review.fixIssue` | Fix diagnostics or selected code with diff preview |
+| `ollama-code-review.fixSelection` | Fix selected code |
 | `ollama-code-review.addDocumentation` | Generate JSDoc/TSDoc for functions/classes |
 | `ollama-code-review.browseAgentSkills` | Browse and download agent skills |
 | `ollama-code-review.applySkillToReview` | Apply multiple skills to reviews (multi-select supported) |
@@ -93,11 +97,23 @@ out/                      # Compiled JavaScript output
 | `ollama-code-review.endpoint` | `http://localhost:11434/api/generate` | Ollama API endpoint |
 | `ollama-code-review.temperature` | `0` | Model temperature (0-1) |
 | `ollama-code-review.frameworks` | `["React"]` | Target frameworks for context |
+| `ollama-code-review.diffFilter` | `{}` | Diff filtering configuration (see Diff Filtering section) |
 | `ollama-code-review.prompt.review` | (built-in review prompt) | Custom prompt template for code reviews. Variables: `${code}`, `${frameworks}`, `${skills}` |
 | `ollama-code-review.prompt.commitMessage` | (built-in commit prompt) | Custom prompt template for commit messages. Variables: `${diff}`, `${draftMessage}` |
 | `ollama-code-review.skills.defaultRepository` | `vercel-labs/agent-skills` | Default GitHub repo for skills |
 | `ollama-code-review.skills.additionalRepositories` | `[]` | Additional GitHub repos for skills |
 | `ollama-code-review.skills.autoApply` | `true` | Auto-apply selected skill |
+
+### Diff Filter Settings
+
+The `diffFilter` setting is an object with these properties:
+
+| Property | Default | Description |
+|----------|---------|-------------|
+| `ignorePaths` | `["**/node_modules/**", "**/*.lock", ...]` | Glob patterns for paths to ignore |
+| `ignorePatterns` | `["*.min.js", "*.min.css", "*.map", "*.generated.*"]` | File name patterns to ignore |
+| `maxFileLines` | `500` | Warn when a file has more changed lines than this |
+| `ignoreFormattingOnly` | `false` | Skip files with only whitespace/formatting changes |
 
 ## Supported Models
 
@@ -146,7 +162,7 @@ out/                      # Compiled JavaScript output
 - `claude-3-7-sonnet-20250219` - Claude 3.7 Sonnet
 
 ### Local Ollama Models
-Any model available in your local Ollama instance will be auto-discovered.
+Any model available in your local Ollama instance will be auto-discovered. The predefined local model in settings is `qwen2.5-coder:14b-instruct-q4_0`.
 
 ## Architecture
 
@@ -156,18 +172,30 @@ Any model available in your local Ollama instance will be auto-discovered.
 3. Registers all commands and status bar items
 
 ### API Endpoints Used
+
+#### Ollama (Local)
 - **Generate:** `{endpoint}/api/generate` - Reviews, commit messages, suggestions
 - **Chat:** `{endpoint}/api/chat` - Interactive follow-up questions
 - **Tags:** `{endpoint}/api/tags` - List available local models
+- **PS:** `{endpoint}/api/ps` - Active model info (VRAM usage)
+
+#### Cloud Providers
+- **Claude:** `https://api.anthropic.com/v1/messages`
+- **GLM:** `https://api.z.ai/api/paas/v4/chat/completions`
+- **Hugging Face:** `https://router.huggingface.co/v1/chat/completions`
+- **Gemini:** `https://generativelanguage.googleapis.com/v1beta/models`
+- **Mistral:** `https://api.mistral.ai/v1/chat/completions`
+- **MiniMax:** `https://api.minimax.io/v1/text/chatcompletion_v2`
 
 ### Git Integration
 - Uses VS Code's built-in Git extension API
 - Supports: staged changes, commit diffs, branch comparisons
 - Multi-repository workspace support
+- Diff filtering to exclude noise (lock files, build output, minified files)
 
 ### Webview Panels
-- **Review Panel:** Displays markdown reviews with highlight.js, supports chat
-- **Skills Browser:** Lists/downloads skills with search filtering
+- **Review Panel:** Displays markdown reviews with highlight.js, supports multi-turn chat
+- **Skills Browser:** Lists/downloads skills with search filtering and repo source display
 - **Explain Panel:** Shows code explanations with syntax highlighting
 - **Test Preview Panel:** Displays generated tests before creating files
 - **Fix Preview Panel:** Shows proposed fixes in diff view
@@ -175,6 +203,23 @@ Any model available in your local Ollama instance will be auto-discovered.
 
 ## Key Functions in extension.ts
 
+### Model Detection
+- `isClaudeModel()` - Check if model is a Claude model
+- `isGlmModel()` - Check if model is a GLM model
+- `isHuggingFaceModel()` - Check if model is Hugging Face
+- `isGeminiModel()` - Check if model is Gemini
+- `isMistralModel()` - Check if model is Mistral
+- `isMiniMaxModel()` - Check if model is MiniMax
+
+### API Callers
+- `callClaudeAPI()` - Call Anthropic Claude API
+- `callGlmAPI()` - Call Z.AI GLM API
+- `callHuggingFaceAPI()` - Call Hugging Face Inference API
+- `callGeminiAPI()` - Call Google Gemini API
+- `callMistralAPI()` - Call Mistral AI API
+- `callMiniMaxAPI()` - Call MiniMax API
+
+### Core Workflow
 - `activate()` - Extension entry, command registration
 - `runReview()` - Execute code review workflow
 - `getOllamaReview()` - Call Ollama API for review
@@ -182,18 +227,78 @@ Any model available in your local Ollama instance will be auto-discovered.
 - `getOllamaSuggestion()` - Get code suggestions
 - `selectRepository()` - Handle multi-repo workspaces
 - `runGitCommand()` - Execute git operations
+
+### Code Action Handlers
+- `getExplanation()` - Get AI explanation for selected code
+- `generateTests()` - Generate unit tests for selected code
+- `generateFix()` - Generate fix for diagnostics or selected code
+- `generateDocumentation()` - Generate JSDoc/TSDoc for functions/classes
+
+### Performance & Model Management
 - `getLastPerformanceMetrics()` - Retrieve captured metrics from last API call
 - `clearPerformanceMetrics()` - Reset metrics state
 - `checkActiveModels()` - Query Ollama's `/api/ps` for active model info (VRAM usage)
 - `showHfModelPicker()` - Display HF model selection submenu with recent/popular/custom options
 - `getRecentHfModels()` - Get recently used HF models from globalState
 - `addRecentHfModel()` - Add a model to recent HF models list
+- `updateModelStatusBar()` - Update status bar with current model name
+
+### Error Handling
+- `handleError()` - Centralized error handler with user-friendly messages
+
+### Internal Classes
+- `OllamaSuggestionProvider` - CodeActionProvider for suggestions
+- `SuggestionContentProvider` - TextDocumentContentProvider for suggestion previews
 
 ## Key Functions in utils.ts
 
 - `getOllamaModel()` - Resolve model name from config, handling 'custom' option
 - `escapeHtml()` - XSS prevention for webview content rendering
 - `resolvePrompt(template, variables)` - Replace `${variable}` placeholders in prompt templates
+
+## Diff Filtering System (F-002)
+
+The `src/diffFilter.ts` module provides intelligent diff filtering to exclude noise from code reviews.
+
+### Exported Types
+
+```typescript
+interface DiffFilterConfig {
+  ignorePaths: string[];
+  ignorePatterns: string[];
+  maxFileLines: number;
+  ignoreFormattingOnly: boolean;
+}
+
+interface FilterResult {
+  filteredDiff: string;
+  stats: {
+    totalFiles: number;
+    includedFiles: number;
+    filteredFiles: string[];
+    largeFiles: string[];
+  };
+}
+```
+
+### Exported Functions
+
+- `getDiffFilterConfig()` - Read filter config from VS Code settings with defaults
+- `filterDiff(diff, config?)` - Main filtering function, returns filtered diff and stats
+- `getFilterSummary(result)` - Generate human-readable summary of what was filtered
+
+### Default Ignore Paths
+`**/node_modules/**`, `**/*.lock`, `**/package-lock.json`, `**/yarn.lock`, `**/pnpm-lock.yaml`, `**/dist/**`, `**/build/**`, `**/out/**`, `**/.next/**`, `**/coverage/**`
+
+### Default Ignore Patterns
+`*.min.js`, `*.min.css`, `*.map`, `*.generated.*`, `*.g.ts`, `*.d.ts.map`
+
+### Internal Helpers
+- `shouldIgnoreFile()` - Checks path and pattern matching
+- `matchGlobPattern()` - Simple glob-to-regex conversion
+- `countChangedLines()` - Counts +/- lines in a diff hunk
+- `isFormattingOnlyChange()` - Detects whitespace-only changes
+- `parseDiffIntoFiles()` - Splits unified diff by file
 
 ## Inline Code Actions (F-005)
 
@@ -205,16 +310,16 @@ The extension provides four AI-powered code actions accessible via the lightbulb
 |----------|------|---------|
 | `ExplainCodeActionProvider` | `explainAction.ts` | Provides "Explain Code" action |
 | `GenerateTestsActionProvider` | `testAction.ts` | Provides "Generate Tests" action |
-| `FixIssueActionProvider` | `fixAction.ts` | Provides "Fix Issue" action |
+| `FixIssueActionProvider` | `fixAction.ts` | Provides "Fix Issue" action (diagnostics + selection) |
 | `AddDocumentationActionProvider` | `documentAction.ts` | Provides "Add Documentation" action |
 
 ### Preview Panels
 
 Each action has a dedicated webview panel for previewing results:
 - `ExplainCodePanel` - Displays code explanations with syntax highlighting
-- `GenerateTestsPanel` - Shows generated tests with "Create Test File" button
-- `FixPreviewPanel` - Shows diff view with "Apply Fix" button
-- `DocumentationPreviewPanel` - Previews JSDoc with "Insert Documentation" button
+- `GenerateTestsPanel` - Shows generated tests with "Create Test File" and "Copy to Clipboard" buttons
+- `FixPreviewPanel` - Shows diff view with "Apply Fix" button; includes fix tracking
+- `DocumentationPreviewPanel` - Previews JSDoc with "Insert Documentation" and "Copy" buttons
 
 ### Key Types (src/codeActions/types.ts)
 
@@ -236,6 +341,27 @@ interface DocumentationResult {
 }
 ```
 
+### Fix Tracking (src/codeActions/fixAction.ts)
+
+```typescript
+interface AppliedFix {
+  timestamp: Date;
+  fileName: string;
+  lineNumber: number;
+  originalCode: string;
+  fixedCode: string;
+  issue: string;
+}
+
+class FixTracker {
+  static getInstance(): FixTracker;
+  recordFix(fix: AppliedFix): void;
+  getRecentFixes(count?: number): AppliedFix[];
+  clearFixes(): void;
+  getFixCount(): number;
+}
+```
+
 ### Utility Functions
 
 - `parseCodeResponse()` - Parse AI response with code block and explanation
@@ -250,7 +376,7 @@ interface DocumentationResult {
 
 The extension captures and displays performance metrics from API responses in the review panel.
 
-### PerformanceMetrics Interface (src/extension.ts:19-52)
+### PerformanceMetrics Interface (src/extension.ts)
 
 ```typescript
 interface PerformanceMetrics {
@@ -337,12 +463,17 @@ yarn release    # Semantic release
   - Additional repositories can be configured via `skills.additionalRepositories` setting
   - Skills from all configured repositories are combined in the browser
 - Cached locally in extension global storage
+  - Index file: `{globalStorage}/agent-skills/index.json`
+  - Skill files: `{globalStorage}/agent-skills/{owner}__{repo}/{skillname}/SKILL.md`
+  - Legacy migration from: `{globalStorage}/agent-skills/{skillname}/SKILL.md`
 - YAML frontmatter parsed for metadata
+- Dynamic ESM import for @octokit/rest (ESM-only module)
 - **Multi-skill selection supported**: Users can select multiple skills to apply simultaneously
   - Skills are combined in the prompt with numbered headers (Skill 1, Skill 2, etc.)
   - Previously selected skills are pre-checked in the QuickPick dialog
   - Use `clearSelectedSkills` command to deselect all skills
 - Skills browser shows repository source for each skill and supports filtering by repo
+- Error handling for network errors, rate limiting (403/429), and timeouts
 
 ### Multi-Skill Storage
 
@@ -350,6 +481,19 @@ Selected skills are stored in VS Code's globalState as an array:
 ```typescript
 // Storage key: 'selectedSkills' (array of AgentSkill objects)
 context.globalState.get<AgentSkill[]>('selectedSkills', []);
+```
+
+### AgentSkill Interface (src/skillsService.ts)
+
+```typescript
+interface AgentSkill {
+  name: string;
+  description: string;
+  content: string;
+  repository: string;
+  path: string;
+  downloadedAt?: number;
+}
 ```
 
 ### Skill Injection in Prompts
@@ -363,6 +507,15 @@ Additional Review Guidelines (N skill(s) applied):
 ### Skill 2: another-skill
 [skill content]
 ```
+
+## Review Panel Chat (reviewProvider.ts)
+
+The review panel supports multi-turn interactive chat:
+- Conversation history tracked as `Array<{ role: 'user' | 'assistant' | 'system', content: string }>`
+- System message injected with original diff context
+- Multi-skill guidelines included in follow-up prompts
+- Supports Claude, MiniMax, and Ollama providers for chat follow-ups
+- CDN dependencies: highlight.js v11.9.0, marked.js v11.1.1
 
 ## Related Projects
 
@@ -379,6 +532,7 @@ A standalone MCP (Model Context Protocol) server is available as a separate proj
 - Status bar shows current model with click-to-switch
 - Reviews support follow-up questions via chat interface
 - Custom prompt templates supported via settings; agent skills are always appended if `${skills}` placeholder is missing from template
+- Diff filtering automatically excludes lock files, build output, and minified files from reviews
 
 ## Roadmap & Future Development
 
@@ -399,4 +553,4 @@ See [docs/roadmap/](./docs/roadmap/) for comprehensive planning documents:
 | v3.0 | Agentic Multi-Step Reviews, RAG-Enhanced Reviews | Q3 2026 |
 | v4.0 | CI/CD Integration, Analytics, Team Knowledge Base | Q4 2026 |
 
-**Note:** Inline Code Actions (F-005) and Custom Prompt Templates (F-013) have been implemented ahead of schedule.
+**Note:** Inline Code Actions (F-005), Custom Prompt Templates (F-013), and Smart Diff Filtering (F-002) have been implemented ahead of schedule.
