@@ -28,6 +28,7 @@ src/
 ├── skillsService.ts      # Agent skills download/caching from GitHub
 ├── skillsBrowserPanel.ts # Skills browser UI webview
 ├── diffFilter.ts         # Diff filtering & ignore patterns (F-002)
+├── profiles.ts           # Review profiles & presets (F-001)
 ├── utils.ts              # Config helper functions
 ├── codeActions/          # Inline AI code actions (F-005)
 │   ├── index.ts          # Module exports
@@ -52,6 +53,7 @@ out/                      # Compiled JavaScript output
 | `src/skillsService.ts` | ~593 | Fetches/caches agent skills from GitHub repos |
 | `src/skillsBrowserPanel.ts` | ~516 | UI for browsing and downloading skills |
 | `src/diffFilter.ts` | ~221 | Diff filtering with ignore patterns and formatting detection |
+| `src/profiles.ts` | ~222 | Review profiles: built-in presets, custom profiles, prompt context builder |
 | `src/utils.ts` | ~33 | Helper for model config, HTML escaping, and prompt template resolution |
 | `src/codeActions/index.ts` | ~34 | Module barrel exports for code actions |
 | `src/codeActions/explainAction.ts` | ~160 | Explain Code action with preview panel |
@@ -65,6 +67,7 @@ out/                      # Compiled JavaScript output
 | Command ID | Description |
 |------------|-------------|
 | `ollama-code-review.selectModel` | Pick AI model (cloud/local Ollama) |
+| `ollama-code-review.selectProfile` | Pick review profile (general/security/performance/etc.) |
 | `ollama-code-review.reviewChanges` | Review staged Git changes |
 | `ollama-code-review.reviewCommit` | Review a specific commit |
 | `ollama-code-review.reviewCommitRange` | Review a range of commits |
@@ -98,7 +101,8 @@ out/                      # Compiled JavaScript output
 | `ollama-code-review.temperature` | `0` | Model temperature (0-1) |
 | `ollama-code-review.frameworks` | `["React"]` | Target frameworks for context |
 | `ollama-code-review.diffFilter` | `{}` | Diff filtering configuration (see Diff Filtering section) |
-| `ollama-code-review.prompt.review` | (built-in review prompt) | Custom prompt template for code reviews. Variables: `${code}`, `${frameworks}`, `${skills}` |
+| `ollama-code-review.customProfiles` | `[]` | Custom review profiles (array of objects with name, focusAreas, severity, etc.) |
+| `ollama-code-review.prompt.review` | (built-in review prompt) | Custom prompt template for code reviews. Variables: `${code}`, `${frameworks}`, `${skills}`, `${profile}` |
 | `ollama-code-review.prompt.commitMessage` | (built-in commit prompt) | Custom prompt template for commit messages. Variables: `${diff}`, `${draftMessage}` |
 | `ollama-code-review.skills.defaultRepository` | `vercel-labs/agent-skills` | Default GitHub repo for skills |
 | `ollama-code-review.skills.additionalRepositories` | `[]` | Additional GitHub repos for skills |
@@ -556,12 +560,13 @@ See [docs/roadmap/](./docs/roadmap/) for comprehensive planning documents:
 | Performance Metrics (per-provider) | S-003 | v1.15 |
 | Interactive Chat (multi-turn follow-ups) | S-004 | v1.7 |
 | HF Model Picker (recent/popular/custom) | S-005 | v1.15 |
+| Review Profiles & Presets (6 built-in + custom) | F-001 | v3.1 |
 
 ### Remaining Planned Features
 
 | Phase | Features | Target |
 |-------|----------|--------|
-| v3.1 | Review Profiles (F-001), Export Options (F-003) | Q1 2026 |
+| v3.1 | Export Options (F-003) | Q1 2026 |
 | v3.5 | GitHub PR Integration (F-004), F-006 remainder (.yaml config) | Q2 2026 |
 | v4.0 | Agentic Multi-Step Reviews (F-007), Multi-File Analysis (F-008) | Q3 2026 |
 | v5.0 | RAG (F-009), CI/CD (F-010), Analytics (F-011), Knowledge Base (F-012) | Q4 2026 |

@@ -370,6 +370,11 @@ export class OllamaReviewPanel {
                 metricsHtml.push('<div class="metric-item"><span class="metric-label">Model</span><span class="metric-value">' + (metrics.model || 'Unknown') + '</span></div>');
             }
 
+            // Active review profile
+            if (metrics.activeProfile && metrics.activeProfile !== 'general') {
+                metricsHtml.push('<div class="metric-item"><span class="metric-label">Profile</span><span class="metric-value highlight">' + metrics.activeProfile + '</span></div>');
+            }
+
             // Ollama-specific metrics
             if (metrics.provider === 'ollama') {
                 if (metrics.totalDurationSeconds) {

@@ -8,6 +8,17 @@ import { SkillsBrowserPanel } from './skillsBrowserPanel';
 import { getOllamaModel, resolvePrompt } from './utils';
 import { filterDiff, getFilterSummary } from './diffFilter';
 import {
+	ReviewProfile,
+	BUILTIN_PROFILES,
+	getAllProfiles,
+	getActiveProfileName,
+	setActiveProfileName,
+	getActiveProfile,
+	saveCustomProfile,
+	deleteCustomProfile,
+	buildProfilePromptContext
+} from './profiles';
+import {
 	ExplainCodeActionProvider,
 	ExplainCodePanel,
 	GenerateTestsActionProvider,
@@ -74,6 +85,9 @@ export interface PerformanceMetrics {
 		sizeTotal?: number;  // Total size in bytes
 		expiresAt?: string;
 	};
+
+	// Active review profile
+	activeProfile?: string;
 }
 
 // Global state for the last operation's metrics
@@ -97,7 +111,7 @@ export function clearPerformanceMetrics(): void {
 }
 
 // Default prompt templates (used when settings are empty)
-const DEFAULT_REVIEW_PROMPT = "You are an expert software engineer and code reviewer with deep knowledge of the following frameworks and libraries: **${frameworks}**.\nYour task is to analyze the following code changes (in git diff format) and provide constructive, actionable feedback tailored to the conventions, best practices, and common pitfalls of these technologies.\n${skills}\n**How to Read the Git Diff Format:**\n- Lines starting with `---` and `+++` indicate the file names before and after the changes.\n- Lines starting with `@@` (e.g., `@@ -15,7 +15,9 @@`) denote the location of the changes within the file.\n- Lines starting with a `-` are lines that were DELETED.\n- Lines starting with a `+` are lines that were ADDED.\n- Lines without a prefix (starting with a space) are for context and have not been changed. **Please focus your review on the added (`+`) and deleted (`-`) lines.**\n\n**Review Focus:**\n- Potential bugs or logical errors specific to the frameworks/libraries (${frameworks}).\n- Performance optimizations, considering framework-specific patterns.\n- Code style inconsistencies or deviations from ${frameworks} best practices.\n- Security vulnerabilities, especially those common in ${frameworks}.\n- Improvements to maintainability and readability, aligned with ${frameworks} conventions.\n\n**Feedback Requirements:**\n1. Explain any issues clearly and concisely, referencing ${frameworks} where relevant.\n2. Suggest specific code changes or improvements. Include code snippets for examples where appropriate.\n3. Use Markdown for clear formatting.\n\nIf you find no issues, please respond with the single sentence: \"I have reviewed the changes and found no significant issues.\"\n\nHere is the code diff to review:\n---\n${code}\n---";
+const DEFAULT_REVIEW_PROMPT = "You are an expert software engineer and code reviewer with deep knowledge of the following frameworks and libraries: **${frameworks}**.\nYour task is to analyze the following code changes (in git diff format) and provide constructive, actionable feedback tailored to the conventions, best practices, and common pitfalls of these technologies.\n${skills}\n${profile}\n**How to Read the Git Diff Format:**\n- Lines starting with `---` and `+++` indicate the file names before and after the changes.\n- Lines starting with `@@` (e.g., `@@ -15,7 +15,9 @@`) denote the location of the changes within the file.\n- Lines starting with a `-` are lines that were DELETED.\n- Lines starting with a `+` are lines that were ADDED.\n- Lines without a prefix (starting with a space) are for context and have not been changed. **Please focus your review on the added (`+`) and deleted (`-`) lines.**\n\n**Review Focus:**\n- Potential bugs or logical errors specific to the frameworks/libraries (${frameworks}).\n- Performance optimizations, considering framework-specific patterns.\n- Code style inconsistencies or deviations from ${frameworks} best practices.\n- Security vulnerabilities, especially those common in ${frameworks}.\n- Improvements to maintainability and readability, aligned with ${frameworks} conventions.\n\n**Feedback Requirements:**\n1. Explain any issues clearly and concisely, referencing ${frameworks} where relevant.\n2. Suggest specific code changes or improvements. Include code snippets for examples where appropriate.\n3. Use Markdown for clear formatting.\n\nIf you find no issues, please respond with the single sentence: \"I have reviewed the changes and found no significant issues.\"\n\nHere is the code diff to review:\n---\n${code}\n---";
 
 const DEFAULT_COMMIT_MESSAGE_PROMPT = "You are an expert at writing git commit messages for Semantic Release.\nGenerate a commit message based on the git diff below following the Conventional Commits specification.\n\n### Structural Requirements:\n1. **Subject Line**: <type>(<scope>): <short description>\n   - Keep under 50 characters.\n   - Use imperative mood (\"add\" not \"added\").\n   - Types: feat (new feature), fix (bug fix), docs, style, refactor, perf, test, build, ci, chore, revert.\n2. **Body**: Explain 'what' and 'why'. Required if the change is complex.\n3. **Breaking Changes**: If the diff contains breaking changes, the footer MUST start with \"BREAKING CHANGE:\" followed by a description.\n\n### Rules:\n- If the user's draft mentions a breaking change, prioritize documenting it in the footer.\n- Semantic Release triggers: 'feat' for MINOR, 'fix' for PATCH, and 'BREAKING CHANGE' in footer for MAJOR.\n- Output ONLY the raw commit message text. No markdown blocks, no \"Here is your message,\" no preamble.\n\nDeveloper's draft message (may reflect intent):\n${draftMessage}\n\nStaged git diff:\n---\n${diff}\n---";
 
@@ -913,6 +927,12 @@ function updateModelStatusBar(statusBarItem: vscode.StatusBarItem) {
 	statusBarItem.tooltip = `Ollama Model: ${model}\nClick to switch model`;
 }
 
+function updateProfileStatusBar(statusBarItem: vscode.StatusBarItem, context: vscode.ExtensionContext) {
+	const profile = getActiveProfile(context);
+	statusBarItem.text = `$(shield) ${profile.name}`;
+	statusBarItem.tooltip = `Review Profile: ${profile.name}\n${profile.description}\nClick to switch profile`;
+}
+
 const distinctByProperty = <T, K extends keyof T>(arr: T[], prop: K): T[] => {
 	const seen = new Set<T[K]>();
 	return arr.filter(item => {
@@ -1067,6 +1087,116 @@ export async function activate(context: vscode.ExtensionContext) {
 	updateModelStatusBar(modelStatusBarItem);
 	modelStatusBarItem.show();
 	context.subscriptions.push(modelStatusBarItem);
+
+	// Create status bar item for profile selection (next to model selector)
+	const profileStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 99);
+	profileStatusBarItem.command = 'ollama-code-review.selectProfile';
+	updateProfileStatusBar(profileStatusBarItem, context);
+	profileStatusBarItem.show();
+	context.subscriptions.push(profileStatusBarItem);
+
+	// Register profile selection command
+	const selectProfileCommand = vscode.commands.registerCommand('ollama-code-review.selectProfile', async () => {
+		const profiles = getAllProfiles(context);
+		const currentName = getActiveProfileName(context);
+
+		const items = profiles.map(p => ({
+			label: p.name === currentName ? `$(check) ${p.name}` : p.name,
+			description: p.description,
+			detail: `${p.severity} severity | ${p.focusAreas.length} focus areas${p.includeExplanations ? ' | detailed explanations' : ''}`,
+			profileName: p.name
+		}));
+
+		// Add management options at the bottom
+		items.push(
+			{ label: '', description: '', detail: '', profileName: '' } as any, // separator
+			{ label: '$(add) Create Custom Profile...', description: 'Define a new review profile', detail: '', profileName: '__create__' },
+			{ label: '$(trash) Delete Custom Profile...', description: 'Remove a user-defined profile', detail: '', profileName: '__delete__' }
+		);
+
+		const selected = await vscode.window.showQuickPick(items, {
+			placeHolder: `Current: ${currentName} | Select a review profile`,
+			matchOnDescription: true,
+			matchOnDetail: true
+		});
+
+		if (!selected || !selected.profileName) {
+			return;
+		}
+
+		if (selected.profileName === '__create__') {
+			const name = await vscode.window.showInputBox({
+				prompt: 'Profile name (lowercase, no spaces)',
+				placeHolder: 'e.g., api-review',
+				validateInput: (v) => {
+					if (!v || !v.trim()) { return 'Name is required'; }
+					if (/\s/.test(v)) { return 'No spaces allowed'; }
+					if (v !== v.toLowerCase()) { return 'Must be lowercase'; }
+					return undefined;
+				}
+			});
+			if (!name) { return; }
+
+			const description = await vscode.window.showInputBox({
+				prompt: 'Short description',
+				placeHolder: 'e.g., Focus on REST API design and error handling'
+			});
+			if (description === undefined) { return; }
+
+			const focusInput = await vscode.window.showInputBox({
+				prompt: 'Focus areas (comma-separated)',
+				placeHolder: 'e.g., REST conventions, Error responses, Input validation'
+			});
+			if (!focusInput) { return; }
+
+			const severityPick = await vscode.window.showQuickPick(
+				['lenient', 'balanced', 'strict'],
+				{ placeHolder: 'Severity level' }
+			);
+			if (!severityPick) { return; }
+
+			const newProfile: ReviewProfile = {
+				name,
+				description: description || name,
+				focusAreas: focusInput.split(',').map(s => s.trim()).filter(Boolean),
+				severity: severityPick as 'lenient' | 'balanced' | 'strict',
+				includeExplanations: severityPick !== 'strict'
+			};
+
+			await saveCustomProfile(context, newProfile);
+			await setActiveProfileName(context, name);
+			updateProfileStatusBar(profileStatusBarItem, context);
+			vscode.window.showInformationMessage(`Created and activated profile: ${name}`);
+			return;
+		}
+
+		if (selected.profileName === '__delete__') {
+			const customProfiles = getAllProfiles(context).filter(
+				p => !BUILTIN_PROFILES.some(b => b.name === p.name)
+			);
+			if (customProfiles.length === 0) {
+				vscode.window.showInformationMessage('No custom profiles to delete.');
+				return;
+			}
+			const toDelete = await vscode.window.showQuickPick(
+				customProfiles.map(p => ({ label: p.name, description: p.description })),
+				{ placeHolder: 'Select a custom profile to delete' }
+			);
+			if (toDelete) {
+				const deleted = await deleteCustomProfile(context, toDelete.label);
+				if (deleted) {
+					updateProfileStatusBar(profileStatusBarItem, context);
+					vscode.window.showInformationMessage(`Deleted profile: ${toDelete.label}`);
+				}
+			}
+			return;
+		}
+
+		await setActiveProfileName(context, selected.profileName);
+		updateProfileStatusBar(profileStatusBarItem, context);
+		vscode.window.showInformationMessage(`Review profile changed to: ${selected.profileName}`);
+	});
+	context.subscriptions.push(selectProfileCommand);
 
 	// Register model selection command
 	const selectModelCommand = vscode.commands.registerCommand('ollama-code-review.selectModel', async () => {
@@ -2004,6 +2134,11 @@ async function runReview(diff: string, context: vscode.ExtensionContext) {
 			}
 		}
 
+		// Attach active profile to metrics for display
+		if (metrics) {
+			metrics.activeProfile = getActiveProfileName(context);
+		}
+
 		progress.report({ message: "Displaying review..." });
 		OllamaReviewPanel.createOrShow(review, filteredDiff, context, metrics);
 	});
@@ -2032,6 +2167,13 @@ async function getOllamaReview(diff: string, context?: vscode.ExtensionContext):
 		}
 	}
 
+	// Build profile context
+	let profileContext = '';
+	if (context) {
+		const profile = getActiveProfile(context);
+		profileContext = buildProfilePromptContext(profile);
+	}
+
 	// Read custom prompt template from settings, fall back to built-in default
 	const promptTemplate = config.get<string>('prompt.review', '') || DEFAULT_REVIEW_PROMPT;
 
@@ -2039,6 +2181,7 @@ async function getOllamaReview(diff: string, context?: vscode.ExtensionContext):
 		code: diff,
 		frameworks: frameworksList,
 		skills: skillContext,
+		profile: profileContext,
 	};
 
 	let prompt = resolvePrompt(promptTemplate, variables);
@@ -2046,6 +2189,11 @@ async function getOllamaReview(diff: string, context?: vscode.ExtensionContext):
 	// Safety: if the user's custom template omits ${skills} but skills are active, append them
 	if (skillContext && !promptTemplate.includes('${skills}')) {
 		prompt += '\n' + skillContext;
+	}
+
+	// Safety: if the user's custom template omits ${profile} but a non-general profile is active, append it
+	if (profileContext && !promptTemplate.includes('${profile}')) {
+		prompt += '\n' + profileContext;
 	}
 
 

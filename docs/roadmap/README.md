@@ -30,13 +30,13 @@ Several features have been completed — both from the original roadmap and orga
                    Performance Metrics (per-provider token/duration tracking)
                    Interactive Chat (multi-turn follow-ups in review panel)
                    HF Model Picker (recent/popular/custom submenu)
+                   Review Profiles & Presets (F-001) — 6 built-in + custom
 ```
 
 ## Remaining Roadmap
 
 ```
-Next (v3.1) ────── Review Profiles & Presets (F-001)
-       │           Export Options (F-003)
+Next (v3.1) ────── Export Options (F-003)
        │
 v3.5 ──────────── GitHub PR Integration (F-004)
        │           Customizable Prompts remainder (F-006, .yaml config)
@@ -54,7 +54,6 @@ v5.0 ──────────── RAG-Enhanced Reviews (F-009)
 
 | Priority | Impact | Effort | Features |
 |----------|--------|--------|----------|
-| 🔴 P0 | High | Medium | F-001: Review Profiles |
 | 🟠 P1 | High | Low | F-003: Export Options |
 | 🟠 P1 | High | High | F-004: GitHub PR Integration |
 | 🟡 P2 | High | High | F-007: Agentic Reviews, F-008: Multi-File Analysis |
@@ -63,7 +62,7 @@ v5.0 ──────────── RAG-Enhanced Reviews (F-009)
 ## Current Status
 
 - **Current Version:** 3.0.0
-- **Next Milestone:** v3.1.0 (Review Profiles + Export Options)
+- **Next Milestone:** v3.1.0 (Export Options)
 - **Target Release:** Q1 2026
 
 ---
