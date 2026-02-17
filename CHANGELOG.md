@@ -1,3 +1,10 @@
+# [3.1.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.0.0...v3.1.0) (2026-02-17)
+
+
+### Features
+
+* **profiles:** implement review profiles & presets (F-001) ([7e4d4c5](https://github.com/glorynguyen/ollama-code-review/commit/7e4d4c5bdf0e05709ebd608bb0d5c6313bacad17))
+
 # [3.0.0](https://github.com/glorynguyen/ollama-code-review/compare/v2.1.0...v3.0.0) (2026-02-13)
 
 
