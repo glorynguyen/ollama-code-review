@@ -541,16 +541,27 @@ See [docs/roadmap/](./docs/roadmap/) for comprehensive planning documents:
 | Document | Purpose |
 |----------|---------|
 | [README.md](./docs/roadmap/README.md) | Roadmap overview, phases, priorities |
-| [FEATURES.md](./docs/roadmap/FEATURES.md) | Detailed feature specifications (F-001 to F-012) |
+| [FEATURES.md](./docs/roadmap/FEATURES.md) | Detailed feature specifications (F-001 to F-012, S-001 to S-005) |
 | [ARCHITECTURE.md](./docs/roadmap/ARCHITECTURE.md) | Technical architecture decisions (ADRs) |
 
-### Key Planned Features
+### Shipped Features
+
+| Feature | ID | Shipped |
+|---------|----|---------|
+| Smart Diff Filtering | F-002 | v1.x |
+| Inline Code Actions (Explain, Tests, Fix, Docs) | F-005 | v1.18 |
+| Customizable Prompts (settings, partial — no .yaml) | F-006 | v2.1 |
+| Multi-Provider Cloud Support (7 providers) | S-001 | v1.10–v1.16 |
+| Agent Skills System (multi-repo, multi-skill) | S-002 | v1.18–v1.20 |
+| Performance Metrics (per-provider) | S-003 | v1.15 |
+| Interactive Chat (multi-turn follow-ups) | S-004 | v1.7 |
+| HF Model Picker (recent/popular/custom) | S-005 | v1.15 |
+
+### Remaining Planned Features
 
 | Phase | Features | Target |
 |-------|----------|--------|
-| v2.0 | Review Profiles, Export Options | Q1 2026 |
-| v2.5 | GitHub PR Integration, ~~Inline Code Actions~~ ✓, ~~Custom Prompts~~ ✓ | Q2 2026 |
-| v3.0 | Agentic Multi-Step Reviews, RAG-Enhanced Reviews | Q3 2026 |
-| v4.0 | CI/CD Integration, Analytics, Team Knowledge Base | Q4 2026 |
-
-**Note:** Inline Code Actions (F-005), Custom Prompt Templates (F-013), and Smart Diff Filtering (F-002) have been implemented ahead of schedule.
+| v3.1 | Review Profiles (F-001), Export Options (F-003) | Q1 2026 |
+| v3.5 | GitHub PR Integration (F-004), F-006 remainder (.yaml config) | Q2 2026 |
+| v4.0 | Agentic Multi-Step Reviews (F-007), Multi-File Analysis (F-008) | Q3 2026 |
+| v5.0 | RAG (F-009), CI/CD (F-010), Analytics (F-011), Knowledge Base (F-012) | Q4 2026 |

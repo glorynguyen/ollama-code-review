@@ -1,7 +1,7 @@
 # Architecture Decision Records
 
-> **Document Version:** 1.0.0
-> **Last Updated:** 2025-01-29
+> **Document Version:** 2.0.0
+> **Last Updated:** 2026-02-17
 
 This document captures architectural decisions for future features. Each decision follows the ADR format for clarity and traceability.
 
@@ -102,15 +102,20 @@ class AgentOrchestrator {
 
 | Attribute | Value |
 |-----------|-------|
-| **Status** | Accepted |
+| **Status** | Accepted (implemented differently — see note) |
 | **Date** | 2025-01-29 |
-| **Related Features** | All |
+| **Updated** | 2026-02-17 |
+| **Related Features** | All, S-001 |
 
 ### Context
 
 The extension supports both local Ollama models and cloud APIs. We need a consistent strategy for handling both, including fallback behavior.
 
-### Decision
+### Implementation Note (2026-02-17)
+
+The multi-provider support was implemented in v1.10–v1.16 using **per-provider function pairs** (`isXxxModel()` + `callXxxAPI()`) in `src/extension.ts` rather than the formal `ModelProvider` interface proposed below. This works well for 7 providers but the proposed abstraction may become valuable if more providers are added or if the agent system (F-007) requires a unified interface.
+
+### Original Decision
 
 Implement a **provider abstraction** that unifies local and cloud processing:
 
