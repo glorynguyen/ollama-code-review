@@ -1,7 +1,7 @@
 # Feature Specifications
 
-> **Document Version:** 1.0.0
-> **Last Updated:** 2025-01-29
+> **Document Version:** 2.0.0
+> **Last Updated:** 2026-02-17
 
 This document contains detailed specifications for each planned feature. Each feature has a unique ID for tracking and reference.
 
@@ -9,10 +9,107 @@ This document contains detailed specifications for each planned feature. Each fe
 
 ## Table of Contents
 
+- [Shipped Features (Not in Original Roadmap)](#shipped-features-not-in-original-roadmap)
 - [Phase 1: Foundation Enhancements](#phase-1-foundation-enhancements-v20)
 - [Phase 2: Workflow Integration](#phase-2-workflow-integration-v25)
 - [Phase 3: Intelligence Layer](#phase-3-intelligence-layer-v30)
 - [Phase 4: Enterprise Features](#phase-4-enterprise-features-v40)
+
+---
+
+## Shipped Features (Not in Original Roadmap)
+
+The following significant features were implemented organically during development and were not part of the original roadmap. They are documented here for completeness.
+
+### S-001: Multi-Provider Cloud Model Support
+
+| Attribute | Value |
+|-----------|-------|
+| **ID** | S-001 |
+| **Status** | ✅ Complete |
+| **Shipped** | v1.10.0 – v1.16.0 (Jan 2026) |
+
+Seven cloud/local providers fully integrated with dedicated API callers, model detection, and token counting:
+
+| Provider | Models | API Key Setting |
+|----------|--------|-----------------|
+| Ollama (local) | Any locally available model | N/A |
+| Claude (Anthropic) | claude-sonnet-4, claude-opus-4, claude-3.7-sonnet | `claudeApiKey` |
+| GLM (Z.AI) | glm-4.7-flash, glm-4.7:cloud | `glmApiKey` |
+| Hugging Face | 7+ popular models + custom | `hfApiKey` |
+| Gemini (Google AI) | gemini-2.5-flash, gemini-2.5-pro | `geminiApiKey` |
+| Mistral AI | mistral-large, mistral-small, codestral | `mistralApiKey` |
+| MiniMax | MiniMax-M2.5 | `minimaxApiKey` |
+
+**Implementation:** Model detection functions (`isClaudeModel()`, etc.) and dedicated API callers (`callClaudeAPI()`, etc.) in `src/extension.ts`.
+
+---
+
+### S-002: Agent Skills System
+
+| Attribute | Value |
+|-----------|-------|
+| **ID** | S-002 |
+| **Status** | ✅ Complete |
+| **Shipped** | v1.18.0 – v1.20.0 (Jan–Feb 2026) |
+
+Download and apply AI agent skills from GitHub repositories to augment review prompts.
+
+**Key capabilities:**
+- Multi-skill selection with QuickPick dialog (numbered headers in prompts)
+- Multi-repository support (default + additional repos configurable)
+- Skills browser webview with search filtering and repo source display
+- Local caching in extension global storage with YAML frontmatter parsing
+- Dynamic ESM import for `@octokit/rest`
+
+**Files:** `src/skillsService.ts` (593 lines), `src/skillsBrowserPanel.ts` (516 lines)
+**Commands:** `browseAgentSkills`, `applySkillToReview`, `clearSelectedSkills`
+
+---
+
+### S-003: Performance Metrics System
+
+| Attribute | Value |
+|-----------|-------|
+| **ID** | S-003 |
+| **Status** | ✅ Complete |
+| **Shipped** | v1.15.0 (Jan 2026) |
+
+Captures and displays per-provider performance metrics in a collapsible "System Info" panel in the review webview.
+
+**Metrics by provider:** Token counts (input/output), duration, tokens/sec (Ollama), VRAM usage (Ollama), rate limit info (HF).
+
+**Implementation:** `PerformanceMetrics` interface in `src/extension.ts`, display logic in `src/reviewProvider.ts`.
+
+---
+
+### S-004: Interactive Chat in Review Panel
+
+| Attribute | Value |
+|-----------|-------|
+| **ID** | S-004 |
+| **Status** | ✅ Complete |
+| **Shipped** | v1.7.0 (Jan 2026) |
+
+Multi-turn follow-up questions on review results with conversation history tracking.
+
+**Supports:** Claude, MiniMax, and Ollama providers for chat follow-ups. System message injects original diff context. Multi-skill guidelines included in follow-up prompts.
+
+**Implementation:** `_conversationHistory` and `_getFollowUpResponse()` in `src/reviewProvider.ts`.
+
+---
+
+### S-005: Hugging Face Model Picker
+
+| Attribute | Value |
+|-----------|-------|
+| **ID** | S-005 |
+| **Status** | ✅ Complete |
+| **Shipped** | v1.15.0 (Jan 2026) |
+
+Submenu for HF model selection with recently used models (stored in globalState), configurable popular models list, and custom model input.
+
+**Implementation:** `showHfModelPicker()`, `getRecentHfModels()`, `addRecentHfModel()` in `src/extension.ts`.
 
 ---
 
@@ -316,45 +413,34 @@ Integrate directly with GitHub Pull Requests to post review comments, suggest ch
 | **ID** | F-005 |
 | **Priority** | 🟠 P1 |
 | **Effort** | Medium (3-4 days) |
-| **Status** | 📋 Planned |
+| **Status** | ✅ Complete |
+| **Shipped** | v1.18.0 (Jan 2026) |
 | **Dependencies** | None |
 
 #### Description
 
-Extend the existing lightbulb suggestions with more powerful inline actions that can apply AI-suggested fixes directly.
+Four AI-powered code actions accessible via the lightbulb menu, context menu, or `Ctrl+.`.
 
-#### New Actions
+#### Implemented Actions
 
-| Action | Trigger | Description |
-|--------|---------|-------------|
-| Fix This Issue | Review finding | Apply AI fix to specific issue |
-| Explain This Code | Selection | Get detailed explanation |
-| Generate Tests | Function | Create unit tests |
-| Refactor Selection | Selection | Suggest refactoring options |
-| Add Documentation | Function/Class | Generate JSDoc/TSDoc |
+| Action | Provider | File | Lines |
+|--------|----------|------|-------|
+| Explain Code | `ExplainCodeActionProvider` | `src/codeActions/explainAction.ts` | 160 |
+| Generate Tests | `GenerateTestsActionProvider` | `src/codeActions/testAction.ts` | 367 |
+| Fix Issue | `FixIssueActionProvider` | `src/codeActions/fixAction.ts` | 422 |
+| Add Documentation | `AddDocumentationActionProvider` | `src/codeActions/documentAction.ts` | 369 |
 
-#### Implementation Approach
+Each action has a dedicated webview preview panel. Fix tracking via `FixTracker` singleton. Test generation includes framework detection (`detectTestFramework()`). Documentation supports JSDoc vs TSDoc based on file type.
 
-1. Register `CodeActionProvider` for each action type
-2. On action trigger, call AI with specific prompt
-3. Show diff preview before applying
-4. Track applied fixes in review panel
-
-#### Files to Modify
-
-- `src/extension.ts` - Register code action providers
-- New: `src/codeActions/fixAction.ts`
-- New: `src/codeActions/explainAction.ts`
-- New: `src/codeActions/testAction.ts`
-- `src/reviewProvider.ts` - Track applied fixes
+**Shared types:** `src/codeActions/types.ts` (103 lines) — `CodeActionResult`, `TestGenerationResult`, `DocumentationResult`, parsing utilities.
 
 #### Acceptance Criteria
 
-- [ ] "Fix This Issue" applies changes with preview
-- [ ] "Explain This Code" shows explanation panel
-- [ ] "Generate Tests" creates test file
-- [ ] Actions available in context menu
-- [ ] Actions available via lightbulb
+- [x] "Fix This Issue" applies changes with diff preview
+- [x] "Explain This Code" shows explanation panel with syntax highlighting
+- [x] "Generate Tests" creates test file with framework detection
+- [x] "Add Documentation" generates JSDoc/TSDoc with preview
+- [x] Actions available in context menu and via lightbulb
 
 ---
 
@@ -365,74 +451,37 @@ Extend the existing lightbulb suggestions with more powerful inline actions that
 | **ID** | F-006 |
 | **Priority** | 🟠 P1 |
 | **Effort** | Low (1-2 days) |
-| **Status** | 📋 Planned |
-| **Dependencies** | F-001 (profiles use prompts) |
+| **Status** | ✅ Complete (partial — settings only, no `.yaml` file support) |
+| **Shipped** | v2.1.0 (Feb 2026) |
+| **Dependencies** | None |
 
 #### Description
 
-Allow users to customize the system prompts used for reviews, commit messages, and suggestions. Support workspace-level configuration.
+Users can customize the system prompts used for reviews and commit messages via VS Code settings with variable interpolation.
 
-#### Configuration Locations
+#### What Was Implemented
 
-1. **User Settings** - Global defaults
-2. **Workspace Settings** - Project-specific overrides
-3. **`.ollama-review.yaml`** - Checked into repo (team sharing)
+**Settings (in `package.json`):**
+- `ollama-code-review.prompt.review` — Custom review prompt template (multiline text)
+- `ollama-code-review.prompt.commitMessage` — Custom commit message prompt template
 
-#### Config File Schema
+**Template variables:** `${code}`, `${frameworks}`, `${skills}`, `${diff}`, `${draftMessage}`
 
-```yaml
-# .ollama-review.yaml
-version: 1
+**Implementation:** `resolvePrompt(template, variables)` in `src/utils.ts` replaces `${variable}` placeholders. Agent skills are always appended if `${skills}` placeholder is missing from the template.
 
-prompts:
-  review:
-    system: |
-      You are a senior {framework} developer reviewing code.
-      Focus on: {focusAreas}
-      Project context: {projectContext}
+#### What Was NOT Implemented (remaining scope)
 
-  commitMessage:
-    system: |
-      Generate conventional commit messages.
-      Scope options: {scopes}
-
-  suggestion:
-    system: |
-      Suggest improvements for the selected code.
-
-variables:
-  framework: React
-  scopes: [feat, fix, docs, style, refactor, test, chore]
-  projectContext: E-commerce platform using Next.js
-
-profiles:
-  security:
-    focusAreas:
-      - SQL injection
-      - XSS vulnerabilities
-      - Authentication issues
-      - Secret exposure
-```
-
-#### Implementation Notes
-
-1. Load config hierarchy: defaults → user → workspace → file
-2. Support variable interpolation in prompts
-3. Validate config schema on load
-4. Provide snippets/templates for common customizations
-
-#### Files to Modify
-
-- New: `src/config/promptLoader.ts` - Load and merge configs
-- `src/extension.ts` - Use loaded prompts
-- `package.json` - Add schema for settings
+- `.ollama-review.yaml` config file loading (team sharing via repo)
+- Config hierarchy: defaults → user → workspace → file
+- Schema validation for config files
+- `src/config/promptLoader.ts` module
 
 #### Acceptance Criteria
 
-- [ ] User can override prompts in settings
-- [ ] `.ollama-review.yaml` loaded if present
-- [ ] Variables interpolated correctly
-- [ ] Invalid config shows helpful errors
+- [x] User can override prompts in settings
+- [ ] `.ollama-review.yaml` loaded if present *(not implemented)*
+- [x] Variables interpolated correctly
+- [ ] Invalid config shows helpful errors *(not applicable yet)*
 
 ---
 
@@ -879,20 +928,25 @@ rules:
 
 ### Feature ID Reference
 
-| ID | Feature | Phase | Status |
-|----|---------|-------|--------|
-| F-001 | Review Profiles | 1 | 📋 Planned |
-| F-002 | Smart Diff Filtering | 1 | ✅ Complete |
-| F-003 | Export Options | 1 | 📋 Planned |
-| F-004 | GitHub PR Integration | 2 | 📋 Planned |
-| F-005 | Inline Code Actions | 2 | 📋 Planned |
-| F-006 | Customizable Prompts | 2 | 📋 Planned |
-| F-007 | Agentic Multi-Step Reviews | 3 | 📋 Planned |
-| F-008 | Multi-File Contextual Analysis | 3 | 📋 Planned |
-| F-009 | RAG-Enhanced Reviews | 3 | 📋 Planned |
-| F-010 | CI/CD Integration | 4 | 📋 Planned |
-| F-011 | Review History & Analytics | 4 | 📋 Planned |
-| F-012 | Team Knowledge Base | 4 | 📋 Planned |
+| ID | Feature | Phase | Status | Shipped |
+|----|---------|-------|--------|---------|
+| S-001 | Multi-Provider Cloud Support | — | ✅ Complete | v1.10–v1.16 |
+| S-002 | Agent Skills System | — | ✅ Complete | v1.18–v1.20 |
+| S-003 | Performance Metrics | — | ✅ Complete | v1.15 |
+| S-004 | Interactive Chat | — | ✅ Complete | v1.7 |
+| S-005 | HF Model Picker | — | ✅ Complete | v1.15 |
+| F-001 | Review Profiles | 1 | 📋 Planned | — |
+| F-002 | Smart Diff Filtering | 1 | ✅ Complete | v1.x |
+| F-003 | Export Options | 1 | 📋 Planned | — |
+| F-004 | GitHub PR Integration | 2 | 📋 Planned | — |
+| F-005 | Inline Code Actions | 2 | ✅ Complete | v1.18 |
+| F-006 | Customizable Prompts | 2 | ✅ Complete (partial) | v2.1 |
+| F-007 | Agentic Multi-Step Reviews | 3 | 📋 Planned | — |
+| F-008 | Multi-File Contextual Analysis | 3 | 📋 Planned | — |
+| F-009 | RAG-Enhanced Reviews | 3 | 📋 Planned | — |
+| F-010 | CI/CD Integration | 4 | 📋 Planned | — |
+| F-011 | Review History & Analytics | 4 | 📋 Planned | — |
+| F-012 | Team Knowledge Base | 4 | 📋 Planned | — |
 
 ### Effort Estimation Guide
 
@@ -902,11 +956,24 @@ rules:
 | Medium | 3-5 | Multiple files, some complexity |
 | High | 5-10 | New subsystem, significant complexity |
 
-### Version Mapping
+### Version Mapping (Revised)
+
+**Actual shipping history (v1.x → v3.0.0):**
+
+| Version | Features Shipped | Date |
+|---------|-----------------|------|
+| v1.7.0 | S-004: Interactive Chat | Jan 2026 |
+| v1.10–v1.16 | S-001: Multi-Provider Cloud Support | Jan 2026 |
+| v1.15.0 | S-003: Performance Metrics, S-005: HF Model Picker | Jan 2026 |
+| v1.18.0 | F-005: Inline Code Actions, S-002: Agent Skills | Jan 2026 |
+| v2.1.0 | F-006: Customizable Prompts (partial) | Feb 2026 |
+| v3.0.0 | S-001: MiniMax provider added | Feb 2026 |
+
+**Remaining roadmap (revised targets):**
 
 | Version | Features | Target |
 |---------|----------|--------|
-| v2.0.0 | F-001, F-002, F-003 | Q2 2025 |
-| v2.5.0 | F-004, F-005, F-006 | Q3 2025 |
-| v3.0.0 | F-007, F-008, F-009 | Q4 2025 |
-| v4.0.0 | F-010, F-011, F-012 | Q1 2026 |
+| v3.1.0 | F-001 (Review Profiles), F-003 (Export Options) | Q1 2026 |
+| v3.5.0 | F-004 (GitHub PR Integration), F-006 remainder (.yaml config) | Q2 2026 |
+| v4.0.0 | F-007 (Agentic Reviews), F-008 (Multi-File Analysis) | Q3 2026 |
+| v5.0.0 | F-009 (RAG), F-010 (CI/CD), F-011 (Analytics), F-012 (Knowledge Base) | Q4 2026 |
