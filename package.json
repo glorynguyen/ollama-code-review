@@ -101,6 +101,11 @@
         "command": "ollama-code-review.addDocumentation",
         "category": "Ollama Code Review",
         "title": "Add Documentation"
+      },
+      {
+        "command": "ollama-code-review.selectProfile",
+        "title": "Select Review Profile",
+        "category": "Ollama Code Review"
       }
     ],
     "menus": {
@@ -325,11 +330,46 @@
             }
           }
         },
+        "ollama-code-review.customProfiles": {
+          "type": "array",
+          "default": [],
+          "markdownDescription": "Custom review profiles that override or extend the built-in profiles (`general`, `security`, `performance`, `accessibility`, `educational`, `strict`). Each profile adjusts the AI's focus area and severity level.",
+          "items": {
+            "type": "object",
+            "required": ["name", "focusAreas"],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Unique profile name (lowercase, no spaces)"
+              },
+              "description": {
+                "type": "string",
+                "description": "Short description of what this profile focuses on"
+              },
+              "focusAreas": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "List of focus areas for the AI to prioritize"
+              },
+              "severity": {
+                "type": "string",
+                "enum": ["lenient", "balanced", "strict"],
+                "default": "balanced",
+                "description": "How strict the review should be"
+              },
+              "includeExplanations": {
+                "type": "boolean",
+                "default": true,
+                "description": "Whether to include detailed explanations for each finding"
+              }
+            }
+          }
+        },
         "ollama-code-review.prompt.review": {
           "type": "string",
           "editPresentation": "multilineText",
           "default": "You are an expert software engineer and code reviewer with deep knowledge of the following frameworks and libraries: **${frameworks}**.\nYour task is to analyze the following code changes (in git diff format) and provide constructive, actionable feedback tailored to the conventions, best practices, and common pitfalls of these technologies.\n${skills}\n**How to Read the Git Diff Format:**\n- Lines starting with `---` and `+++` indicate the file names before and after the changes.\n- Lines starting with `@@` (e.g., `@@ -15,7 +15,9 @@`) denote the location of the changes within the file.\n- Lines starting with a `-` are lines that were DELETED.\n- Lines starting with a `+` are lines that were ADDED.\n- Lines without a prefix (starting with a space) are for context and have not been changed. **Please focus your review on the added (`+`) and deleted (`-`) lines.**\n\n**Review Focus:**\n- Potential bugs or logical errors specific to the frameworks/libraries (${frameworks}).\n- Performance optimizations, considering framework-specific patterns.\n- Code style inconsistencies or deviations from ${frameworks} best practices.\n- Security vulnerabilities, especially those common in ${frameworks}.\n- Improvements to maintainability and readability, aligned with ${frameworks} conventions.\n\n**Feedback Requirements:**\n1. Explain any issues clearly and concisely, referencing ${frameworks} where relevant.\n2. Suggest specific code changes or improvements. Include code snippets for examples where appropriate.\n3. Use Markdown for clear formatting.\n\nIf you find no issues, please respond with the single sentence: \"I have reviewed the changes and found no significant issues.\"\n\nHere is the code diff to review:\n---\n${code}\n---",
-          "markdownDescription": "Custom prompt template for code reviews. Available variables:\n- `${code}` - The git diff to review\n- `${frameworks}` - Comma-separated list of selected frameworks\n- `${skills}` - Applied agent skills content\n\nLeave empty to use the built-in default prompt."
+          "markdownDescription": "Custom prompt template for code reviews. Available variables:\n- `${code}` - The git diff to review\n- `${frameworks}` - Comma-separated list of selected frameworks\n- `${skills}` - Applied agent skills content\n- `${profile}` - Active review profile context (focus areas, severity)\n\nLeave empty to use the built-in default prompt."
         },
         "ollama-code-review.prompt.commitMessage": {
           "type": "string",

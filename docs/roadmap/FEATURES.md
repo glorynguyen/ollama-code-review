@@ -122,66 +122,42 @@ Submenu for HF model selection with recently used models (stored in globalState)
 | **ID** | F-001 |
 | **Priority** | 🔴 P0 |
 | **Effort** | Medium (2-3 days) |
-| **Status** | 📋 Planned |
+| **Status** | ✅ Complete |
+| **Shipped** | v3.1.0 (Feb 2026) |
 | **Dependencies** | None |
 
 #### Description
 
-Add predefined review profiles that adjust the AI's focus area. Users can switch profiles based on their current needs (security audit, performance review, etc.).
+Six built-in review profiles that adjust the AI's focus area and severity level, plus support for user-defined custom profiles.
 
-#### Proposed Profiles
+#### Built-in Profiles
 
-| Profile | Focus Areas | Use Case |
+| Profile | Focus Areas | Severity |
 |---------|-------------|----------|
-| `general` | Best practices, readability, bugs | Default everyday reviews |
-| `security` | Vulnerabilities, injection, auth, secrets | Pre-deployment audits |
-| `performance` | Memory leaks, N+1 queries, complexity | Optimization passes |
-| `accessibility` | ARIA, keyboard nav, color contrast | UI/UX compliance |
-| `educational` | Detailed explanations, learning focus | Junior developers |
-| `strict` | All issues, no mercy | Critical code paths |
+| `general` | Best practices, readability, bugs, naming | balanced |
+| `security` | Injection, XSS/CSRF, auth, secrets, crypto, path traversal | strict |
+| `performance` | Memory leaks, N+1 queries, complexity, re-renders, caching | balanced |
+| `accessibility` | ARIA, keyboard nav, color contrast, screen readers, semantic HTML | balanced |
+| `educational` | Readability, design patterns, pitfalls, idioms, testing | lenient |
+| `strict` | All issues including edge cases, types, coverage, docs | strict |
 
-#### Configuration Schema
+#### Implementation
 
-```json
-{
-  "ollama-code-review.profile": {
-    "type": "string",
-    "enum": ["general", "security", "performance", "accessibility", "educational", "strict", "custom"],
-    "default": "general"
-  },
-  "ollama-code-review.customProfile": {
-    "type": "object",
-    "properties": {
-      "name": { "type": "string" },
-      "focusAreas": { "type": "array", "items": { "type": "string" } },
-      "severity": { "type": "string", "enum": ["lenient", "balanced", "strict"] },
-      "includeExplanations": { "type": "boolean" }
-    }
-  }
-}
-```
-
-#### Implementation Notes
-
-1. Create `src/profiles/` directory with profile definitions
-2. Add profile selector to status bar (next to model selector)
-3. Modify prompt templates in `getOllamaReview()` to include profile context
-4. Store last-used profile in workspace state
-
-#### Files to Modify
-
-- `src/extension.ts` - Add profile selection command
-- `src/reviewProvider.ts` - Display active profile in webview
-- `package.json` - Add configuration schema
-- New: `src/profiles/index.ts` - Profile definitions
+- **Module:** `src/profiles.ts` — profile types, built-in definitions, CRUD for custom profiles, prompt context builder
+- **Status bar:** Profile selector item (shield icon) next to model selector, click to switch
+- **Command:** `ollama-code-review.selectProfile` — QuickPick with all profiles, create/delete custom profiles
+- **Prompt integration:** `${profile}` template variable injected into review prompts; auto-appended if not in custom template
+- **Webview:** Active profile shown in System Info panel (when non-general)
+- **Persistence:** Active profile name stored in `globalState`; custom profiles stored in `globalState` + `customProfiles` setting
+- **Config:** `ollama-code-review.customProfiles` array setting for defining profiles in settings.json
 
 #### Acceptance Criteria
 
-- [ ] User can select profile from command palette
-- [ ] Profile shown in status bar
-- [ ] Reviews reflect profile focus areas
-- [ ] Custom profiles can be defined in settings
-- [ ] Profile persists across sessions
+- [x] User can select profile from command palette
+- [x] Profile shown in status bar
+- [x] Reviews reflect profile focus areas
+- [x] Custom profiles can be defined in settings
+- [x] Profile persists across sessions
 
 ---
 
@@ -935,7 +911,7 @@ rules:
 | S-003 | Performance Metrics | — | ✅ Complete | v1.15 |
 | S-004 | Interactive Chat | — | ✅ Complete | v1.7 |
 | S-005 | HF Model Picker | — | ✅ Complete | v1.15 |
-| F-001 | Review Profiles | 1 | 📋 Planned | — |
+| F-001 | Review Profiles | 1 | ✅ Complete | v3.1 |
 | F-002 | Smart Diff Filtering | 1 | ✅ Complete | v1.x |
 | F-003 | Export Options | 1 | 📋 Planned | — |
 | F-004 | GitHub PR Integration | 2 | 📋 Planned | — |
@@ -973,7 +949,7 @@ rules:
 
 | Version | Features | Target |
 |---------|----------|--------|
-| v3.1.0 | F-001 (Review Profiles), F-003 (Export Options) | Q1 2026 |
+| v3.1.0 | F-001 (Review Profiles), F-003 (Export Options) | Q1 2026 (F-001 done) |
 | v3.5.0 | F-004 (GitHub PR Integration), F-006 remainder (.yaml config) | Q2 2026 |
 | v4.0.0 | F-007 (Agentic Reviews), F-008 (Multi-File Analysis) | Q3 2026 |
 | v5.0.0 | F-009 (RAG), F-010 (CI/CD), F-011 (Analytics), F-012 (Knowledge Base) | Q4 2026 |
