@@ -3,7 +3,7 @@
 ## Project Overview
 
 - **Name:** Ollama Code Review VS Code Extension
-- **Version:** 3.4.0
+- **Version:** 3.5.0
 - **Purpose:** AI-powered code reviews and commit message generation using local Ollama or cloud models
 - **Author:** Vinh Nguyen (vincent)
 - **License:** MIT
@@ -111,6 +111,9 @@ out/                      # Compiled JavaScript output
 | `ollama-code-review.geminiApiKey` | `""` | Google AI Studio API key for Gemini models |
 | `ollama-code-review.mistralApiKey` | `""` | Mistral AI API key for Mistral models |
 | `ollama-code-review.minimaxApiKey` | `""` | MiniMax API key for MiniMax models |
+| `ollama-code-review.openaiCompatible.endpoint` | `http://localhost:1234/v1` | Base URL for OpenAI-compatible server (LM Studio, vLLM, LocalAI, Groq, OpenRouter, etc.) |
+| `ollama-code-review.openaiCompatible.apiKey` | `""` | API key for OpenAI-compatible endpoint (leave empty for local servers) |
+| `ollama-code-review.openaiCompatible.model` | `""` | Model name to request from the OpenAI-compatible endpoint |
 | `ollama-code-review.endpoint` | `http://localhost:11434/api/generate` | Ollama API endpoint |
 | `ollama-code-review.temperature` | `0` | Model temperature (0-1) |
 | `ollama-code-review.frameworks` | `["React"]` | Target frameworks for context |
@@ -182,6 +185,18 @@ The `diffFilter` setting is an object with these properties:
 - `claude-opus-4-20250514` - Claude Opus 4
 - `claude-3-7-sonnet-20250219` - Claude 3.7 Sonnet
 
+### OpenAI-Compatible Servers (F-013)
+- `openai-compatible` — Generic provider for any server exposing `/v1/chat/completions`
+  - When selected from the model picker, a **server picker** appears with presets:
+    - **LM Studio** (`http://localhost:1234/v1`) — default local server
+    - **LocalAI** (`http://localhost:8080/v1`)
+    - **vLLM** (`http://localhost:8000/v1`)
+    - **Groq**, **OpenRouter**, **Together AI** — cloud aggregators
+    - **Custom** — enter any base URL manually
+  - Model name is entered via input box after selecting the server
+  - API key is optional (omitted for local servers without auth)
+  - Configuration stored in `openaiCompatible.endpoint`, `openaiCompatible.apiKey`, `openaiCompatible.model`
+
 ### Local Ollama Models
 Any model available in your local Ollama instance will be auto-discovered. The predefined local model in settings is `qwen2.5-coder:14b-instruct-q4_0`.
 
@@ -207,6 +222,7 @@ Any model available in your local Ollama instance will be auto-discovered. The p
 - **Gemini:** `https://generativelanguage.googleapis.com/v1beta/models`
 - **Mistral:** `https://api.mistral.ai/v1/chat/completions`
 - **MiniMax:** `https://api.minimax.io/v1/text/chatcompletion_v2`
+- **OpenAI-Compatible:** `{openaiCompatible.endpoint}/chat/completions` (user-configured)
 
 ### Git Integration
 - Uses VS Code's built-in Git extension API
@@ -231,6 +247,7 @@ Any model available in your local Ollama instance will be auto-discovered. The p
 - `isGeminiModel()` - Check if model is Gemini
 - `isMistralModel()` - Check if model is Mistral
 - `isMiniMaxModel()` - Check if model is MiniMax
+- `isOpenAICompatibleModel()` - Check if model is OpenAI-compatible (returns `model === 'openai-compatible'`)
 
 ### API Callers
 - `callClaudeAPI()` - Call Anthropic Claude API
@@ -239,6 +256,8 @@ Any model available in your local Ollama instance will be auto-discovered. The p
 - `callGeminiAPI()` - Call Google Gemini API
 - `callMistralAPI()` - Call Mistral AI API
 - `callMiniMaxAPI()` - Call MiniMax API
+- `callOpenAICompatibleAPI()` - Call any OpenAI-compatible endpoint (`/v1/chat/completions`)
+- `showOpenAICompatiblePicker()` - Show server preset picker + model name input for initial configuration
 
 ### Core Workflow
 - `activate()` - Extension entry, command registration, YAML file watcher setup
@@ -482,11 +501,15 @@ interface PerformanceMetrics {
   minimaxInputTokens?: number;
   minimaxOutputTokens?: number;
 
+  // OpenAI-compatible provider-specific
+  openaiCompatibleInputTokens?: number;
+  openaiCompatibleOutputTokens?: number;
+
   // Computed metrics
   tokensPerSecond?: number;
   totalDurationSeconds?: number;
   model?: string;
-  provider?: 'ollama' | 'claude' | 'glm' | 'huggingface' | 'gemini' | 'mistral' | 'minimax';
+  provider?: 'ollama' | 'claude' | 'glm' | 'huggingface' | 'gemini' | 'mistral' | 'minimax' | 'openai-compatible';
 
   // Active model info (Ollama /api/ps)
   activeModel?: {
@@ -509,6 +532,7 @@ interface PerformanceMetrics {
 | Gemini | Input/output tokens |
 | Mistral | Input/output tokens |
 | MiniMax | Input/output tokens |
+| OpenAI-Compatible | Input/output tokens (from `usage.prompt_tokens` / `usage.completion_tokens`) |
 
 ### UI Display (reviewProvider.ts)
 
@@ -738,6 +762,7 @@ formatFindingsAsSummary(findings: ReviewFinding[], model: string): string  // Su
 - PHP files are supported for inline code actions (lightbulb menu) and the context menu suggestion command
 - GitHub auth falls back gracefully through: `gh` CLI → VS Code session → stored `github.token` setting
 - `github.gistToken` falls back to `github.token` if the gist-specific token is not set
+- OpenAI-compatible provider supports any server exposing `/v1/chat/completions` — LM Studio, vLLM, LocalAI, Groq, OpenRouter, Together AI — configured via `openaiCompatible.*` settings; API key is optional for local servers
 
 ## Roadmap & Future Development
 
@@ -767,6 +792,7 @@ See [docs/roadmap/](./docs/roadmap/) for comprehensive planning documents:
 | Project Config File (.ollama-review.yaml, config hierarchy, file watcher) | F-006 (remainder) | v3.4 |
 | PHP Language Support (inline code actions + context menu) | — | v3.4 |
 | Multi-strategy GitHub Auth (gh CLI / VS Code session / token) | — | v3.4 |
+| OpenAI-Compatible Provider (LM Studio, vLLM, LocalAI, Groq, OpenRouter) | F-013 | v3.5 |
 
 ### Remaining Planned Features
 
@@ -774,4 +800,4 @@ See [docs/roadmap/](./docs/roadmap/) for comprehensive planning documents:
 |-------|----------|--------|
 | v4.0 | Agentic Multi-Step Reviews (F-007), Multi-File Analysis (F-008) | Q3 2026 |
 | v5.0 | RAG (F-009), CI/CD (F-010), Analytics (F-011), Knowledge Base (F-012) | Q4 2026 |
-| v6.0 | OpenAI-Compatible Provider (F-013), Pre-Commit Guard (F-014), GitLab & Bitbucket Integration (F-015), Review Quality Scoring & Trends (F-016), Compliance Review Profiles (F-017), Notification Integrations (F-018), Batch / Legacy Code Review (F-019), Architecture Diagram Generation (F-020) | Q1–Q2 2027 |
+| v6.0 | Pre-Commit Guard (F-014), GitLab & Bitbucket Integration (F-015), Review Quality Scoring & Trends (F-016), Compliance Review Profiles (F-017), Notification Integrations (F-018), Batch / Legacy Code Review (F-019), Architecture Diagram Generation (F-020) | Q1–Q2 2027 |

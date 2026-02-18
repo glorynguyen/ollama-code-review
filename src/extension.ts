@@ -88,11 +88,15 @@ export interface PerformanceMetrics {
 	minimaxInputTokens?: number;
 	minimaxOutputTokens?: number;
 
+	// OpenAI-compatible provider metrics (from response body)
+	openaiCompatibleInputTokens?: number;
+	openaiCompatibleOutputTokens?: number;
+
 	// Common computed metrics
 	tokensPerSecond?: number;
 	totalDurationSeconds?: number;
 	model?: string;
-	provider?: 'ollama' | 'claude' | 'glm' | 'huggingface' | 'gemini' | 'mistral' | 'minimax';
+	provider?: 'ollama' | 'claude' | 'glm' | 'huggingface' | 'gemini' | 'mistral' | 'minimax' | 'openai-compatible';
 
 	// Active model info (from /api/ps)
 	activeModel?: {
@@ -227,6 +231,13 @@ function isMistralModel(model: string): boolean {
  */
 function isMiniMaxModel(model: string): boolean {
 	return model.toLocaleLowerCase().startsWith('minimax-');
+}
+
+/**
+ * Check if the model is an OpenAI-compatible model (LM Studio, vLLM, LocalAI, Groq, OpenRouter, etc.)
+ */
+function isOpenAICompatibleModel(model: string): boolean {
+	return model === 'openai-compatible';
 }
 
 /**
@@ -763,6 +774,115 @@ async function callMiniMaxAPI(prompt: string, config: vscode.WorkspaceConfigurat
 }
 
 
+/**
+ * Call any OpenAI-compatible API endpoint (LM Studio, vLLM, LocalAI, Groq, OpenRouter, etc.)
+ */
+async function callOpenAICompatibleAPI(prompt: string, config: vscode.WorkspaceConfiguration, captureMetrics = false): Promise<string> {
+	const endpoint = config.get<string>('openaiCompatible.endpoint', 'http://localhost:1234/v1');
+	const apiKey = config.get<string>('openaiCompatible.apiKey', '');
+	const model = config.get<string>('openaiCompatible.model', '');
+	const temperature = config.get<number>('temperature', 0);
+
+	if (!model) {
+		throw new Error(
+			'OpenAI-compatible model is not configured.\n' +
+			'Please set it in Settings > Ollama Code Review > OpenAI Compatible > Model\n' +
+			'Example: lmstudio-community/Meta-Llama-3.1-8B-Instruct-GGUF'
+		);
+	}
+
+	const url = `${endpoint.replace(/\/$/, '')}/chat/completions`;
+
+	const headers: Record<string, string> = {
+		'Content-Type': 'application/json'
+	};
+
+	if (apiKey) {
+		headers['Authorization'] = `Bearer ${apiKey}`;
+	}
+
+	try {
+		const response = await axios.post(
+			url,
+			{
+				model: model,
+				messages: [
+					{
+						role: 'system',
+						content: 'You are an expert software engineer and code reviewer.'
+					},
+					{
+						role: 'user',
+						content: prompt
+					}
+				],
+				temperature: temperature,
+				max_tokens: 8192
+			},
+			{
+				headers,
+				timeout: 120000 // 2 minute timeout
+			}
+		);
+
+		// Capture metrics from OpenAI-compatible response (standard usage field)
+		if (captureMetrics && response.data.usage) {
+			lastPerformanceMetrics = {
+				provider: 'openai-compatible',
+				model: model,
+				openaiCompatibleInputTokens: response.data.usage.prompt_tokens,
+				openaiCompatibleOutputTokens: response.data.usage.completion_tokens,
+				promptEvalCount: response.data.usage.prompt_tokens,
+				evalCount: response.data.usage.completion_tokens
+			};
+		}
+
+		// Extract text from OpenAI-compatible response format
+		const choices = response.data.choices;
+		if (Array.isArray(choices) && choices.length > 0 && choices[0].message) {
+			return choices[0].message.content?.trim() || '';
+		}
+
+		return '';
+	} catch (error) {
+		if (axios.isAxiosError(error)) {
+			const status = error.response?.status;
+			const errorData = error.response?.data;
+
+			if (status === 401) {
+				throw new Error(
+					`OpenAI-compatible API authentication failed.\n` +
+					`Please check your API key in Settings > Ollama Code Review > OpenAI Compatible > Api Key`
+				);
+			}
+
+			if (status === 404) {
+				throw new Error(
+					`Model "${model}" not found on the OpenAI-compatible endpoint.\n` +
+					`Check the model name in Settings > Ollama Code Review > OpenAI Compatible > Model`
+				);
+			}
+
+			if (status === 429) {
+				throw new Error(`OpenAI-compatible API rate limit exceeded. Please wait and try again.`);
+			}
+
+			if (!status || status === 503 || error.code === 'ECONNREFUSED') {
+				throw new Error(
+					`Could not connect to OpenAI-compatible endpoint at ${endpoint}.\n` +
+					`Make sure your server (LM Studio, vLLM, LocalAI, etc.) is running.\n` +
+					`Check the endpoint in Settings > Ollama Code Review > OpenAI Compatible > Endpoint`
+				);
+			}
+
+			const errorMessage = errorData?.error?.message || errorData?.message || error.message;
+			throw new Error(`OpenAI-compatible API Error (${status}): ${errorMessage}`);
+		}
+		throw error;
+	}
+}
+
+
 let outputChannel: vscode.OutputChannel;
 
 interface GitCommitDetails {
@@ -1090,6 +1210,82 @@ async function showHfModelPicker(context: vscode.ExtensionContext, config: vscod
 	return selected.modelName;
 }
 
+/**
+ * Show a configuration picker for OpenAI-compatible endpoint settings.
+ * Prompts the user to configure endpoint and model, then saves to settings.
+ */
+async function showOpenAICompatiblePicker(config: vscode.WorkspaceConfiguration): Promise<void> {
+	const currentEndpoint = config.get<string>('openaiCompatible.endpoint', 'http://localhost:1234/v1');
+	const currentModel = config.get<string>('openaiCompatible.model', '');
+
+	// Offer quick-select for popular server presets
+	const presets = [
+		{ label: '$(server) LM Studio (local)', description: 'http://localhost:1234/v1', endpoint: 'http://localhost:1234/v1' },
+		{ label: '$(server) LocalAI (local)', description: 'http://localhost:8080/v1', endpoint: 'http://localhost:8080/v1' },
+		{ label: '$(server) vLLM (local)', description: 'http://localhost:8000/v1', endpoint: 'http://localhost:8000/v1' },
+		{ label: '$(cloud) Groq', description: 'https://api.groq.com/openai/v1', endpoint: 'https://api.groq.com/openai/v1' },
+		{ label: '$(cloud) OpenRouter', description: 'https://openrouter.ai/api/v1', endpoint: 'https://openrouter.ai/api/v1' },
+		{ label: '$(cloud) Together AI', description: 'https://api.together.xyz/v1', endpoint: 'https://api.together.xyz/v1' },
+		{ label: '$(pencil) Custom endpoint...', description: 'Enter a custom base URL', endpoint: '__custom__' }
+	];
+
+	const selectedPreset = await vscode.window.showQuickPick(presets, {
+		placeHolder: `Current endpoint: ${currentEndpoint} | Select server or enter custom endpoint`,
+		matchOnDescription: true
+	});
+
+	if (!selectedPreset) {
+		return;
+	}
+
+	let endpoint = selectedPreset.endpoint;
+
+	if (endpoint === '__custom__') {
+		const customEndpoint = await vscode.window.showInputBox({
+			prompt: 'Enter the base URL for your OpenAI-compatible server',
+			placeHolder: 'e.g., http://localhost:1234/v1',
+			value: currentEndpoint,
+			validateInput: (value) => {
+				if (!value || !value.trim()) {
+					return 'Endpoint URL cannot be empty';
+				}
+				if (!value.startsWith('http://') && !value.startsWith('https://')) {
+					return 'URL must start with http:// or https://';
+				}
+				return undefined;
+			}
+		});
+		if (!customEndpoint) {
+			return;
+		}
+		endpoint = customEndpoint.trim();
+	}
+
+	// Prompt for model name
+	const modelName = await vscode.window.showInputBox({
+		prompt: 'Enter the model name to use',
+		placeHolder: 'e.g., lmstudio-community/Meta-Llama-3.1-8B-Instruct-GGUF, llama3, gpt-4o',
+		value: currentModel || '',
+		validateInput: (value) => {
+			if (!value || !value.trim()) {
+				return 'Model name cannot be empty';
+			}
+			return undefined;
+		}
+	});
+
+	if (!modelName) {
+		return;
+	}
+
+	await config.update('openaiCompatible.endpoint', endpoint, vscode.ConfigurationTarget.Global);
+	await config.update('openaiCompatible.model', modelName.trim(), vscode.ConfigurationTarget.Global);
+
+	vscode.window.showInformationMessage(
+		`OpenAI-compatible provider configured: ${modelName.trim()} @ ${endpoint}`
+	);
+}
+
 export async function activate(context: vscode.ExtensionContext) {
 	const skillsService = await SkillsService.create(context);
 	// Store reference for cleanup on deactivation
@@ -1232,6 +1428,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			{ label: 'mistral-small-latest', description: 'Mistral Small - Fast & efficient (Mistral AI)' },
 			{ label: 'codestral-latest', description: 'Codestral - Optimized for code (Mistral AI)' },
 			{ label: 'MiniMax-M2.5', description: 'MiniMax M2.5 (MiniMax)' },
+			{ label: 'openai-compatible', description: 'OpenAI-compatible endpoint (LM Studio, vLLM, LocalAI, Groq, OpenRouter…)' },
 			{ label: 'claude-sonnet-4-20250514', description: 'Claude Sonnet 4 (Anthropic)' },
 			{ label: 'claude-opus-4-20250514', description: 'Claude Opus 4 (Anthropic)' },
 			{ label: 'claude-3-7-sonnet-20250219', description: 'Claude 3.7 Sonnet (Anthropic)' }
@@ -1319,6 +1516,14 @@ export async function activate(context: vscode.ExtensionContext) {
 					return;
 				}
 
+				// If OpenAI-compatible is selected, prompt for endpoint and model
+				if (selected.label === 'openai-compatible') {
+					await showOpenAICompatiblePicker(config);
+					await config.update('model', 'openai-compatible', vscode.ConfigurationTarget.Global);
+					updateModelStatusBar(modelStatusBarItem);
+					return;
+				}
+
 				await config.update('model', selected.label, vscode.ConfigurationTarget.Global);
 				updateModelStatusBar(modelStatusBarItem);
 				vscode.window.showInformationMessage(`Ollama model changed to: ${selected.label}`);
@@ -1359,6 +1564,14 @@ export async function activate(context: vscode.ExtensionContext) {
 						updateModelStatusBar(modelStatusBarItem);
 						vscode.window.showInformationMessage(`Hugging Face model changed to: ${hfModel}`);
 					}
+					return;
+				}
+
+				// If OpenAI-compatible is selected, prompt for endpoint and model
+				if (selected.label === 'openai-compatible') {
+					await showOpenAICompatiblePicker(config);
+					await config.update('model', 'openai-compatible', vscode.ConfigurationTarget.Global);
+					updateModelStatusBar(modelStatusBarItem);
 					return;
 				}
 
@@ -2414,6 +2627,11 @@ async function getOllamaReview(diff: string, context?: vscode.ExtensionContext):
 			return await callMiniMaxAPI(prompt, config, true);
 		}
 
+		// Use OpenAI-compatible API if selected
+		if (isOpenAICompatibleModel(model)) {
+			return await callOpenAICompatibleAPI(prompt, config, true);
+		}
+
 		// Otherwise use Ollama API
 		const response = await axios.post(endpoint, {
 			model: model,
@@ -2486,6 +2704,9 @@ async function getOllamaCommitMessage(diff: string, existingMessage?: string): P
 		} else if (isMiniMaxModel(model)) {
 			// Use MiniMax API if a MiniMax model is selected
 			message = await callMiniMaxAPI(prompt, config);
+		} else if (isOpenAICompatibleModel(model)) {
+			// Use OpenAI-compatible API if selected
+			message = await callOpenAICompatibleAPI(prompt, config);
 		} else {
 			// Otherwise use Ollama API
 			const response = await axios.post(endpoint, {
@@ -2561,6 +2782,11 @@ async function getOllamaSuggestion(codeSnippet: string, languageId: string): Pro
 		// Use MiniMax API if a MiniMax model is selected
 		if (isMiniMaxModel(model)) {
 			return await callMiniMaxAPI(prompt, config);
+		}
+
+		// Use OpenAI-compatible API if selected
+		if (isOpenAICompatibleModel(model)) {
+			return await callOpenAICompatibleAPI(prompt, config);
 		}
 
 		// Otherwise use Ollama API
@@ -2761,6 +2987,10 @@ async function callAIProvider(prompt: string, config: vscode.WorkspaceConfigurat
 		return await callMiniMaxAPI(prompt, config);
 	}
 
+	if (isOpenAICompatibleModel(model)) {
+		return await callOpenAICompatibleAPI(prompt, config);
+	}
+
 	// Default to Ollama API
 	const response = await axios.post(endpoint, {
 		model: model,
@@ -2811,6 +3041,16 @@ function handleError(error: unknown, contextMessage: string) {
 			const minimaxError = responseData?.error?.message || responseData?.message || error.message;
 			errorMessage += `MiniMax API Error (${status}): ${minimaxError}`;
 			if (status === 429) {
+				errorMessage += '\nRate limit exceeded. Please wait and try again.';
+			}
+		} else if (url.includes('/chat/completions') && !url.includes('localhost:11434')) {
+			// OpenAI-compatible provider
+			const oaiError = responseData?.error?.message || responseData?.message || error.message;
+			errorMessage += `OpenAI-compatible API Error (${status}): ${oaiError}`;
+			if (!status || error.code === 'ECONNREFUSED') {
+				errorMessage += '\nMake sure your server (LM Studio, vLLM, LocalAI, etc.) is running.';
+				errorMessage += '\nCheck the endpoint in Settings > Ollama Code Review > OpenAI Compatible > Endpoint';
+			} else if (status === 429) {
 				errorMessage += '\nRate limit exceeded. Please wait and try again.';
 			}
 		} else {

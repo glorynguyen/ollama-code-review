@@ -20,6 +20,13 @@ function isMiniMaxModel(model: string): boolean {
   return model.toLocaleLowerCase().startsWith('minimax-');
 }
 
+/**
+ * Check if the model is an OpenAI-compatible model
+ */
+function isOpenAICompatibleModel(model: string): boolean {
+  return model === 'openai-compatible';
+}
+
 export class OllamaReviewPanel {
   public static currentPanel: OllamaReviewPanel | undefined;
   private readonly _panel: vscode.WebviewPanel;
@@ -220,6 +227,48 @@ export class OllamaReviewPanel {
       const choices = response.data.choices;
       if (Array.isArray(choices) && choices.length > 0 && choices[0].message) {
         return choices[0].message.content?.trim() || '';
+      }
+      return '';
+    }
+
+    // Use OpenAI-compatible API if selected
+    if (isOpenAICompatibleModel(model)) {
+      const endpoint = config.get<string>('openaiCompatible.endpoint', 'http://localhost:1234/v1');
+      const apiKey = config.get<string>('openaiCompatible.apiKey', '');
+      const oaiModel = config.get<string>('openaiCompatible.model', '');
+
+      if (!oaiModel) {
+        throw new Error('OpenAI-compatible model is not configured. Please set it in Settings > Ollama Code Review > OpenAI Compatible > Model');
+      }
+
+      const url = `${endpoint.replace(/\/$/, '')}/chat/completions`;
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (apiKey) {
+        headers['Authorization'] = `Bearer ${apiKey}`;
+      }
+
+      const oaiMessages = [
+        { role: 'system' as const, content: systemContent },
+        ...this._conversationHistory.map(m => ({
+          role: m.role as 'user' | 'assistant',
+          content: m.content
+        }))
+      ];
+
+      const response = await axios.post(
+        url,
+        {
+          model: oaiModel,
+          messages: oaiMessages,
+          temperature: config.get('temperature', 0),
+          max_tokens: 8192
+        },
+        { headers, timeout: 120000 }
+      );
+
+      const oaiChoices = response.data.choices;
+      if (Array.isArray(oaiChoices) && oaiChoices.length > 0 && oaiChoices[0].message) {
+        return oaiChoices[0].message.content?.trim() || '';
       }
       return '';
     }
