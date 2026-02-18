@@ -1,3 +1,10 @@
+# [3.4.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.3.0...v3.4.0) (2026-02-18)
+
+
+### Features
+
+* **F-006:** add .ollama-review.yaml project config file support ([13bbc48](https://github.com/glorynguyen/ollama-code-review/commit/13bbc48ffe44e4e91081037b0383ca9b6f66a7bd))
+
 # [3.3.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.2.0...v3.3.0) (2026-02-18)
 
 
