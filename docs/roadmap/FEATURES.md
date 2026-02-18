@@ -1,7 +1,7 @@
 # Feature Specifications
 
-> **Document Version:** 2.0.0
-> **Last Updated:** 2026-02-17
+> **Document Version:** 3.0.0
+> **Last Updated:** 2026-02-18
 
 This document contains detailed specifications for each planned feature. Each feature has a unique ID for tracking and reference.
 
@@ -14,6 +14,7 @@ This document contains detailed specifications for each planned feature. Each fe
 - [Phase 2: Workflow Integration](#phase-2-workflow-integration-v25)
 - [Phase 3: Intelligence Layer](#phase-3-intelligence-layer-v30)
 - [Phase 4: Enterprise Features](#phase-4-enterprise-features-v40)
+- [Phase 5: Developer Experience & Ecosystem](#phase-5-developer-experience--ecosystem-v60)
 
 ---
 
@@ -924,6 +925,14 @@ rules:
 | F-010 | CI/CD Integration | 4 | 📋 Planned | — |
 | F-011 | Review History & Analytics | 4 | 📋 Planned | — |
 | F-012 | Team Knowledge Base | 4 | 📋 Planned | — |
+| F-013 | OpenAI-Compatible Provider | 5 | 📋 Planned | — |
+| F-014 | Pre-Commit Guard | 5 | 📋 Planned | — |
+| F-015 | GitLab & Bitbucket Integration | 5 | 📋 Planned | — |
+| F-016 | Review Quality Scoring & Trends | 5 | 📋 Planned | — |
+| F-017 | Compliance Review Profiles | 5 | 📋 Planned | — |
+| F-018 | Notification Integrations | 5 | 📋 Planned | — |
+| F-019 | Batch / Legacy Code Review | 5 | 📋 Planned | — |
+| F-020 | Architecture Diagram Generation | 5 | 📋 Planned | — |
 
 ### Effort Estimation Guide
 
@@ -954,3 +963,414 @@ rules:
 | v3.5.0 | F-004 (GitHub PR Integration), F-006 remainder (.yaml config) | Q2 2026 |
 | v4.0.0 | F-007 (Agentic Reviews), F-008 (Multi-File Analysis) | Q3 2026 |
 | v5.0.0 | F-009 (RAG), F-010 (CI/CD), F-011 (Analytics), F-012 (Knowledge Base) | Q4 2026 |
+| v6.0.0 | F-013–F-020 (Developer Experience & Ecosystem) | Q1–Q2 2027 |
+
+---
+
+## Phase 5: Developer Experience & Ecosystem (v6.0)
+
+> **Target:** Q1–Q2 2027
+> **Theme:** Broaden provider support, deepen Git workflow integration, and improve team collaboration
+
+---
+
+### F-013: OpenAI-Compatible Provider Support
+
+**Status:** 📋 Planned
+**Priority:** 🟠 P1 — High Impact, Low Effort
+**Effort:** Low (1–2 days)
+
+#### Overview
+
+Add a generic `openai-compatible` provider that talks to any server exposing an OpenAI `/v1/chat/completions` endpoint. This covers LM Studio, LocalAI, vLLM, Groq, Together AI, Anyscale, and OpenRouter without requiring individual integrations.
+
+#### User Problem
+
+Users running LM Studio or vLLM for local inference, or using aggregators like OpenRouter, have no way to use the extension without an Ollama-specific API. A generic OpenAI-compatible provider eliminates that gap with minimal implementation cost.
+
+#### Configuration
+
+```json
+"ollama-code-review.openaiCompatible.endpoint": "http://localhost:1234/v1",
+"ollama-code-review.openaiCompatible.apiKey": "",
+"ollama-code-review.openaiCompatible.model": "lmstudio-community/Meta-Llama-3.1-8B-Instruct-GGUF"
+```
+
+#### Implementation Notes
+
+- Add `isOpenAICompatibleModel()` detection helper
+- Add `callOpenAICompatibleAPI()` that calls `/v1/chat/completions` with the standard `messages` schema
+- Model picker: add `openai-compatible` option, prompts for endpoint + model on first use
+- Reuse `PerformanceMetrics` for input/output token counting from the `usage` field
+
+#### Acceptance Criteria
+
+- [ ] Works with LM Studio default endpoint out of the box
+- [ ] API key field optional (empty = no `Authorization` header)
+- [ ] Token counts displayed in System Info panel
+- [ ] Error message guides user to set endpoint if connection refused
+
+---
+
+### F-014: Pre-Commit Guard
+
+**Status:** 📋 Planned
+**Priority:** 🟠 P1 — High Impact, Medium Effort
+**Effort:** Medium (3–4 days)
+
+#### Overview
+
+Run a fast AI review automatically when the user triggers `git commit` from VS Code's Source Control panel. If the review finds issues above a configurable severity threshold, block the commit and show findings inline.
+
+#### User Problem
+
+Issues caught after a commit require an additional fix commit. Catching them at commit time keeps history cleaner and builds good habits without leaving VS Code.
+
+#### Configuration
+
+```json
+"ollama-code-review.preCommitGuard.enabled": false,
+"ollama-code-review.preCommitGuard.blockOnSeverity": "high",
+"ollama-code-review.preCommitGuard.timeoutSeconds": 60
+```
+
+`blockOnSeverity` values: `"critical"` | `"high"` | `"medium"` | `"low"` | `"off"`
+
+#### Workflow
+
+1. User runs `git commit` from Source Control or the command palette
+2. Extension intercepts via `onWillSaveTextDocument` or a pre-commit shell hook written to `.git/hooks/pre-commit` (user opt-in)
+3. Runs a condensed review prompt on staged diff
+4. If no finding meets/exceeds threshold → commit proceeds
+5. If findings found → modal shows findings, user can **Commit Anyway** or **Cancel**
+
+#### Implementation Notes
+
+- Hook file written by extension on first enable; removed on disable
+- Hook calls `code --command ollama-code-review.runPreCommitCheck` and reads exit code
+- Timeout prevents blocking commits when model is slow or unreachable
+- Use the active review profile for the pre-commit prompt
+
+#### Acceptance Criteria
+
+- [ ] Opt-in only — disabled by default
+- [ ] Hook written/removed cleanly on setting toggle
+- [ ] Findings shown in a modal with severity badges
+- [ ] Timeout respected; commit proceeds if model unreachable
+- [ ] Works across all supported providers
+
+---
+
+### F-015: GitLab & Bitbucket PR Integration
+
+**Status:** 📋 Planned
+**Priority:** 🟡 P2 — High Impact, High Effort
+**Effort:** High (5–8 days)
+
+#### Overview
+
+Extend the GitHub PR Integration (F-004) to support GitLab Merge Requests and Bitbucket Pull Requests. Users on GitLab/Bitbucket can fetch PR diffs, run AI reviews, and post results as MR/PR comments.
+
+#### User Problem
+
+A large portion of teams use GitLab or Bitbucket. The GitHub-only F-004 leaves them unable to use the PR review workflow.
+
+#### Configuration
+
+```json
+"ollama-code-review.gitlab.token": "",
+"ollama-code-review.gitlab.baseUrl": "https://gitlab.com",
+"ollama-code-review.bitbucket.username": "",
+"ollama-code-review.bitbucket.appPassword": "",
+"ollama-code-review.bitbucket.workspace": ""
+```
+
+#### New Commands
+
+| Command | Description |
+|---------|-------------|
+| `ollama-code-review.reviewGitLabMR` | Fetch and review a GitLab MR by URL or `!123` |
+| `ollama-code-review.postReviewToMR` | Post review as a MR note |
+| `ollama-code-review.reviewBitbucketPR` | Fetch and review a Bitbucket PR by URL |
+| `ollama-code-review.postReviewToBitbucketPR` | Post review as a Bitbucket PR comment |
+
+#### Architecture
+
+- Add `src/gitlab/` and `src/bitbucket/` modules mirroring `src/github/` structure
+- `auth.ts`, `prReview.ts`, `commentMapper.ts` for each platform
+- Shared `PRReference` interface extended with `platform: 'github' | 'gitlab' | 'bitbucket'`
+- Auto-detect platform from remote URL (`git@gitlab.com`, `bitbucket.org`)
+
+#### Acceptance Criteria
+
+- [ ] `git remote` URL auto-detects GitLab / Bitbucket
+- [ ] GitLab MR diff fetched and reviewed correctly
+- [ ] Bitbucket PR diff fetched and reviewed correctly
+- [ ] Review posted as comment with correct formatting for each platform
+- [ ] Auth errors surface clear guidance for obtaining tokens
+
+---
+
+### F-016: Review Quality Scoring & Trends
+
+**Status:** 📋 Planned
+**Priority:** 🟡 P2 — High Impact, Medium Effort
+**Effort:** Medium (3–5 days)
+
+#### Overview
+
+Assign a numeric quality score (0–100) to every review and persist scores in a lightweight local SQLite store (see ADR-003). Display a trend sparkline in the status bar and a history chart in a dedicated webview panel.
+
+#### User Problem
+
+Developers have no quantitative signal of whether code quality is improving or degrading across commits. Scores and trends make progress visible and motivating.
+
+#### Scoring Algorithm (AI-assisted)
+
+The review prompt asks the model to output a structured JSON block alongside prose:
+
+```json
+{
+  "score": 84,
+  "breakdown": {
+    "correctness": 90,
+    "security": 80,
+    "maintainability": 82,
+    "performance": 85
+  }
+}
+```
+
+The extension parses this block; if missing, falls back to a heuristic based on finding severity counts.
+
+#### Storage Schema
+
+```sql
+CREATE TABLE reviews (
+  id INTEGER PRIMARY KEY,
+  timestamp TEXT,
+  repo TEXT,
+  commit TEXT,
+  branch TEXT,
+  score INTEGER,
+  correctness INTEGER,
+  security INTEGER,
+  maintainability INTEGER,
+  performance INTEGER,
+  model TEXT,
+  profile TEXT
+);
+```
+
+#### UI
+
+- Status bar item shows last score (e.g. `⭐ 84`) with color coding (green ≥ 80, yellow ≥ 60, red < 60)
+- New command `ollama-code-review.showReviewHistory` opens a webview with a chart (Chart.js)
+- Chart shows score trend over last 30 reviews, filterable by repo/branch/profile
+
+#### Acceptance Criteria
+
+- [ ] Score extracted from AI response or computed by heuristic
+- [ ] Score stored locally per review
+- [ ] Status bar updated after every review
+- [ ] Trend chart renders correctly for ≥ 2 reviews
+- [ ] Scores survive VS Code restart
+
+---
+
+### F-017: Compliance Review Profiles
+
+**Status:** 📋 Planned
+**Priority:** 🟡 P2 — High Impact, Low Effort
+**Effort:** Low (1–2 days)
+
+#### Overview
+
+Add a set of pre-built review profiles focused on regulatory and security compliance frameworks. These extend the existing profiles system (F-001) and are selectable from the profile picker.
+
+#### Compliance Profiles
+
+| Profile ID | Framework | Focus |
+|------------|-----------|-------|
+| `owasp-top10` | OWASP Top 10 | Injection, broken auth, XSS, IDOR, misconfig, etc. |
+| `pci-dss` | PCI-DSS v4 | Cardholder data handling, encryption, access control |
+| `gdpr` | GDPR / CCPA | PII handling, data minimization, consent flows |
+| `hipaa` | HIPAA | PHI protection, audit logging, access controls |
+| `soc2` | SOC 2 Type II | Availability, confidentiality, change management |
+| `nist-csf` | NIST CSF 2.0 | Identify, protect, detect, respond, recover |
+
+#### Implementation Notes
+
+- Compliance profiles added to `src/profiles.ts` alongside existing built-in presets
+- Each profile includes a `complianceContext` string injected into the prompt before the diff
+- Profile picker shows a `Compliance` group separator
+- Selected profile stored like any other — no new settings required
+
+#### Example Profile Definition
+
+```typescript
+{
+  id: 'owasp-top10',
+  name: 'OWASP Top 10',
+  group: 'Compliance',
+  description: 'Review against OWASP Top 10 web application security risks',
+  focusAreas: ['injection', 'broken-auth', 'xss', 'insecure-deserialization', 'security-misconfiguration'],
+  severity: 'critical',
+  complianceContext: `You are auditing code against the OWASP Top 10 (2021). For each finding cite the relevant OWASP category (e.g. A03:2021 – Injection).`
+}
+```
+
+#### Acceptance Criteria
+
+- [ ] All 6 compliance profiles appear in profile picker under a `Compliance` group
+- [ ] OWASP profile finds a SQL injection in a test diff
+- [ ] Profile-specific context is injected into the prompt
+- [ ] Profiles persist across sessions via existing profile storage
+
+---
+
+### F-018: Notification Integrations (Slack / Teams / Discord)
+
+**Status:** 📋 Planned
+**Priority:** 🟢 P3 — Medium Impact, Low Effort
+**Effort:** Low (1–2 days)
+
+#### Overview
+
+Post review summaries to Slack, Microsoft Teams, or Discord via incoming webhooks. Useful for teams that want shared visibility of code quality reviews without leaving their chat tool.
+
+#### Configuration
+
+```json
+"ollama-code-review.notifications.slack.webhookUrl": "",
+"ollama-code-review.notifications.teams.webhookUrl": "",
+"ollama-code-review.notifications.discord.webhookUrl": "",
+"ollama-code-review.notifications.triggerOn": ["critical", "high"]
+```
+
+`triggerOn`: only send notification when the review contains findings at or above these severities. Empty array = always send.
+
+#### Payload Examples
+
+**Slack (Block Kit):**
+```json
+{
+  "text": "Code Review — `feat/login` — Score: 84/100",
+  "blocks": [
+    { "type": "section", "text": { "type": "mrkdwn", "text": "⚠️ *2 High* findings in `src/auth.ts`" } }
+  ]
+}
+```
+
+**Microsoft Teams (Adaptive Card):** Standard Adaptive Card v1.4 schema.
+
+**Discord:** Simple `content` + `embeds` payload.
+
+#### Implementation Notes
+
+- New `src/notifications/` module with `slack.ts`, `teams.ts`, `discord.ts`
+- Called at the end of `runReview()` if any webhook URL is configured
+- Uses Axios (already a dependency) — no new packages required
+- Notification includes: repo name, branch, score (if F-016 enabled), top N findings, link to commit
+
+#### Acceptance Criteria
+
+- [ ] Slack message delivered when webhook URL configured
+- [ ] Teams card delivered when webhook URL configured
+- [ ] Discord message delivered when webhook URL configured
+- [ ] `triggerOn` filter respected — no spurious notifications for clean reviews
+- [ ] Notification failures logged but do not interrupt review flow
+
+---
+
+### F-019: Batch / Legacy Code Review (No Git Diff Required)
+
+**Status:** 📋 Planned
+**Priority:** 🟡 P2 — High Impact, Low Effort
+**Effort:** Low (2–3 days)
+
+#### Overview
+
+Review arbitrary files, folders, or selections without needing a Git diff. Aimed at legacy codebases, third-party code, or files not tracked by Git.
+
+#### User Problem
+
+All existing review commands require Git-tracked staged changes or commits. Developers auditing inherited code, reviewing vendor code, or working outside Git have no path to AI review today.
+
+#### New Commands
+
+| Command | Entry Point | Description |
+|---------|-------------|-------------|
+| `ollama-code-review.reviewFile` | Explorer context menu | Review the currently open file in full |
+| `ollama-code-review.reviewFolder` | Explorer context menu | Review all files in a selected folder |
+| `ollama-code-review.reviewSelection` | Editor context menu | Review the selected text only |
+
+#### Configuration
+
+```json
+"ollama-code-review.batch.maxFileSizeKb": 100,
+"ollama-code-review.batch.includeGlob": "**/*.{ts,js,py,go,java,php,rb}",
+"ollama-code-review.batch.excludeGlob": "**/node_modules/**"
+```
+
+#### Implementation Notes
+
+- For file review: read file content directly via `vscode.workspace.fs.readFile`
+- For folder review: glob matching with `batch.includeGlob`, concatenate files with `--- filename ---` separators up to a token budget
+- For selection review: pass `editor.document.getText(editor.selection)` as the code block
+- Use the same `runReview()` / `reviewProvider` pipeline — no new UI required
+- Prefix the prompt with `[File Review — no diff context]` so the model adjusts expectations
+
+#### Acceptance Criteria
+
+- [ ] Single file reviewed end-to-end without Git
+- [ ] Folder review respects include/exclude globs
+- [ ] Selection review works from right-click context menu
+- [ ] Token budget respected — large folders chunked across multiple calls with results merged
+- [ ] Review panel shows filename(s) reviewed in the header
+
+---
+
+### F-020: Architecture Diagram Generation (Mermaid)
+
+**Status:** 📋 Planned
+**Priority:** 🟢 P3 — Medium Impact, High Effort
+**Effort:** High (5–7 days)
+
+#### Overview
+
+Generate a Mermaid.js diagram from a code diff or set of files, showing how changed components relate to one another. The diagram is embedded in the review output or can be copied independently.
+
+#### User Problem
+
+Text-based reviews describe *what* changed but rarely show *how* the changes affect the system's structure. A Mermaid diagram makes architectural impact immediately visible in PRs and documentation.
+
+#### Diagram Types
+
+| Mode | Trigger | Output |
+|------|---------|--------|
+| **Class Diagram** | Classes / interfaces detected in diff | UML-style class relationships |
+| **Flowchart** | Functions / call chains detected | Control flow between functions |
+| **Sequence Diagram** | API calls / async patterns detected | Request/response sequences |
+| **Component Diagram** | Import graph from changed files | Module dependency graph |
+
+#### New Command
+
+`ollama-code-review.generateDiagram` — available from the review panel toolbar and the command palette.
+
+#### Implementation Notes
+
+- A second AI call (same model) generates the Mermaid block: `"Output a valid Mermaid diagram that visualizes the structure of the following diff. Choose the most appropriate diagram type."`
+- Mermaid rendered in the review panel via the Mermaid.js CDN (added alongside highlight.js)
+- "Copy Diagram" button copies raw Mermaid source for pasting into GitHub Markdown, Notion, etc.
+- "Export as SVG" button renders via `mermaid.render()` and downloads the SVG file
+
+#### Acceptance Criteria
+
+- [ ] Diagram generated for a TypeScript class diff without manual type selection
+- [ ] Mermaid renders correctly in the review panel
+- [ ] Copy and SVG export buttons functional
+- [ ] Graceful fallback message if model output is not valid Mermaid syntax
+- [ ] Diagram generation is a separate optional call — does not slow down the main review
+
+---

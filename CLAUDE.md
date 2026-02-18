@@ -774,3 +774,4 @@ See [docs/roadmap/](./docs/roadmap/) for comprehensive planning documents:
 |-------|----------|--------|
 | v4.0 | Agentic Multi-Step Reviews (F-007), Multi-File Analysis (F-008) | Q3 2026 |
 | v5.0 | RAG (F-009), CI/CD (F-010), Analytics (F-011), Knowledge Base (F-012) | Q4 2026 |
+| v6.0 | OpenAI-Compatible Provider (F-013), Pre-Commit Guard (F-014), GitLab & Bitbucket Integration (F-015), Review Quality Scoring & Trends (F-016), Compliance Review Profiles (F-017), Notification Integrations (F-018), Batch / Legacy Code Review (F-019), Architecture Diagram Generation (F-020) | Q1–Q2 2027 |
