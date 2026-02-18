@@ -243,7 +243,8 @@ Automatically filter out noise from diffs before sending to AI. Reduces token us
 | **ID** | F-003 |
 | **Priority** | 🟠 P1 |
 | **Effort** | Low (1 day) |
-| **Status** | 📋 Planned |
+| **Status** | ✅ Complete |
+| **Shipped** | v3.1.0 (Feb 2026) |
 | **Dependencies** | None |
 
 #### Description
@@ -283,10 +284,10 @@ Add export button to review webview panel with dropdown:
 
 #### Acceptance Criteria
 
-- [ ] Export button visible in review panel
-- [ ] Markdown export works
-- [ ] Clipboard copy works
-- [ ] GitHub Gist creation works (if authenticated)
+- [x] Export button visible in review panel
+- [x] Markdown export works
+- [x] Clipboard copy works
+- [x] GitHub Gist creation works (if authenticated)
 
 ---
 
@@ -913,7 +914,7 @@ rules:
 | S-005 | HF Model Picker | — | ✅ Complete | v1.15 |
 | F-001 | Review Profiles | 1 | ✅ Complete | v3.1 |
 | F-002 | Smart Diff Filtering | 1 | ✅ Complete | v1.x |
-| F-003 | Export Options | 1 | 📋 Planned | — |
+| F-003 | Export Options | 1 | ✅ Complete | v3.1 |
 | F-004 | GitHub PR Integration | 2 | 📋 Planned | — |
 | F-005 | Inline Code Actions | 2 | ✅ Complete | v1.18 |
 | F-006 | Customizable Prompts | 2 | ✅ Complete (partial) | v2.1 |
@@ -949,7 +950,7 @@ rules:
 
 | Version | Features | Target |
 |---------|----------|--------|
-| v3.1.0 | F-001 (Review Profiles), F-003 (Export Options) | Q1 2026 (F-001 done) |
+| v3.1.0 | F-001 (Review Profiles), F-003 (Export Options) | Q1 2026 ✅ |
 | v3.5.0 | F-004 (GitHub PR Integration), F-006 remainder (.yaml config) | Q2 2026 |
 | v4.0.0 | F-007 (Agentic Reviews), F-008 (Multi-File Analysis) | Q3 2026 |
 | v5.0.0 | F-009 (RAG), F-010 (CI/CD), F-011 (Analytics), F-012 (Knowledge Base) | Q4 2026 |
