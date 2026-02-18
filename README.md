@@ -11,7 +11,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![VS Code Engine](https://img.shields.io/badge/VS%20Code-1.102%2B-007ACC?style=for-the-badge&logo=visual-studio-code&logoColor=white)](https://code.visualstudio.com/)
 
-Get lightning-fast, expert code reviews and AI-generated commit messages directly in your editor using local Ollama models or cloud AI providers like **Claude (Anthropic)**, **Gemini (Google AI)**, **Mistral AI**, **MiniMax**, **GLM (Z.AI)**, and **Hugging Face**. This extension analyzes your code changes before you commit, helping you catch bugs, improve code quality, and write consistent, informative commit messages.
+Get lightning-fast, expert code reviews and AI-generated commit messages directly in your editor using local Ollama models, cloud AI providers like **Claude (Anthropic)**, **Gemini (Google AI)**, **Mistral AI**, **MiniMax**, **GLM (Z.AI)**, and **Hugging Face**, or **any OpenAI-compatible server** such as LM Studio, vLLM, LocalAI, Groq, and OpenRouter. This extension analyzes your code changes before you commit, helping you catch bugs, improve code quality, and write consistent, informative commit messages.
 
 It leverages the power of local large language models to provide feedback on:
 - Potential bugs and logical errors
@@ -186,7 +186,33 @@ To use Hugging Face models:
 - `meta-llama/Llama-3.1-8B-Instruct`
 - `deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct`
 
-### 18. Custom Prompt Templates
+### 18. OpenAI-Compatible Server Support
+Use any server that exposes an OpenAI-compatible `/v1/chat/completions` endpoint — no individual integration required:
+
+| Server | Type | Default Endpoint |
+|--------|------|-----------------|
+| **LM Studio** | Local | `http://localhost:1234/v1` |
+| **LocalAI** | Local | `http://localhost:8080/v1` |
+| **vLLM** | Local | `http://localhost:8000/v1` |
+| **Groq** | Cloud | `https://api.groq.com/openai/v1` |
+| **OpenRouter** | Cloud | `https://openrouter.ai/api/v1` |
+| **Together AI** | Cloud | `https://api.together.xyz/v1` |
+| Any other OpenAI-compatible API | — | Custom URL |
+
+**Smart Setup Picker**: When you select `openai-compatible` from the model picker, a guided flow appears:
+1. Choose from popular server presets or enter a custom endpoint URL
+2. Enter the model name (e.g., `lmstudio-community/Meta-Llama-3.1-8B-Instruct-GGUF`, `llama3`, `gpt-4o`)
+3. Settings are saved automatically — no manual JSON editing required
+
+To use an OpenAI-compatible server:
+1. Start your server (e.g., open LM Studio and load a model)
+2. Select `openai-compatible` from the status bar model picker
+3. Pick your server preset or enter a custom endpoint
+4. Enter the model name and you're ready to go
+
+**Optional API key**: Leave `ollama-code-review.openaiCompatible.apiKey` empty for local servers that don't require authentication (LM Studio, LocalAI, vLLM). Set it for cloud services like Groq or OpenRouter.
+
+### 19. Custom Prompt Templates
 Customize the AI prompts used for code reviews and commit message generation:
 - **Review Prompt**: Override the default code review prompt with your own template
 - **Commit Message Prompt**: Customize how commit messages are generated
@@ -202,7 +228,7 @@ Configure via (in order of increasing priority):
 
 > **Note:** If your custom review prompt omits `${skills}`, active agent skills are automatically appended. Likewise, if `${profile}` is omitted, the active review profile context is automatically appended.
 
-### 19. Project Config File (.ollama-review.yaml)
+### 20. Project Config File (.ollama-review.yaml)
 Share consistent AI review settings across your whole team by adding a `.ollama-review.yaml` file to the root of your repository. Settings in this file override both the built-in defaults and your VS Code `settings.json`, making it easy for everyone on the team to use the same prompts, frameworks, and diff filters without individual configuration.
 
 - **Command**: `Ollama Code Review: Reload Project Config (.ollama-review.yaml)` — manually refresh the cached config after editing the file (usually not needed, as the extension auto-detects changes).
@@ -236,7 +262,7 @@ diffFilter:
 
 The extension automatically watches `.ollama-review.yaml` for changes (create, edit, delete) and reloads the config without requiring a VS Code restart.
 
-### 20. Smart Diff Filtering
+### 21. Smart Diff Filtering
 Reduce noise in your code reviews by filtering out irrelevant changes:
 - **Ignore paths**: Skip `node_modules`, lock files, build outputs
 - **Ignore patterns**: Exclude minified files, source maps, generated code
@@ -245,7 +271,7 @@ Reduce noise in your code reviews by filtering out irrelevant changes:
 
 Configure in settings under `ollama-code-review.diffFilter`.
 
-### 21. Review Profiles & Presets
+### 22. Review Profiles & Presets
 - **Command**: `Ollama Code Review: Select Review Profile`
 - Focus the AI on what matters most by switching between six built-in review profiles — or create your own:
 
@@ -263,7 +289,7 @@ Configure in settings under `ollama-code-review.diffFilter`.
 - **Prompt Integration**: The active profile context is injected via the `${profile}` template variable. If your custom prompt template omits `${profile}`, it is automatically appended.
 - **Persistence**: The selected profile is remembered across VS Code sessions.
 
-### 22. Export Review Results
+### 23. Export Review Results
 After a review completes, use the toolbar buttons at the top of the review panel to share or save results:
 
 - **Copy to Clipboard**: Instantly copies the raw Markdown review to your clipboard.
@@ -271,7 +297,7 @@ After a review completes, use the toolbar buttons at the top of the review panel
 - **PR Description**: Wraps the review with a model attribution header and copies it to your clipboard — ready to paste into a Pull Request description.
 - **Create GitHub Gist**: Posts a private Gist containing the review. Requires a GitHub Personal Access Token with the `gist` scope configured in settings (`ollama-code-review.github.gistToken`). After creation you can open the Gist in your browser or copy its URL.
 
-### 23. GitHub PR Integration
+### 24. GitHub PR Integration
 Review GitHub Pull Requests directly from VS Code and post AI-generated reviews as PR comments:
 
 - **Command**: `Ollama Code Review: Review GitHub PR`
@@ -298,7 +324,7 @@ To configure via token:
 
 > **Note:** `ollama-code-review.github.gistToken` is used for creating Gists; if not set, the extension falls back to `ollama-code-review.github.token` for Gist creation as well.
 
-### 24. MCP Server for Claude Desktop
+### 25. MCP Server for Claude Desktop
 Use the code review functionality directly in Claude Desktop without copy-pasting diffs. The MCP server is available as a separate project:
 
 **Repository:** [gitsage](https://github.com/glorynguyen/gitsage)
@@ -346,6 +372,13 @@ You must have the following software installed and configured for this extension
 2.  **Configure the token** in VS Code settings: `ollama-code-review.hfApiKey`
 3.  **Select a model** from the model picker (recent, popular, or custom) - no need to configure `hfModel` manually!
 
+### For OpenAI-Compatible Servers (Alternative)
+1.  **Start your server** — e.g., open LM Studio and load a model, or start vLLM/LocalAI
+2.  **Select `openai-compatible`** from the status bar model picker
+3.  **Follow the setup picker** — choose a preset or enter a custom endpoint, then enter the model name
+4.  For cloud services (Groq, OpenRouter, etc.): configure `ollama-code-review.openaiCompatible.apiKey` with your API key
+5.  No API key needed for local servers (LM Studio, LocalAI, vLLM)
+
 ### General Requirements
 1.  **[Git](https://git-scm.com/)**: Git must be installed and available in your system's PATH.
 2.  **VS Code Built-in Git Extension**: This extension must be enabled (it is by default).
@@ -354,7 +387,7 @@ You must have the following software installed and configured for this extension
 
 This extension contributes the following settings to your VS Code `settings.json`:
 
-* `ollama-code-review.model`: Supports local Ollama models, cloud models (`kimi-k2.5:cloud`, `qwen3-coder:480b-cloud`, `glm-4.7:cloud`), Claude models (`claude-sonnet-4-20250514`, `claude-opus-4-20250514`, `claude-3-7-sonnet-20250219`), Gemini models (`gemini-2.5-flash`, `gemini-2.5-pro`), Mistral models (`mistral-large-latest`, `mistral-small-latest`, `codestral-latest`), MiniMax models (`MiniMax-M2.5`), GLM models (`glm-4.7-flash`), Hugging Face (`huggingface`), or `custom`.
+* `ollama-code-review.model`: Supports local Ollama models, cloud models (`kimi-k2.5:cloud`, `qwen3-coder:480b-cloud`, `glm-4.7:cloud`), Claude models (`claude-sonnet-4-20250514`, `claude-opus-4-20250514`, `claude-3-7-sonnet-20250219`), Gemini models (`gemini-2.5-flash`, `gemini-2.5-pro`), Mistral models (`mistral-large-latest`, `mistral-small-latest`, `codestral-latest`), MiniMax models (`MiniMax-M2.5`), GLM models (`glm-4.7-flash`), Hugging Face (`huggingface`), any OpenAI-compatible server (`openai-compatible`), or `custom`.
 * `ollama-code-review.customModel`: Specify your own model name if you select "custom" in the model setting.
 * `ollama-code-review.claudeApiKey`: Your Anthropic API key for Claude models.
 * `ollama-code-review.glmApiKey`: Your Z.AI (BigModel/Zhipu) API key for GLM models.
@@ -364,6 +397,11 @@ This extension contributes the following settings to your VS Code `settings.json
 * `ollama-code-review.geminiApiKey`: Your Google AI Studio API key for Gemini models.
 * `ollama-code-review.mistralApiKey`: Your Mistral AI API key for Mistral models.
 * `ollama-code-review.minimaxApiKey`: Your MiniMax API key for MiniMax models.
+* `ollama-code-review.openaiCompatible.endpoint`: Base URL for any OpenAI-compatible server.
+    * **Default**: `"http://localhost:1234/v1"` (LM Studio default)
+    * Examples: `http://localhost:8080/v1` (LocalAI), `https://api.groq.com/openai/v1` (Groq), `https://openrouter.ai/api/v1` (OpenRouter)
+* `ollama-code-review.openaiCompatible.apiKey`: API key for the OpenAI-compatible endpoint. Leave empty for local servers that don't require authentication.
+* `ollama-code-review.openaiCompatible.model`: The model name to request from the endpoint (e.g., `lmstudio-community/Meta-Llama-3.1-8B-Instruct-GGUF`, `llama3`, `gpt-4o`).
 * `ollama-code-review.endpoint`: The API endpoint for your local Ollama instance's generate API.
     * **Type**: `string`
     * **Default**: `"http://localhost:11434/api/generate"`

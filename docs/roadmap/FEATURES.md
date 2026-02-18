@@ -925,7 +925,7 @@ rules:
 | F-010 | CI/CD Integration | 4 | 📋 Planned | — |
 | F-011 | Review History & Analytics | 4 | 📋 Planned | — |
 | F-012 | Team Knowledge Base | 4 | 📋 Planned | — |
-| F-013 | OpenAI-Compatible Provider | 5 | 📋 Planned | — |
+| F-013 | OpenAI-Compatible Provider | 5 | ✅ Complete | v3.5 |
 | F-014 | Pre-Commit Guard | 5 | 📋 Planned | — |
 | F-015 | GitLab & Bitbucket Integration | 5 | 📋 Planned | — |
 | F-016 | Review Quality Scoring & Trends | 5 | 📋 Planned | — |
@@ -976,7 +976,8 @@ rules:
 
 ### F-013: OpenAI-Compatible Provider Support
 
-**Status:** 📋 Planned
+**Status:** ✅ Complete
+**Shipped:** v3.5.0 (Feb 2026)
 **Priority:** 🟠 P1 — High Impact, Low Effort
 **Effort:** Low (1–2 days)
 
@@ -1003,12 +1004,23 @@ Users running LM Studio or vLLM for local inference, or using aggregators like O
 - Model picker: add `openai-compatible` option, prompts for endpoint + model on first use
 - Reuse `PerformanceMetrics` for input/output token counting from the `usage` field
 
+#### Implementation Details
+
+- `isOpenAICompatibleModel()` detection function in `src/extension.ts`
+- `callOpenAICompatibleAPI()` calls `/chat/completions` with the standard messages schema
+- `showOpenAICompatiblePicker()` — quickpick with server presets (LM Studio, LocalAI, vLLM, Groq, OpenRouter, Together AI) + custom endpoint input
+- Settings: `openaiCompatible.endpoint`, `openaiCompatible.apiKey`, `openaiCompatible.model`
+- Performance metrics: `openaiCompatibleInputTokens`, `openaiCompatibleOutputTokens` from `usage` field
+- Chat follow-up supported in `src/reviewProvider.ts`
+- All provider routes updated: `getOllamaReview()`, `getOllamaCommitMessage()`, `getOllamaSuggestion()`, `callAIProvider()`
+- `handleError()` updated to detect OpenAI-compatible URL patterns
+
 #### Acceptance Criteria
 
-- [ ] Works with LM Studio default endpoint out of the box
-- [ ] API key field optional (empty = no `Authorization` header)
-- [ ] Token counts displayed in System Info panel
-- [ ] Error message guides user to set endpoint if connection refused
+- [x] Works with LM Studio default endpoint out of the box
+- [x] API key field optional (empty = no `Authorization` header)
+- [x] Token counts displayed in System Info panel
+- [x] Error message guides user to set endpoint if connection refused
 
 ---
 
