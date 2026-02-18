@@ -6,7 +6,13 @@ import { OllamaReviewPanel } from './reviewProvider';
 import { SkillsService } from './skillsService';
 import { SkillsBrowserPanel } from './skillsBrowserPanel';
 import { getOllamaModel, resolvePrompt } from './utils';
-import { filterDiff, getFilterSummary } from './diffFilter';
+import { filterDiff, getFilterSummary, getDiffFilterConfigWithYaml } from './diffFilter';
+import {
+	getEffectiveReviewPrompt,
+	getEffectiveCommitPrompt,
+	getEffectiveFrameworks,
+	clearProjectConfigCache
+} from './config/promptLoader';
 import {
 	ReviewProfile,
 	BUILTIN_PROFILES,
@@ -2223,6 +2229,31 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
+	// F-006 (remainder): Reload project config command
+	const reloadProjectConfigCommand = vscode.commands.registerCommand(
+		'ollama-code-review.reloadProjectConfig',
+		() => {
+			clearProjectConfigCache();
+			vscode.window.showInformationMessage('Ollama Code Review: .ollama-review.yaml config reloaded.');
+			outputChannel.appendLine('[Ollama Code Review] Project config cache cleared. Will re-read .ollama-review.yaml on next review.');
+		}
+	);
+
+	// F-006 (remainder): Watch .ollama-review.yaml for changes and auto-invalidate the cache
+	const yamlConfigWatcher = vscode.workspace.createFileSystemWatcher('**/.ollama-review.yaml');
+	yamlConfigWatcher.onDidChange(() => {
+		clearProjectConfigCache();
+		outputChannel.appendLine('[Ollama Code Review] .ollama-review.yaml changed — config cache invalidated.');
+	});
+	yamlConfigWatcher.onDidCreate(() => {
+		clearProjectConfigCache();
+		outputChannel.appendLine('[Ollama Code Review] .ollama-review.yaml created — config cache invalidated.');
+	});
+	yamlConfigWatcher.onDidDelete(() => {
+		clearProjectConfigCache();
+		outputChannel.appendLine('[Ollama Code Review] .ollama-review.yaml deleted — config cache invalidated.');
+	});
+
 	context.subscriptions.push(
 		reviewStagedChangesCommand,
 		reviewCommitRangeCommand,
@@ -2231,7 +2262,9 @@ export async function activate(context: vscode.ExtensionContext) {
 		suggestRefactoringCommand,
 		reviewCommitCommand,
 		reviewGitHubPRCommand,
-		postReviewToPRCommand
+		postReviewToPRCommand,
+		reloadProjectConfigCommand,
+		yamlConfigWatcher
 	);
 }
 
@@ -2250,8 +2283,9 @@ async function runReview(diff: string, context: vscode.ExtensionContext) {
 		return;
 	}
 
-	// Apply diff filtering
-	const filterResult = filterDiff(diff);
+	// Apply diff filtering (config hierarchy: defaults → settings → .ollama-review.yaml)
+	const filterConfig = await getDiffFilterConfigWithYaml(outputChannel);
+	const filterResult = filterDiff(diff, filterConfig);
 	const filteredDiff = filterResult.filteredDiff;
 
 	if (!filteredDiff || !filteredDiff.trim()) {
@@ -2302,12 +2336,8 @@ async function getOllamaReview(diff: string, context?: vscode.ExtensionContext):
 	const model = getOllamaModel(config);
 	const endpoint = config.get<string>('endpoint', 'http://localhost:11434/api/generate');
 	const temperature = config.get<number>('temperature', 0);
-	const frameworks = config.get<string[] | string>('frameworks', ['React']);
-	const frameworksList = Array.isArray(frameworks)
-		? frameworks.join(', ')
-		: typeof frameworks === 'string'
-			? frameworks
-			: 'React';
+	// Resolve frameworks using config hierarchy (settings → .ollama-review.yaml overrides)
+	const frameworksList = (await getEffectiveFrameworks(outputChannel)).join(', ');
 	let skillContext = '';
 
 	if (context) {
@@ -2327,8 +2357,8 @@ async function getOllamaReview(diff: string, context?: vscode.ExtensionContext):
 		profileContext = buildProfilePromptContext(profile);
 	}
 
-	// Read custom prompt template from settings, fall back to built-in default
-	const promptTemplate = config.get<string>('prompt.review', '') || DEFAULT_REVIEW_PROMPT;
+	// Resolve review prompt using config hierarchy: default → settings → .ollama-review.yaml
+	const promptTemplate = await getEffectiveReviewPrompt(DEFAULT_REVIEW_PROMPT, outputChannel);
 
 	const variables: Record<string, string> = {
 		code: diff,
@@ -2425,8 +2455,8 @@ async function getOllamaCommitMessage(diff: string, existingMessage?: string): P
 	const endpoint = config.get<string>('endpoint', 'http://localhost:11434/api/generate');
 	const temperature = config.get<number>('temperature', 0.2); // Slightly more creative for commit messages
 
-	// Read custom prompt template from settings, fall back to built-in default
-	const promptTemplate = config.get<string>('prompt.commitMessage', '') || DEFAULT_COMMIT_MESSAGE_PROMPT;
+	// Resolve commit prompt using config hierarchy: default → settings → .ollama-review.yaml
+	const promptTemplate = await getEffectiveCommitPrompt(DEFAULT_COMMIT_MESSAGE_PROMPT, outputChannel);
 
 	const variables: Record<string, string> = {
 		diff: diff,
