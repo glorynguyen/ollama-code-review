@@ -3,7 +3,7 @@
 ## Project Overview
 
 - **Name:** Ollama Code Review VS Code Extension
-- **Version:** 3.2.0
+- **Version:** 3.3.0
 - **Purpose:** AI-powered code reviews and commit message generation using local Ollama or cloud models
 - **Author:** Vinh Nguyen (vincent)
 - **License:** MIT
@@ -82,6 +82,8 @@ out/                      # Compiled JavaScript output
 | `ollama-code-review.browseAgentSkills` | Browse and download agent skills |
 | `ollama-code-review.applySkillToReview` | Apply multiple skills to reviews (multi-select supported) |
 | `ollama-code-review.clearSelectedSkills` | Clear all selected skills |
+| `ollama-code-review.reviewGitHubPR` | Review a GitHub Pull Request by URL or number |
+| `ollama-code-review.postReviewToPR` | Post AI review as a comment to a GitHub PR |
 
 ## Configuration Settings
 
@@ -104,6 +106,8 @@ out/                      # Compiled JavaScript output
 | `ollama-code-review.customProfiles` | `[]` | Custom review profiles (array of objects with name, focusAreas, severity, etc.) |
 | `ollama-code-review.prompt.review` | (built-in review prompt) | Custom prompt template for code reviews. Variables: `${code}`, `${frameworks}`, `${skills}`, `${profile}` |
 | `ollama-code-review.prompt.commitMessage` | (built-in commit prompt) | Custom prompt template for commit messages. Variables: `${diff}`, `${draftMessage}` |
+| `ollama-code-review.github.token` | `""` | GitHub Personal Access Token (repo scope) for PR reviews and posting comments |
+| `ollama-code-review.github.commentStyle` | `"summary"` | How to post reviews to GitHub PRs: `summary`, `inline`, or `both` |
 | `ollama-code-review.github.gistToken` | `""` | GitHub Personal Access Token (gist scope) for creating Gists from reviews |
 | `ollama-code-review.skills.defaultRepository` | `vercel-labs/agent-skills` | Default GitHub repo for skills |
 | `ollama-code-review.skills.additionalRepositories` | `[]` | Additional GitHub repos for skills |
@@ -552,6 +556,35 @@ A standalone MCP (Model Context Protocol) server is available as a separate proj
 
 **Repository:** [ollama-code-review-mcp](https://github.com/pinkpixel-dev/ollama-code-review-mcp)
 
+## GitHub PR Integration (F-004)
+
+The extension can fetch and review GitHub Pull Requests and post AI-generated reviews as PR comments.
+
+### Commands
+
+| Command | Description |
+|---------|-------------|
+| `ollama-code-review.reviewGitHubPR` | Fetch a PR diff by URL or number and open in the review panel |
+| `ollama-code-review.postReviewToPR` | Post the current review to the PR as a GitHub comment |
+
+### Configuration
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `ollama-code-review.github.token` | `""` | GitHub PAT with `repo` scope for PR access and posting comments |
+| `ollama-code-review.github.commentStyle` | `"summary"` | Comment posting style: `summary`, `inline`, or `both` |
+
+### Comment Styles
+
+- **`summary`**: Posts one top-level PR comment with the full review Markdown.
+- **`inline`**: Attempts to map review findings to specific changed lines and post them as inline review comments.
+- **`both`**: Posts a summary comment and inline comments simultaneously.
+
+### Token Scopes
+
+- `github.token` (repo scope) — required for PR reviews and posting comments
+- `github.gistToken` (gist scope) — used only for creating Gists from reviews
+
 ## Notes
 
 - Cloud models available as fallback when local Ollama unreachable
@@ -561,6 +594,7 @@ A standalone MCP (Model Context Protocol) server is available as a separate proj
 - Custom prompt templates supported via settings; agent skills always appended if `${skills}` missing, active profile always appended if `${profile}` missing
 - Diff filtering automatically excludes lock files, build output, and minified files from reviews
 - Review panel toolbar provides four export options (clipboard, markdown, PR description, GitHub Gist)
+- GitHub PR Integration allows reviewing PRs directly and posting results as PR comments
 
 ## Roadmap & Future Development
 
@@ -586,11 +620,12 @@ See [docs/roadmap/](./docs/roadmap/) for comprehensive planning documents:
 | HF Model Picker (recent/popular/custom) | S-005 | v1.15 |
 | Review Profiles & Presets (6 built-in + custom) | F-001 | v3.1 |
 | Export Options (Copy, Markdown, PR Description, GitHub Gist) | F-003 | v3.2 |
+| GitHub PR Integration (review PRs, post comments, inline/summary style) | F-004 | v3.3 |
 
 ### Remaining Planned Features
 
 | Phase | Features | Target |
 |-------|----------|--------|
-| v3.5 | GitHub PR Integration (F-004), F-006 remainder (.yaml config) | Q2 2026 |
+| v3.5 | F-006 remainder (.yaml config) | Q2 2026 |
 | v4.0 | Agentic Multi-Step Reviews (F-007), Multi-File Analysis (F-008) | Q3 2026 |
 | v5.0 | RAG (F-009), CI/CD (F-010), Analytics (F-011), Knowledge Base (F-012) | Q4 2026 |
