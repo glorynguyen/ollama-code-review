@@ -1,3 +1,10 @@
+# [3.2.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.1.0...v3.2.0) (2026-02-18)
+
+
+### Features
+
+* **export:** implement F-003 Export Options for review panel ([5fd926a](https://github.com/glorynguyen/ollama-code-review/commit/5fd926a99b378fade84c6702ae19ed907f60043d))
+
 # [3.1.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.0.0...v3.1.0) (2026-02-17)
 
 
