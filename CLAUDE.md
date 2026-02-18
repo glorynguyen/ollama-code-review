@@ -3,7 +3,7 @@
 ## Project Overview
 
 - **Name:** Ollama Code Review VS Code Extension
-- **Version:** 3.3.0
+- **Version:** 3.4.0
 - **Purpose:** AI-powered code reviews and commit message generation using local Ollama or cloud models
 - **Author:** Vinh Nguyen (vincent)
 - **License:** MIT
@@ -15,6 +15,7 @@
 - **Framework:** VS Code Extension API (requires VS Code 1.102.0+)
 - **HTTP Client:** Axios 1.11.0
 - **GitHub API:** @octokit/rest 22.0.1
+- **YAML Parsing:** js-yaml 4.1.1
 - **Build:** Webpack + TypeScript Compiler
 - **Linting:** ESLint 9.32.0
 - **Release:** semantic-release 25.0.2
@@ -30,6 +31,12 @@ src/
 ├── diffFilter.ts         # Diff filtering & ignore patterns (F-002)
 ├── profiles.ts           # Review profiles & presets (F-001)
 ├── utils.ts              # Config helper functions
+├── config/               # Project-level config file support (F-006)
+│   └── promptLoader.ts   # .ollama-review.yaml loader, config hierarchy, caching
+├── github/               # GitHub integration module (F-004)
+│   ├── auth.ts           # Multi-strategy GitHub auth (gh CLI / VS Code session / token)
+│   ├── prReview.ts       # PR fetching, diff retrieval, comment posting
+│   └── commentMapper.ts  # AI review → structured findings & inline comment mapping
 ├── codeActions/          # Inline AI code actions (F-005)
 │   ├── index.ts          # Module exports
 │   ├── types.ts          # Common types and utilities
@@ -48,13 +55,17 @@ out/                      # Compiled JavaScript output
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `src/extension.ts` | ~2,681 | Main extension logic, all commands, Git operations |
+| `src/extension.ts` | ~2,690 | Main extension logic, all commands, Git operations |
 | `src/reviewProvider.ts` | ~599 | Webview for displaying reviews with chat interface + export toolbar |
 | `src/skillsService.ts` | ~593 | Fetches/caches agent skills from GitHub repos |
 | `src/skillsBrowserPanel.ts` | ~516 | UI for browsing and downloading skills |
-| `src/diffFilter.ts` | ~221 | Diff filtering with ignore patterns and formatting detection |
+| `src/diffFilter.ts` | ~245 | Diff filtering with ignore patterns and formatting detection |
 | `src/profiles.ts` | ~234 | Review profiles: built-in presets, custom profiles, prompt context builder |
 | `src/utils.ts` | ~33 | Helper for model config, HTML escaping, and prompt template resolution |
+| `src/config/promptLoader.ts` | ~270 | .ollama-review.yaml loader with config hierarchy and workspace-aware caching |
+| `src/github/auth.ts` | ~112 | Multi-strategy GitHub auth: gh CLI → VS Code session → stored token |
+| `src/github/prReview.ts` | ~328 | PR fetching, diff retrieval, comment posting, PR listing |
+| `src/github/commentMapper.ts` | ~284 | Parse AI review into structured findings; format inline comments |
 | `src/codeActions/index.ts` | ~34 | Module barrel exports for code actions |
 | `src/codeActions/explainAction.ts` | ~160 | Explain Code action with preview panel |
 | `src/codeActions/testAction.ts` | ~367 | Generate Tests action with framework detection |
@@ -84,6 +95,7 @@ out/                      # Compiled JavaScript output
 | `ollama-code-review.clearSelectedSkills` | Clear all selected skills |
 | `ollama-code-review.reviewGitHubPR` | Review a GitHub Pull Request by URL or number |
 | `ollama-code-review.postReviewToPR` | Post AI review as a comment to a GitHub PR |
+| `ollama-code-review.reloadProjectConfig` | Reload/reset the .ollama-review.yaml config file cache |
 
 ## Configuration Settings
 
@@ -176,7 +188,7 @@ Any model available in your local Ollama instance will be auto-discovered. The p
 ## Architecture
 
 ### Extension Activation
-1. Activates on: JS/TS/JSX/TSX files or SCM view
+1. Activates on: JS/TS/JSX/TSX/PHP files or SCM view
 2. Entry: `activate()` in `extension.ts`
 3. Registers all commands and status bar items
 
@@ -229,13 +241,14 @@ Any model available in your local Ollama instance will be auto-discovered. The p
 - `callMiniMaxAPI()` - Call MiniMax API
 
 ### Core Workflow
-- `activate()` - Extension entry, command registration
+- `activate()` - Extension entry, command registration, YAML file watcher setup
 - `runReview()` - Execute code review workflow
 - `getOllamaReview()` - Call Ollama API for review
 - `getOllamaCommitMessage()` - Generate commit message
 - `getOllamaSuggestion()` - Get code suggestions
 - `selectRepository()` - Handle multi-repo workspaces
 - `runGitCommand()` - Execute git operations
+- `reloadProjectConfig` command handler - Calls `clearProjectConfigCache()` and notifies user
 
 ### Code Action Handlers
 - `getExplanation()` - Get AI explanation for selected code
@@ -293,6 +306,7 @@ interface FilterResult {
 ### Exported Functions
 
 - `getDiffFilterConfig()` - Read filter config from VS Code settings with defaults
+- `getDiffFilterConfigWithYaml()` - Async version; merges defaults → VS Code settings → `.ollama-review.yaml` overrides
 - `filterDiff(diff, config?)` - Main filtering function, returns filtered diff and stats
 - `getFilterSummary(result)` - Generate human-readable summary of what was filtered
 
@@ -308,6 +322,58 @@ interface FilterResult {
 - `countChangedLines()` - Counts +/- lines in a diff hunk
 - `isFormattingOnlyChange()` - Detects whitespace-only changes
 - `parseDiffIntoFiles()` - Splits unified diff by file
+
+## Project Config File System (F-006)
+
+The `src/config/promptLoader.ts` module implements a three-tier configuration hierarchy using an optional `.ollama-review.yaml` file at the workspace root.
+
+### Config Hierarchy (lowest → highest priority)
+
+1. Built-in defaults (hardcoded in extension)
+2. VS Code settings (`settings.json`)
+3. `.ollama-review.yaml` at workspace root (highest priority; checked in to the repo)
+
+### Exported Functions
+
+- `loadProjectConfig()` - Read and parse `.ollama-review.yaml` from workspace root; workspace-aware caching
+- `clearProjectConfigCache()` - Invalidate the cached config (called by file watcher and `reloadProjectConfig` command)
+- `getEffectiveReviewPrompt()` - Resolve final review prompt via hierarchy
+- `getEffectiveCommitPrompt()` - Resolve final commit message prompt via hierarchy
+- `getEffectiveFrameworks()` - Resolve final frameworks list via hierarchy
+- `getYamlDiffFilterOverrides()` - Return diff filter overrides from YAML config to merge with settings
+
+### .ollama-review.yaml Schema
+
+```yaml
+# Prompt templates (optional — override VS Code settings and built-in defaults)
+prompt:
+  review: |
+    Your custom review prompt here...
+    Use ${code}, ${frameworks}, ${skills}, ${profile} as placeholders.
+  commitMessage: |
+    Your custom commit message prompt here...
+    Use ${diff} and ${draftMessage} as placeholders.
+
+# Frameworks list (optional — overrides ollama-code-review.frameworks setting)
+frameworks:
+  - React
+  - Node.js
+
+# Diff filter overrides (optional — merged with VS Code settings)
+diffFilter:
+  ignorePaths:
+    - "**/generated/**"
+  ignorePatterns:
+    - "*.auto.ts"
+  maxFileLines: 300
+  ignoreFormattingOnly: true
+```
+
+### File Watcher
+
+`extension.ts` automatically watches `**/.ollama-review.yaml` for create, change, and delete events. When any event fires, `clearProjectConfigCache()` is called so the next review picks up the updated config without requiring a manual reload.
+
+The `reloadProjectConfig` command (`$(refresh)`) allows manual cache invalidation from the command palette.
 
 ## Inline Code Actions (F-005)
 
@@ -558,7 +624,7 @@ A standalone MCP (Model Context Protocol) server is available as a separate proj
 
 ## GitHub PR Integration (F-004)
 
-The extension can fetch and review GitHub Pull Requests and post AI-generated reviews as PR comments.
+The extension can fetch and review GitHub Pull Requests and post AI-generated reviews as PR comments. The GitHub integration is implemented as a dedicated module under `src/github/`.
 
 ### Commands
 
@@ -583,7 +649,80 @@ The extension can fetch and review GitHub Pull Requests and post AI-generated re
 ### Token Scopes
 
 - `github.token` (repo scope) — required for PR reviews and posting comments
-- `github.gistToken` (gist scope) — used only for creating Gists from reviews
+- `github.gistToken` (gist scope) — used for creating Gists; falls back to `github.token` if gist scope is not set separately
+
+### GitHub Auth Module (src/github/auth.ts)
+
+Multi-strategy authentication with the following priority order:
+
+1. `gh` CLI (`gh auth token`) — used if `gh` is installed and authenticated
+2. VS Code built-in GitHub session (`vscode.authentication.getSession`)
+3. Stored `github.token` setting
+
+```typescript
+interface GitHubAuth {
+  token: string;
+  source: 'gh-cli' | 'vscode-session' | 'settings';
+}
+
+// Key exports
+getGitHubAuth(promptIfNeeded?: boolean): Promise<GitHubAuth | undefined>
+showAuthSetupGuide(): void  // Shows error UI with sign-in guidance
+```
+
+### PR Review Module (src/github/prReview.ts)
+
+```typescript
+interface PRReference {
+  owner: string;
+  repo: string;
+  prNumber: number;
+}
+
+interface PRInfo {
+  title: string;
+  body: string;
+  state: string;
+  user: string;
+  branches: { head: string; base: string };
+  stats: { additions: number; deletions: number; changedFiles: number };
+  url: string;
+}
+
+// Key exports
+parsePRInput(input: string, repoContext?: string): PRReference | null
+parseRemoteUrl(remoteUrl: string): { owner: string; repo: string } | null
+fetchPRDiff(ref: PRReference, auth: GitHubAuth): Promise<string>
+fetchPRInfo(ref: PRReference, auth: GitHubAuth): Promise<PRInfo>
+postPRSummaryComment(ref, auth, content, model): Promise<string>  // Returns comment URL
+postPRReview(ref, auth, findings, content, model): Promise<string>
+listOpenPRs(owner, repo, auth): Promise<PRInfo[]>
+promptAndFetchPR(repoPath, runGitCommand): Promise<{ diff, prInfo, ref } | undefined>
+```
+
+Accepts PR input in these formats: full URL, `#123`, `owner/repo#123`.
+
+### Comment Mapper Module (src/github/commentMapper.ts)
+
+Parses AI review Markdown into structured findings for inline PR comments.
+
+```typescript
+type Severity = 'critical' | 'high' | 'medium' | 'low' | 'info';
+
+interface ReviewFinding {
+  severity: Severity;
+  message: string;
+  file?: string;
+  line?: number;
+  suggestion?: string;
+}
+
+// Key exports
+parseDiffFileLines(diff: string): Map<string, Set<number>>  // Changed lines per file
+parseReviewIntoFindings(reviewMarkdown: string, diff: string): ReviewFinding[]
+formatFindingAsComment(finding: ReviewFinding): string  // Emoji severity badges
+formatFindingsAsSummary(findings: ReviewFinding[], model: string): string  // Summary table
+```
 
 ## Notes
 
@@ -595,6 +734,10 @@ The extension can fetch and review GitHub Pull Requests and post AI-generated re
 - Diff filtering automatically excludes lock files, build output, and minified files from reviews
 - Review panel toolbar provides four export options (clipboard, markdown, PR description, GitHub Gist)
 - GitHub PR Integration allows reviewing PRs directly and posting results as PR comments
+- `.ollama-review.yaml` at the workspace root is the highest-priority config source; checked into the repo so teams share consistent settings
+- PHP files are supported for inline code actions (lightbulb menu) and the context menu suggestion command
+- GitHub auth falls back gracefully through: `gh` CLI → VS Code session → stored `github.token` setting
+- `github.gistToken` falls back to `github.token` if the gist-specific token is not set
 
 ## Roadmap & Future Development
 
@@ -612,7 +755,7 @@ See [docs/roadmap/](./docs/roadmap/) for comprehensive planning documents:
 |---------|----|---------|
 | Smart Diff Filtering | F-002 | v1.x |
 | Inline Code Actions (Explain, Tests, Fix, Docs) | F-005 | v1.18 |
-| Customizable Prompts (settings, partial — no .yaml) | F-006 | v2.1 |
+| Customizable Prompts (settings + .ollama-review.yaml) | F-006 | v2.1–v3.4 |
 | Multi-Provider Cloud Support (7 providers) | S-001 | v1.10–v1.16 |
 | Agent Skills System (multi-repo, multi-skill) | S-002 | v1.18–v1.20 |
 | Performance Metrics (per-provider) | S-003 | v1.15 |
@@ -621,11 +764,13 @@ See [docs/roadmap/](./docs/roadmap/) for comprehensive planning documents:
 | Review Profiles & Presets (6 built-in + custom) | F-001 | v3.1 |
 | Export Options (Copy, Markdown, PR Description, GitHub Gist) | F-003 | v3.2 |
 | GitHub PR Integration (review PRs, post comments, inline/summary style) | F-004 | v3.3 |
+| Project Config File (.ollama-review.yaml, config hierarchy, file watcher) | F-006 (remainder) | v3.4 |
+| PHP Language Support (inline code actions + context menu) | — | v3.4 |
+| Multi-strategy GitHub Auth (gh CLI / VS Code session / token) | — | v3.4 |
 
 ### Remaining Planned Features
 
 | Phase | Features | Target |
 |-------|----------|--------|
-| v3.5 | F-006 remainder (.yaml config) | Q2 2026 |
 | v4.0 | Agentic Multi-Step Reviews (F-007), Multi-File Analysis (F-008) | Q3 2026 |
 | v5.0 | RAG (F-009), CI/CD (F-010), Analytics (F-011), Knowledge Base (F-012) | Q4 2026 |
