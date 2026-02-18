@@ -3,7 +3,7 @@
 ## Project Overview
 
 - **Name:** Ollama Code Review VS Code Extension
-- **Version:** 3.0.0
+- **Version:** 3.2.0
 - **Purpose:** AI-powered code reviews and commit message generation using local Ollama or cloud models
 - **Author:** Vinh Nguyen (vincent)
 - **License:** MIT
@@ -48,12 +48,12 @@ out/                      # Compiled JavaScript output
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `src/extension.ts` | ~2,533 | Main extension logic, all commands, Git operations |
-| `src/reviewProvider.ts` | ~497 | Webview for displaying reviews with chat interface |
+| `src/extension.ts` | ~2,681 | Main extension logic, all commands, Git operations |
+| `src/reviewProvider.ts` | ~599 | Webview for displaying reviews with chat interface + export toolbar |
 | `src/skillsService.ts` | ~593 | Fetches/caches agent skills from GitHub repos |
 | `src/skillsBrowserPanel.ts` | ~516 | UI for browsing and downloading skills |
 | `src/diffFilter.ts` | ~221 | Diff filtering with ignore patterns and formatting detection |
-| `src/profiles.ts` | ~222 | Review profiles: built-in presets, custom profiles, prompt context builder |
+| `src/profiles.ts` | ~234 | Review profiles: built-in presets, custom profiles, prompt context builder |
 | `src/utils.ts` | ~33 | Helper for model config, HTML escaping, and prompt template resolution |
 | `src/codeActions/index.ts` | ~34 | Module barrel exports for code actions |
 | `src/codeActions/explainAction.ts` | ~160 | Explain Code action with preview panel |
@@ -104,6 +104,7 @@ out/                      # Compiled JavaScript output
 | `ollama-code-review.customProfiles` | `[]` | Custom review profiles (array of objects with name, focusAreas, severity, etc.) |
 | `ollama-code-review.prompt.review` | (built-in review prompt) | Custom prompt template for code reviews. Variables: `${code}`, `${frameworks}`, `${skills}`, `${profile}` |
 | `ollama-code-review.prompt.commitMessage` | (built-in commit prompt) | Custom prompt template for commit messages. Variables: `${diff}`, `${draftMessage}` |
+| `ollama-code-review.github.gistToken` | `""` | GitHub Personal Access Token (gist scope) for creating Gists from reviews |
 | `ollama-code-review.skills.defaultRepository` | `vercel-labs/agent-skills` | Default GitHub repo for skills |
 | `ollama-code-review.skills.additionalRepositories` | `[]` | Additional GitHub repos for skills |
 | `ollama-code-review.skills.autoApply` | `true` | Auto-apply selected skill |
@@ -521,6 +522,28 @@ The review panel supports multi-turn interactive chat:
 - Supports Claude, MiniMax, and Ollama providers for chat follow-ups
 - CDN dependencies: highlight.js v11.9.0, marked.js v11.1.1
 
+## Export Options (F-003)
+
+The review panel toolbar exposes four export actions via `_handleExport()` in `reviewProvider.ts`:
+
+| Format | Action | Description |
+|--------|--------|-------------|
+| `clipboard` | Copy to Clipboard | Copies raw review Markdown instantly |
+| `markdown` | Save as Markdown | Opens system save dialog, writes `.md` file via `vscode.workspace.fs` |
+| `prDescription` | PR Description | Wraps review with header & model attribution, copies to clipboard |
+| `gist` | Create GitHub Gist | Posts a private Gist via `@octokit/rest`; requires `github.gistToken` PAT |
+
+### Private Methods (reviewProvider.ts)
+
+- `_handleExport(format)` - Dispatcher for export formats
+- `_saveAsMarkdown(content)` - Shows save dialog and writes `.md` file
+- `_formatAsPrDescription(content)` - Wraps review with model attribution header
+- `_createGist(content)` - Creates a private GitHub Gist; prompts to open or copy URL
+
+### Gist Token Flow
+
+If `ollama-code-review.github.gistToken` is empty when the user clicks "Create Gist", an error message with an "Open Settings" button is shown to guide the user to configure their PAT.
+
 ## Related Projects
 
 ### MCP Server for Claude Desktop
@@ -533,10 +556,11 @@ A standalone MCP (Model Context Protocol) server is available as a separate proj
 
 - Cloud models available as fallback when local Ollama unreachable
 - Conventional Commits format for generated messages
-- Status bar shows current model with click-to-switch
+- Status bar shows current model and active review profile with click-to-switch
 - Reviews support follow-up questions via chat interface
-- Custom prompt templates supported via settings; agent skills are always appended if `${skills}` placeholder is missing from template
+- Custom prompt templates supported via settings; agent skills always appended if `${skills}` missing, active profile always appended if `${profile}` missing
 - Diff filtering automatically excludes lock files, build output, and minified files from reviews
+- Review panel toolbar provides four export options (clipboard, markdown, PR description, GitHub Gist)
 
 ## Roadmap & Future Development
 
@@ -561,12 +585,12 @@ See [docs/roadmap/](./docs/roadmap/) for comprehensive planning documents:
 | Interactive Chat (multi-turn follow-ups) | S-004 | v1.7 |
 | HF Model Picker (recent/popular/custom) | S-005 | v1.15 |
 | Review Profiles & Presets (6 built-in + custom) | F-001 | v3.1 |
+| Export Options (Copy, Markdown, PR Description, GitHub Gist) | F-003 | v3.2 |
 
 ### Remaining Planned Features
 
 | Phase | Features | Target |
 |-------|----------|--------|
-| v3.1 | Export Options (F-003) | Q1 2026 |
 | v3.5 | GitHub PR Integration (F-004), F-006 remainder (.yaml config) | Q2 2026 |
 | v4.0 | Agentic Multi-Step Reviews (F-007), Multi-File Analysis (F-008) | Q3 2026 |
 | v5.0 | RAG (F-009), CI/CD (F-010), Analytics (F-011), Knowledge Base (F-012) | Q4 2026 |

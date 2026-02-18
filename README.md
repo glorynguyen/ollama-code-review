@@ -179,14 +179,14 @@ Customize the AI prompts used for code reviews and commit message generation:
 - **Commit Message Prompt**: Customize how commit messages are generated
 
 Use variable placeholders that get replaced at runtime:
-- **Review**: `${code}` (the diff), `${frameworks}` (selected frameworks), `${skills}` (active agent skills)
+- **Review**: `${code}` (the diff), `${frameworks}` (selected frameworks), `${skills}` (active agent skills), `${profile}` (active review profile context)
 - **Commit Message**: `${diff}` (staged diff), `${draftMessage}` (developer's draft)
 
 Configure in settings:
 - `ollama-code-review.prompt.review` — multiline text area in Settings UI
 - `ollama-code-review.prompt.commitMessage` — multiline text area in Settings UI
 
-> **Note:** If you remove `${skills}` from your custom review prompt, active agent skills will still be appended automatically to ensure skill compatibility.
+> **Note:** If your custom review prompt omits `${skills}`, active agent skills are automatically appended. Likewise, if `${profile}` is omitted, the active review profile context is automatically appended.
 
 ### 19. Smart Diff Filtering
 Reduce noise in your code reviews by filtering out irrelevant changes:
@@ -197,7 +197,33 @@ Reduce noise in your code reviews by filtering out irrelevant changes:
 
 Configure in settings under `ollama-code-review.diffFilter`.
 
-### 20. MCP Server for Claude Desktop
+### 20. Review Profiles & Presets
+- **Command**: `Ollama Code Review: Select Review Profile`
+- Focus the AI on what matters most by switching between six built-in review profiles — or create your own:
+
+| Profile | Focus |
+|---------|-------|
+| **General** (default) | Balanced review across all dimensions |
+| **Security** | Authentication, injection vulnerabilities, secrets exposure |
+| **Performance** | Algorithmic complexity, memory leaks, caching opportunities |
+| **Accessibility** | ARIA attributes, keyboard navigation, screen reader support |
+| **Educational** | Explains *why* changes are good/bad — great for learning |
+| **Strict** | High-severity findings only, zero tolerance for issues |
+
+- **Status Bar**: A shield icon next to the model indicator shows the active profile. Click it to switch instantly.
+- **Custom Profiles**: Define your own profiles in `ollama-code-review.customProfiles` or via the profile picker ("Create new profile...").
+- **Prompt Integration**: The active profile context is injected via the `${profile}` template variable. If your custom prompt template omits `${profile}`, it is automatically appended.
+- **Persistence**: The selected profile is remembered across VS Code sessions.
+
+### 21. Export Review Results
+After a review completes, use the toolbar buttons at the top of the review panel to share or save results:
+
+- **Copy to Clipboard**: Instantly copies the raw Markdown review to your clipboard.
+- **Save as Markdown**: Opens a system save dialog and writes the review as a `.md` file.
+- **PR Description**: Wraps the review with a model attribution header and copies it to your clipboard — ready to paste into a Pull Request description.
+- **Create GitHub Gist**: Posts a private Gist containing the review. Requires a GitHub Personal Access Token with the `gist` scope configured in settings (`ollama-code-review.github.gistToken`). After creation you can open the Gist in your browser or copy its URL.
+
+### 22. MCP Server for Claude Desktop
 Use the code review functionality directly in Claude Desktop without copy-pasting diffs. The MCP server is available as a separate project:
 
 **Repository:** [gitsage](https://github.com/glorynguyen/gitsage)
@@ -290,6 +316,8 @@ This extension contributes the following settings to your VS Code `settings.json
     * `ignorePatterns`: File name patterns to ignore (default: `*.min.js`, `*.min.css`, `*.map`, `*.generated.*`)
     * `maxFileLines`: Warn when a file has more changed lines than this (default: `500`)
     * `ignoreFormattingOnly`: Skip files with only whitespace/formatting changes (default: `false`)
+* `ollama-code-review.customProfiles`: Define custom review profiles as a JSON array. Each object supports `name`, `focusAreas` (array of strings), `severity` (`low` | `medium` | `high`), and an optional `description`.
+* `ollama-code-review.github.gistToken`: GitHub Personal Access Token with the `gist` scope, used to create private Gists from review results. Get one at [github.com/settings/tokens](https://github.com/settings/tokens).
 
 You can configure these by opening the Command Palette (`Ctrl+Shift+P`) and searching for `Preferences: Open User Settings (JSON)`.
 
