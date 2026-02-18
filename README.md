@@ -234,7 +234,29 @@ After a review completes, use the toolbar buttons at the top of the review panel
 - **PR Description**: Wraps the review with a model attribution header and copies it to your clipboard — ready to paste into a Pull Request description.
 - **Create GitHub Gist**: Posts a private Gist containing the review. Requires a GitHub Personal Access Token with the `gist` scope configured in settings (`ollama-code-review.github.gistToken`). After creation you can open the Gist in your browser or copy its URL.
 
-### 22. MCP Server for Claude Desktop
+### 22. GitHub PR Integration
+Review GitHub Pull Requests directly from VS Code and post AI-generated reviews as PR comments:
+
+- **Command**: `Ollama Code Review: Review GitHub PR`
+  - Enter a PR URL (e.g., `https://github.com/owner/repo/pull/123`) or a PR number (requires the repo to be open in your workspace).
+  - Fetches the PR diff from GitHub and runs it through the selected AI model.
+  - The review opens in the standard review panel with full chat and export support.
+
+- **Command**: `Ollama Code Review: Post Review to GitHub PR`
+  - After reviewing, post the AI output directly to the PR as a GitHub comment.
+  - Choose between three comment styles via the `ollama-code-review.github.commentStyle` setting:
+    - **`summary`** _(default)_ — One top-level PR comment with the full review.
+    - **`inline`** — Attempts to place comments on specific changed lines.
+    - **`both`** — Posts a summary comment and inline comments.
+
+To use GitHub PR integration:
+1. Get a GitHub Personal Access Token with the **`repo`** scope from [github.com/settings/tokens](https://github.com/settings/tokens)
+2. Set your token in settings: `ollama-code-review.github.token`
+3. (Optional) Configure `ollama-code-review.github.commentStyle` to control how reviews are posted
+
+> **Note:** The existing `ollama-code-review.github.gistToken` (gist scope only) is used exclusively for creating Gists. For PR reviews and posting comments, use `ollama-code-review.github.token` (repo scope).
+
+### 23. MCP Server for Claude Desktop
 Use the code review functionality directly in Claude Desktop without copy-pasting diffs. The MCP server is available as a separate project:
 
 **Repository:** [gitsage](https://github.com/glorynguyen/gitsage)
@@ -328,6 +350,11 @@ This extension contributes the following settings to your VS Code `settings.json
     * `maxFileLines`: Warn when a file has more changed lines than this (default: `500`)
     * `ignoreFormattingOnly`: Skip files with only whitespace/formatting changes (default: `false`)
 * `ollama-code-review.customProfiles`: Define custom review profiles as a JSON array. Each object supports `name`, `focusAreas` (array of strings), `severity` (`low` | `medium` | `high`), and an optional `description`.
+* `ollama-code-review.github.token`: GitHub Personal Access Token with the **`repo`** scope, used for reviewing GitHub PRs and posting review comments. Get one at [github.com/settings/tokens](https://github.com/settings/tokens).
+* `ollama-code-review.github.commentStyle`: Controls how AI reviews are posted to GitHub PRs.
+    * `summary` _(default)_ — A single top-level PR comment with the full review.
+    * `inline` — Comments placed on specific changed lines.
+    * `both` — Summary comment plus inline comments.
 * `ollama-code-review.github.gistToken`: GitHub Personal Access Token with the `gist` scope, used to create private Gists from review results. Get one at [github.com/settings/tokens](https://github.com/settings/tokens).
 
 You can configure these by opening the Command Palette (`Ctrl+Shift+P`) and searching for `Preferences: Open User Settings (JSON)`.
