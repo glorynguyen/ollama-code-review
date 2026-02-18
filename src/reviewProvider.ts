@@ -53,6 +53,9 @@ export class OllamaReviewPanel {
           case 'exportReview':
             await this._handleExport(message.format);
             break;
+          case 'postToPR':
+            await vscode.commands.executeCommand('ollama-code-review.postReviewToPR');
+            break;
         }
       },
       null,
@@ -82,10 +85,24 @@ export class OllamaReviewPanel {
     OllamaReviewPanel.currentPanel = new OllamaReviewPanel(panel, content, diff, context, metrics);
   }
 
+  /**
+   * Get the raw review content for posting to GitHub PR.
+   */
+  public getReviewContent(): string {
+    return this._reviewContent;
+  }
+
+  /**
+   * Get the original diff that was reviewed.
+   */
+  public getOriginalDiff(): string {
+    return this._originalDiff;
+  }
+
   private _syncMessages() {
-    this._panel.webview.postMessage({ 
-      command: 'updateMessages', 
-      messages: this._conversationHistory 
+    this._panel.webview.postMessage({
+      command: 'updateMessages',
+      messages: this._conversationHistory
     });
   }
 
@@ -410,6 +427,7 @@ export class OllamaReviewPanel {
         <button class="export-btn" onclick="exportReview('markdown')" title="Save as Markdown file">💾 Markdown</button>
         <button class="export-btn" onclick="exportReview('prDescription')" title="Copy as PR description">📄 PR Desc</button>
         <button class="export-btn" onclick="exportReview('gist')" title="Create GitHub Gist">🔗 Gist</button>
+        <button class="export-btn" onclick="postToPR()" title="Post review to GitHub PR" style="background: var(--vscode-button-background, #0e639c); color: var(--vscode-button-foreground, #fff); border-color: var(--vscode-button-background, #0e639c);">⬆ Post to PR</button>
     </div>
     <div class="container" id="chat"></div>
     <div id="loading">Thinking...</div>
@@ -545,6 +563,10 @@ export class OllamaReviewPanel {
 
         window.exportReview = function(format) {
             vscode.postMessage({ command: 'exportReview', format: format });
+        };
+
+        window.postToPR = function() {
+            vscode.postMessage({ command: 'postToPR' });
         };
 
         document.getElementById('send').onclick = () => {

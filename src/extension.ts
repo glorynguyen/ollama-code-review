@@ -33,6 +33,16 @@ import {
 	getDocumentationStyle,
 	parseCodeResponse
 } from './codeActions';
+import {
+	promptAndFetchPR,
+	parsePRInput,
+	parseRemoteUrl,
+	postPRSummaryComment,
+	postPRReview,
+	PRReference
+} from './github/prReview';
+import { getGitHubAuth, showAuthSetupGuide } from './github/auth';
+import { parseReviewIntoFindings } from './github/commentMapper';
 
 const CLAUDE_API_ENDPOINT = 'https://api.anthropic.com/v1/messages';
 const GLM_API_ENDPOINT = 'https://api.z.ai/api/paas/v4/chat/completions';
@@ -2072,13 +2082,156 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
+	// Review GitHub PR command (F-004)
+	const reviewGitHubPRCommand = vscode.commands.registerCommand('ollama-code-review.reviewGitHubPR', async () => {
+		try {
+			const gitAPI = getGitAPI();
+			let repoPath = '';
+
+			// Try to get repo path for context detection
+			if (gitAPI) {
+				const repo = await selectRepository(gitAPI);
+				if (repo) {
+					repoPath = repo.rootUri.fsPath;
+				}
+			}
+
+			await vscode.window.withProgress({
+				location: vscode.ProgressLocation.Notification,
+				title: 'Ollama Code Review',
+				cancellable: true
+			}, async (progress, token) => {
+				progress.report({ message: 'Authenticating with GitHub...' });
+
+				const result = await promptAndFetchPR(repoPath, runGitCommand);
+				if (!result || token.isCancellationRequested) { return; }
+
+				const { diff, ref, info, auth } = result;
+
+				outputChannel.appendLine(`\n--- Reviewing GitHub PR #${ref.prNumber} ---`);
+				outputChannel.appendLine(`Title: ${info.title}`);
+				outputChannel.appendLine(`Author: ${info.user}`);
+				outputChannel.appendLine(`Branch: ${info.headBranch} → ${info.baseBranch}`);
+				outputChannel.appendLine(`Changed files: ${info.changedFiles} (+${info.additions}/-${info.deletions})`);
+				outputChannel.appendLine('---------------------------------------');
+
+				progress.report({ message: `Reviewing PR #${ref.prNumber}: ${info.title}...` });
+
+				// Store PR context for later "Post to PR" action
+				context.globalState.update('activePRContext', {
+					owner: ref.owner,
+					repo: ref.repo,
+					prNumber: ref.prNumber,
+					title: info.title,
+					url: info.url
+				});
+
+				// Use the existing runReview workflow
+				await runReview(diff, context);
+			});
+		} catch (error) {
+			handleError(error, 'Failed to review GitHub PR.');
+		}
+	});
+
+	// Post Review to GitHub PR command (F-004)
+	const postReviewToPRCommand = vscode.commands.registerCommand('ollama-code-review.postReviewToPR', async () => {
+		try {
+			const prContext = context.globalState.get<{
+				owner: string;
+				repo: string;
+				prNumber: number;
+				title: string;
+				url: string;
+			}>('activePRContext');
+
+			if (!prContext) {
+				vscode.window.showErrorMessage(
+					'No active PR context. Please run "Review GitHub PR" first.'
+				);
+				return;
+			}
+
+			const panel = OllamaReviewPanel.currentPanel;
+			if (!panel) {
+				vscode.window.showErrorMessage('No review panel open. Please run a review first.');
+				return;
+			}
+
+			const reviewContent = panel.getReviewContent();
+			if (!reviewContent) {
+				vscode.window.showErrorMessage('No review content available.');
+				return;
+			}
+
+			const auth = await getGitHubAuth(true);
+			if (!auth) {
+				await showAuthSetupGuide();
+				return;
+			}
+
+			const config = vscode.workspace.getConfiguration('ollama-code-review');
+			const commentStyle = config.get<string>('github.commentStyle', 'summary');
+			const model = getOllamaModel(config);
+
+			const ref: PRReference = {
+				owner: prContext.owner,
+				repo: prContext.repo,
+				prNumber: prContext.prNumber
+			};
+
+			await vscode.window.withProgress({
+				location: vscode.ProgressLocation.Notification,
+				title: 'Posting review to GitHub...',
+				cancellable: false
+			}, async (progress) => {
+				let commentUrl: string;
+
+				if (commentStyle === 'summary') {
+					progress.report({ message: 'Posting summary comment...' });
+					commentUrl = await postPRSummaryComment(ref, auth, reviewContent, model);
+				} else {
+					// 'inline' or 'both' — parse findings and create a proper review
+					progress.report({ message: 'Parsing review findings...' });
+					const originalDiff = panel.getOriginalDiff();
+					const findings = parseReviewIntoFindings(reviewContent, originalDiff);
+
+					progress.report({ message: `Posting review with ${findings.length} findings...` });
+					commentUrl = await postPRReview(
+						ref,
+						auth,
+						commentStyle === 'both' ? findings : findings.filter(f => f.file && f.line),
+						reviewContent,
+						model
+					);
+				}
+
+				const action = await vscode.window.showInformationMessage(
+					`Review posted to PR #${prContext.prNumber}!`,
+					'Open in Browser',
+					'Copy URL'
+				);
+
+				if (action === 'Open in Browser') {
+					vscode.env.openExternal(vscode.Uri.parse(commentUrl));
+				} else if (action === 'Copy URL') {
+					await vscode.env.clipboard.writeText(commentUrl);
+				}
+			});
+		} catch (error) {
+			handleError(error, 'Failed to post review to GitHub PR.');
+		}
+	});
+
 	context.subscriptions.push(
 		reviewStagedChangesCommand,
 		reviewCommitRangeCommand,
 		reviewChangesBetweenTwoBranchesCommand,
 		generateCommitMessageCommand,
 		suggestRefactoringCommand,
-		reviewCommitCommand
+		reviewCommitCommand,
+		reviewGitHubPRCommand,
+		postReviewToPRCommand
 	);
 }
 
