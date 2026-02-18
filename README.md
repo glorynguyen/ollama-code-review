@@ -54,7 +54,7 @@ You can interact with this extension in two primary ways:
 - Alternatively (currently only JavaScript and TypeScript are supported), you can select a block of code, click on the light bulb icon, and choose "Ollama: Suggest Refactoring"
 ![Suggest Improvements](images/code-action.gif)
 
-### 4. Inline AI Code Actions (New!)
+### 4. Inline AI Code Actions
 Select any code in your editor and access powerful AI-powered actions via the lightbulb menu or `Ctrl+.` (`Cmd+.` on Mac):
 
 - **Explain Code**: Get detailed explanations of selected code displayed in a preview panel. Understand complex logic, algorithms, or unfamiliar code patterns.
@@ -63,6 +63,8 @@ Select any code in your editor and access powerful AI-powered actions via the li
 - **Add Documentation**: Generate JSDoc/TSDoc comments for functions, classes, and methods. Preview documentation before inserting it into your code.
 
 Each action opens a dedicated preview panel where you can review the AI's output before applying changes to your code.
+
+Supported languages: JavaScript, TypeScript, JSX, TSX, and **PHP**.
 
 ### 5. Review a Commit Range
 - **Command**: `Ollama: Review Commit Range`
@@ -193,13 +195,48 @@ Use variable placeholders that get replaced at runtime:
 - **Review**: `${code}` (the diff), `${frameworks}` (selected frameworks), `${skills}` (active agent skills), `${profile}` (active review profile context)
 - **Commit Message**: `${diff}` (staged diff), `${draftMessage}` (developer's draft)
 
-Configure in settings:
+Configure via (in order of increasing priority):
 - `ollama-code-review.prompt.review` — multiline text area in Settings UI
 - `ollama-code-review.prompt.commitMessage` — multiline text area in Settings UI
+- `.ollama-review.yaml` at the workspace root — highest priority, overrides all other sources (see section 19)
 
 > **Note:** If your custom review prompt omits `${skills}`, active agent skills are automatically appended. Likewise, if `${profile}` is omitted, the active review profile context is automatically appended.
 
-### 19. Smart Diff Filtering
+### 19. Project Config File (.ollama-review.yaml)
+Share consistent AI review settings across your whole team by adding a `.ollama-review.yaml` file to the root of your repository. Settings in this file override both the built-in defaults and your VS Code `settings.json`, making it easy for everyone on the team to use the same prompts, frameworks, and diff filters without individual configuration.
+
+- **Command**: `Ollama Code Review: Reload Project Config (.ollama-review.yaml)` — manually refresh the cached config after editing the file (usually not needed, as the extension auto-detects changes).
+
+**Example `.ollama-review.yaml`:**
+
+```yaml
+# Custom review prompt (overrides VS Code settings)
+prompt:
+  review: |
+    Review the following code diff for our React + TypeScript project.
+    Focus on type safety, React best practices, and accessibility.
+    Diff:
+    ${code}
+  commitMessage: |
+    Generate a Conventional Commits message for this diff:
+    ${diff}
+
+# Frameworks list (overrides ollama-code-review.frameworks setting)
+frameworks:
+  - React
+  - TypeScript
+  - Node.js
+
+# Diff filter overrides
+diffFilter:
+  ignorePaths:
+    - "**/generated/**"
+  ignoreFormattingOnly: true
+```
+
+The extension automatically watches `.ollama-review.yaml` for changes (create, edit, delete) and reloads the config without requiring a VS Code restart.
+
+### 20. Smart Diff Filtering
 Reduce noise in your code reviews by filtering out irrelevant changes:
 - **Ignore paths**: Skip `node_modules`, lock files, build outputs
 - **Ignore patterns**: Exclude minified files, source maps, generated code
@@ -208,7 +245,7 @@ Reduce noise in your code reviews by filtering out irrelevant changes:
 
 Configure in settings under `ollama-code-review.diffFilter`.
 
-### 20. Review Profiles & Presets
+### 21. Review Profiles & Presets
 - **Command**: `Ollama Code Review: Select Review Profile`
 - Focus the AI on what matters most by switching between six built-in review profiles — or create your own:
 
@@ -226,7 +263,7 @@ Configure in settings under `ollama-code-review.diffFilter`.
 - **Prompt Integration**: The active profile context is injected via the `${profile}` template variable. If your custom prompt template omits `${profile}`, it is automatically appended.
 - **Persistence**: The selected profile is remembered across VS Code sessions.
 
-### 21. Export Review Results
+### 22. Export Review Results
 After a review completes, use the toolbar buttons at the top of the review panel to share or save results:
 
 - **Copy to Clipboard**: Instantly copies the raw Markdown review to your clipboard.
@@ -234,11 +271,11 @@ After a review completes, use the toolbar buttons at the top of the review panel
 - **PR Description**: Wraps the review with a model attribution header and copies it to your clipboard — ready to paste into a Pull Request description.
 - **Create GitHub Gist**: Posts a private Gist containing the review. Requires a GitHub Personal Access Token with the `gist` scope configured in settings (`ollama-code-review.github.gistToken`). After creation you can open the Gist in your browser or copy its URL.
 
-### 22. GitHub PR Integration
+### 23. GitHub PR Integration
 Review GitHub Pull Requests directly from VS Code and post AI-generated reviews as PR comments:
 
 - **Command**: `Ollama Code Review: Review GitHub PR`
-  - Enter a PR URL (e.g., `https://github.com/owner/repo/pull/123`) or a PR number (requires the repo to be open in your workspace).
+  - Enter a PR URL (e.g., `https://github.com/owner/repo/pull/123`), a shorthand like `#123` or `owner/repo#123`, or a PR number (requires the repo to be open in your workspace).
   - Fetches the PR diff from GitHub and runs it through the selected AI model.
   - The review opens in the standard review panel with full chat and export support.
 
@@ -249,14 +286,19 @@ Review GitHub Pull Requests directly from VS Code and post AI-generated reviews 
     - **`inline`** — Attempts to place comments on specific changed lines.
     - **`both`** — Posts a summary comment and inline comments.
 
-To use GitHub PR integration:
+**GitHub Authentication** — The extension tries to authenticate in this order:
+1. `gh` CLI (if installed and authenticated via `gh auth login`)
+2. VS Code built-in GitHub session (sign in via VS Code accounts menu)
+3. Stored `ollama-code-review.github.token` setting (Personal Access Token)
+
+To configure via token:
 1. Get a GitHub Personal Access Token with the **`repo`** scope from [github.com/settings/tokens](https://github.com/settings/tokens)
 2. Set your token in settings: `ollama-code-review.github.token`
 3. (Optional) Configure `ollama-code-review.github.commentStyle` to control how reviews are posted
 
-> **Note:** The existing `ollama-code-review.github.gistToken` (gist scope only) is used exclusively for creating Gists. For PR reviews and posting comments, use `ollama-code-review.github.token` (repo scope).
+> **Note:** `ollama-code-review.github.gistToken` is used for creating Gists; if not set, the extension falls back to `ollama-code-review.github.token` for Gist creation as well.
 
-### 23. MCP Server for Claude Desktop
+### 24. MCP Server for Claude Desktop
 Use the code review functionality directly in Claude Desktop without copy-pasting diffs. The MCP server is available as a separate project:
 
 **Repository:** [gitsage](https://github.com/glorynguyen/gitsage)
@@ -340,13 +382,13 @@ This extension contributes the following settings to your VS Code `settings.json
     * **Type**: `array`
     * **Default**: `["React"]`
 ![Config Frameworks](images/setting-frameworks.png)
-* `ollama-code-review.prompt.review`: Custom prompt template for code reviews. Use `${code}`, `${frameworks}`, and `${skills}` as placeholders. Leave empty to use the built-in default.
+* `ollama-code-review.prompt.review`: Custom prompt template for code reviews. Use `${code}`, `${frameworks}`, `${skills}`, and `${profile}` as placeholders. Leave empty to use the built-in default. Can be overridden by `.ollama-review.yaml` at workspace root.
     * **Type**: `string` (multiline)
-* `ollama-code-review.prompt.commitMessage`: Custom prompt template for commit message generation. Use `${diff}` and `${draftMessage}` as placeholders. Leave empty to use the built-in default.
+* `ollama-code-review.prompt.commitMessage`: Custom prompt template for commit message generation. Use `${diff}` and `${draftMessage}` as placeholders. Leave empty to use the built-in default. Can be overridden by `.ollama-review.yaml` at workspace root.
     * **Type**: `string` (multiline)
-* `ollama-code-review.diffFilter`: Configure diff filtering to exclude noise from reviews.
-    * `ignorePaths`: Glob patterns for paths to ignore (default: `node_modules`, lock files, `dist`, `build`, `out`)
-    * `ignorePatterns`: File name patterns to ignore (default: `*.min.js`, `*.min.css`, `*.map`, `*.generated.*`)
+* `ollama-code-review.diffFilter`: Configure diff filtering to exclude noise from reviews. Can be partially overridden by `.ollama-review.yaml` at workspace root (YAML values merged on top of settings).
+    * `ignorePaths`: Glob patterns for paths to ignore (default: `node_modules`, lock files, `dist`, `build`, `out`, `.next`, `coverage`)
+    * `ignorePatterns`: File name patterns to ignore (default: `*.min.js`, `*.min.css`, `*.map`, `*.generated.*`, `*.g.ts`, `*.d.ts.map`)
     * `maxFileLines`: Warn when a file has more changed lines than this (default: `500`)
     * `ignoreFormattingOnly`: Skip files with only whitespace/formatting changes (default: `false`)
 * `ollama-code-review.customProfiles`: Define custom review profiles as a JSON array. Each object supports `name`, `focusAreas` (array of strings), `severity` (`low` | `medium` | `high`), and an optional `description`.
