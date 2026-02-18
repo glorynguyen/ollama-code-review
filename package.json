@@ -2,7 +2,7 @@
   "name": "ollama-code-review",
   "displayName": "Ollama Code Review",
   "description": "Get AI code reviews and generate commit messages from a local Ollama instance before you commit.",
-  "version": "3.3.0",
+  "version": "3.5.0",
   "author": "Vinh Nguyen (vincent)",
   "publisher": "VinhNguyen-Vincent",
   "icon": "images/icon.png",
@@ -118,6 +118,12 @@
         "title": "Post Review to GitHub PR",
         "category": "Ollama Code Review",
         "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "ollama-code-review.reloadProjectConfig",
+        "title": "Reload Project Config (.ollama-review.yaml)",
+        "category": "Ollama Code Review",
+        "icon": "$(refresh)"
       }
     ],
     "menus": {
@@ -442,6 +448,7 @@
     "@semantic-release/exec": "^7.1.0",
     "@semantic-release/git": "^10.0.1",
     "@semantic-release/npm": "^13.1.3",
+    "@types/js-yaml": "^4.0.9",
     "@types/mocha": "^10.0.10",
     "@types/node": "22.x",
     "@types/vscode": "1.102.0",
@@ -457,6 +464,7 @@
   "dependencies": {
     "@octokit/rest": "^22.0.1",
     "axios": "^1.11.0",
+    "js-yaml": "^4.1.1",
     "node-fetch": "^3.3.2"
   },
   "release": {

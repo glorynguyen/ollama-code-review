@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { getYamlDiffFilterOverrides } from './config/promptLoader';
 
 export interface DiffFilterConfig {
 	ignorePaths: string[];
@@ -51,6 +52,28 @@ export function getDiffFilterConfig(): DiffFilterConfig {
 		ignorePatterns: filterConfig.ignorePatterns ?? DEFAULT_IGNORE_PATTERNS,
 		maxFileLines: filterConfig.maxFileLines ?? 500,
 		ignoreFormattingOnly: filterConfig.ignoreFormattingOnly ?? false,
+	};
+}
+
+/**
+ * Get diff filter configuration using the full config hierarchy:
+ * built-in defaults → VS Code settings → .ollama-review.yaml (highest priority).
+ *
+ * Use this in async contexts (e.g., runReview) to support team-shared config files.
+ */
+export async function getDiffFilterConfigWithYaml(outputChannel?: vscode.OutputChannel): Promise<DiffFilterConfig> {
+	const settingsConfig = getDiffFilterConfig();
+	const yamlOverrides = await getYamlDiffFilterOverrides(outputChannel);
+
+	if (!yamlOverrides) {
+		return settingsConfig;
+	}
+
+	return {
+		ignorePaths: yamlOverrides.ignorePaths ?? settingsConfig.ignorePaths,
+		ignorePatterns: yamlOverrides.ignorePatterns ?? settingsConfig.ignorePatterns,
+		maxFileLines: yamlOverrides.maxFileLines ?? settingsConfig.maxFileLines,
+		ignoreFormattingOnly: yamlOverrides.ignoreFormattingOnly ?? settingsConfig.ignoreFormattingOnly,
 	};
 }
 
