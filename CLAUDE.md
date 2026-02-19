@@ -3,7 +3,7 @@
 ## Project Overview
 
 - **Name:** Ollama Code Review VS Code Extension
-- **Version:** 3.5.0
+- **Version:** 4.0.0
 - **Purpose:** AI-powered code reviews and commit message generation using local Ollama or cloud models
 - **Author:** Vinh Nguyen (vincent)
 - **License:** MIT
@@ -38,6 +38,13 @@ src/
 │   ├── auth.ts           # Multi-strategy GitHub auth (gh CLI / VS Code session / token)
 │   ├── prReview.ts       # PR fetching, diff retrieval, comment posting
 │   └── commentMapper.ts  # AI review → structured findings & inline comment mapping
+├── context/              # Multi-file contextual analysis (F-008)
+│   ├── index.ts          # Barrel exports
+│   ├── types.ts          # Context gathering interfaces
+│   ├── importParser.ts   # ES6/CommonJS/dynamic import parser
+│   ├── fileResolver.ts   # Import → workspace file resolution
+│   ├── testDiscovery.ts  # Test file discovery by naming conventions
+│   └── contextGatherer.ts # Main orchestrator: gather, budget, format
 ├── codeActions/          # Inline AI code actions (F-005)
 │   ├── index.ts          # Module exports
 │   ├── types.ts          # Common types and utilities
@@ -64,6 +71,12 @@ out/                      # Compiled JavaScript output
 | `src/profiles.ts` | ~234 | Review profiles: built-in presets, custom profiles, prompt context builder |
 | `src/utils.ts` | ~33 | Helper for model config, HTML escaping, and prompt template resolution |
 | `src/config/promptLoader.ts` | ~270 | .ollama-review.yaml loader with config hierarchy and workspace-aware caching |
+| `src/context/index.ts` | ~25 | Barrel exports for the context module |
+| `src/context/types.ts` | ~90 | Context gathering interfaces and types |
+| `src/context/importParser.ts` | ~100 | ES6/CommonJS/dynamic import() parser |
+| `src/context/fileResolver.ts` | ~115 | Import specifier → workspace file resolution |
+| `src/context/testDiscovery.ts` | ~110 | Test file discovery by naming conventions |
+| `src/context/contextGatherer.ts` | ~240 | Main orchestrator: gather context, enforce budget, format for prompt |
 | `src/github/auth.ts` | ~112 | Multi-strategy GitHub auth: gh CLI → VS Code session → stored token |
 | `src/github/prReview.ts` | ~328 | PR fetching, diff retrieval, comment posting, PR listing |
 | `src/github/commentMapper.ts` | ~284 | Parse AI review into structured findings; format inline comments |
@@ -122,6 +135,7 @@ out/                      # Compiled JavaScript output
 | `ollama-code-review.temperature` | `0` | Model temperature (0-1) |
 | `ollama-code-review.frameworks` | `["React"]` | Target frameworks for context |
 | `ollama-code-review.diffFilter` | `{}` | Diff filtering configuration (see Diff Filtering section) |
+| `ollama-code-review.contextGathering` | `{}` | Multi-file context gathering configuration (see Context Gathering section) |
 | `ollama-code-review.preCommitGuard.severityThreshold` | `"high"` | Block commits when findings at or above this severity (critical/high/medium/low) |
 | `ollama-code-review.preCommitGuard.timeout` | `60` | AI review timeout in seconds for Review & Commit (10–300) |
 | `ollama-code-review.customProfiles` | `[]` | Custom review profiles (array of objects with name, focusAreas, severity, etc.) |
@@ -347,6 +361,100 @@ interface FilterResult {
 - `countChangedLines()` - Counts +/- lines in a diff hunk
 - `isFormattingOnlyChange()` - Detects whitespace-only changes
 - `parseDiffIntoFiles()` - Splits unified diff by file
+
+## Multi-File Context Gathering (F-008)
+
+The `src/context/` module provides multi-file contextual analysis that resolves imports, discovers related tests, and bundles workspace file contents alongside diffs so the AI reviewer has richer context.
+
+### How It Works
+
+1. When a review starts, the extension extracts changed file paths from the diff
+2. For each changed file, it reads the source and parses import/require statements
+3. Relative imports are resolved to actual workspace files using TypeScript-style resolution
+4. Related test files are discovered by naming convention (`.test.ts`, `.spec.ts`, `__tests__/`)
+5. Type-definition files (`.d.ts`) are discovered for changed TypeScript modules
+6. All resolved files are read (with per-file and total character budgets) and formatted into the review prompt
+
+### Configuration
+
+| Property | Default | Description |
+|----------|---------|-------------|
+| `enabled` | `true` | Include related files as context in reviews |
+| `maxFiles` | `10` | Maximum number of context files to include |
+| `includeTests` | `true` | Include test files for changed source files |
+| `includeTypeDefinitions` | `true` | Include `.d.ts` type definitions for changed modules |
+
+### Exported Types (src/context/types.ts)
+
+```typescript
+interface ContextGatheringConfig {
+  enabled: boolean;
+  maxFiles: number;
+  includeTests: boolean;
+  includeTypeDefinitions: boolean;
+}
+
+type ContextFileReason = 'import' | 'test' | 'type-definition';
+
+interface ContextFile {
+  relativePath: string;
+  content: string;
+  reason: ContextFileReason;
+  sourceFile: string;
+  charCount: number;
+}
+
+interface ContextBundle {
+  files: ContextFile[];
+  summary: string;
+  stats: ContextGatheringStats;
+}
+```
+
+### Exported Functions
+
+| Function | File | Description |
+|----------|------|-------------|
+| `gatherContext(diff, config, outputChannel?)` | `contextGatherer.ts` | Main orchestrator — returns a `ContextBundle` |
+| `formatContextForPrompt(bundle)` | `contextGatherer.ts` | Format bundle into prompt-ready string |
+| `getContextGatheringConfig()` | `contextGatherer.ts` | Read settings from VS Code configuration |
+| `parseImports(content)` | `importParser.ts` | Extract import/require statements from source |
+| `extractChangedFiles(diff)` | `importParser.ts` | Extract changed file paths from unified diff |
+| `resolveImport(specifier, sourceFile, workspaceRoot)` | `fileResolver.ts` | Resolve relative import to workspace file URI |
+| `readFileContent(uri, maxChars?)` | `fileResolver.ts` | Read file with optional character limit |
+| `findTestFiles(sourceFile, workspaceRoot)` | `testDiscovery.ts` | Discover test files by naming conventions |
+
+### Import Patterns Supported
+
+- ES6 static: `import foo from './module'`, `import { foo } from './module'`, `import * as foo from './module'`
+- ES6 side-effect: `import './module'`
+- ES6 re-export: `export { foo } from './module'`, `export * from './module'`
+- CommonJS: `const foo = require('./module')`, `require('./module')`
+- Dynamic: `import('./module')`, `await import('./module')`
+
+### File Resolution Order
+
+For `import './foo'`:
+1. `./foo` (exact match)
+2. `./foo.ts`, `./foo.tsx`, `./foo.js`, `./foo.jsx`, `./foo.mts`, `./foo.mjs` (appended extensions)
+3. `./foo/index.ts`, `./foo/index.tsx`, `./foo/index.js`, … (directory index files)
+
+### Test Discovery Patterns
+
+For `src/auth.ts`:
+- Co-located: `src/auth.test.ts`, `src/auth.spec.ts`
+- Mirror dirs: `src/__tests__/auth.ts`, `src/test/auth.ts`, `src/tests/auth.ts`
+- Root-level: `__tests__/auth.ts`, `test/auth.test.ts`, `tests/auth.spec.ts`
+
+### Token Budget
+
+- Per-file limit: 8,000 characters (≈ 2,000 tokens)
+- Total budget: 32,000 characters (≈ 8,000 tokens)
+- Files exceeding the budget are truncated with a `// … truncated` marker
+
+### Integration
+
+Context is gathered automatically during `runReview()` and the Review & Commit workflow. The gathered context is appended to the review prompt as a **Related Files** section after the diff. If context gathering fails, the review proceeds without context (non-fatal).
 
 ## Project Config File System (F-006)
 
@@ -853,11 +961,12 @@ See [docs/roadmap/](./docs/roadmap/) for comprehensive planning documents:
 | Multi-strategy GitHub Auth (gh CLI / VS Code session / token) | — | v3.4 |
 | OpenAI-Compatible Provider (LM Studio, vLLM, LocalAI, Groq, OpenRouter) | F-013 | v3.5 |
 | Pre-Commit Guard (review before commit, severity threshold, hook management) | F-014 | v3.6 |
+| Multi-File Contextual Analysis (import resolution, test discovery, type defs) | F-008 | v4.0 |
 
 ### Remaining Planned Features
 
 | Phase | Features | Target |
 |-------|----------|--------|
-| v4.0 | Agentic Multi-Step Reviews (F-007), Multi-File Analysis (F-008) | Q3 2026 |
+| v4.0 | Agentic Multi-Step Reviews (F-007) | Q3 2026 |
 | v5.0 | RAG (F-009), CI/CD (F-010), Analytics (F-011), Knowledge Base (F-012) | Q4 2026 |
 | v6.0 | GitLab & Bitbucket Integration (F-015), Review Quality Scoring & Trends (F-016), Compliance Review Profiles (F-017), Notification Integrations (F-018), Batch / Legacy Code Review (F-019), Architecture Diagram Generation (F-020) | Q1–Q2 2027 |

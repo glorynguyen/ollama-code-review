@@ -59,6 +59,12 @@ import {
 	assessSeverity,
 	formatAssessmentSummary
 } from './preCommitGuard';
+import {
+	gatherContext,
+	formatContextForPrompt,
+	getContextGatheringConfig,
+	ContextBundle,
+} from './context';
 
 const CLAUDE_API_ENDPOINT = 'https://api.anthropic.com/v1/messages';
 const GLM_API_ENDPOINT = 'https://api.z.ai/api/paas/v4/chat/completions';
@@ -2564,11 +2570,23 @@ export async function activate(context: vscode.ExtensionContext) {
 					title: 'Ollama: Review & Commit',
 					cancellable: true
 				}, async (progress, token) => {
+					// F-008: Gather multi-file context for Review & Commit
+					let rcContextBundle: ContextBundle | undefined;
+					const rcCtxConfig = getContextGatheringConfig();
+					if (rcCtxConfig.enabled) {
+						progress.report({ message: 'Gathering related file context…' });
+						try {
+							rcContextBundle = await gatherContext(diffResult, rcCtxConfig, outputChannel);
+						} catch {
+							// Non-fatal — continue without context
+						}
+					}
+
 					progress.report({ message: 'Running AI review on staged changes...' });
 
 					// Race the review against the configured timeout
 					const timeoutMs = guardConfig.timeout * 1000;
-					const reviewPromise = getOllamaReview(diffResult, context);
+					const reviewPromise = getOllamaReview(diffResult, context, rcContextBundle);
 					const timeoutPromise = new Promise<null>((resolve) =>
 						setTimeout(() => resolve(null), timeoutMs)
 					);
@@ -2731,8 +2749,21 @@ async function runReview(diff: string, context: vscode.ExtensionContext) {
 		title: "Ollama Code Review",
 		cancellable: false
 	}, async (progress) => {
+		// F-008: Gather multi-file context (imports, tests, type definitions)
+		let contextBundle: ContextBundle | undefined;
+		const ctxConfig = getContextGatheringConfig();
+		if (ctxConfig.enabled) {
+			progress.report({ message: 'Gathering related file context…' });
+			try {
+				contextBundle = await gatherContext(filteredDiff, ctxConfig, outputChannel);
+			} catch (err) {
+				// Non-fatal — continue review without context
+				outputChannel.appendLine(`[Context Gathering] Error: ${err}`);
+			}
+		}
+
 		progress.report({ message: `Asking Ollama for a review (${filterResult.stats.includedFiles} files)...` });
-		const review = await getOllamaReview(filteredDiff, context);
+		const review = await getOllamaReview(filteredDiff, context, contextBundle);
 
 		// Get performance metrics and check for active model
 		const metrics = getLastPerformanceMetrics();
@@ -2756,7 +2787,7 @@ async function runReview(diff: string, context: vscode.ExtensionContext) {
 	});
 }
 
-async function getOllamaReview(diff: string, context?: vscode.ExtensionContext): Promise<string> {
+async function getOllamaReview(diff: string, context?: vscode.ExtensionContext, contextBundle?: ContextBundle): Promise<string> {
 	const config = vscode.workspace.getConfiguration('ollama-code-review');
 	const model = getOllamaModel(config);
 	const endpoint = config.get<string>('endpoint', 'http://localhost:11434/api/generate');
@@ -2797,6 +2828,12 @@ async function getOllamaReview(diff: string, context?: vscode.ExtensionContext):
 	// Safety: if the user's custom template omits ${skills} but skills are active, append them
 	if (skillContext && !promptTemplate.includes('${skills}')) {
 		prompt += '\n' + skillContext;
+	}
+
+	// F-008: Append multi-file context if available
+	if (contextBundle && contextBundle.files.length > 0) {
+		const contextSection = formatContextForPrompt(contextBundle);
+		prompt += '\n' + contextSection;
 	}
 
 	// Safety: if the user's custom template omits ${profile} but a non-general profile is active, append it
