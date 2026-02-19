@@ -1,3 +1,10 @@
+# [3.6.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.5.0...v3.6.0) (2026-02-19)
+
+
+### Features
+
+* **F-014:** add pre-commit guard for AI-reviewed commits ([6c7b7b0](https://github.com/glorynguyen/ollama-code-review/commit/6c7b7b0a98d3034e381602430d751517f5dfcb5b))
+
 # [3.5.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.4.0...v3.5.0) (2026-02-19)
 
 
