@@ -3,7 +3,7 @@
 ## Project Overview
 
 - **Name:** Ollama Code Review VS Code Extension
-- **Version:** 4.1.0
+- **Version:** 4.2.0
 - **Purpose:** AI-powered code reviews and commit message generation using local Ollama or cloud models
 - **Author:** Vinh Nguyen (vincent)
 - **License:** MIT
@@ -52,6 +52,17 @@ src/
 │   ├── testAction.ts     # Generate Tests action provider
 │   ├── fixAction.ts      # Fix Issue action provider
 │   └── documentAction.ts # Add Documentation action provider
+├── agent/                # Agentic multi-step reviews (F-007)
+│   ├── index.ts          # Barrel exports
+│   ├── types.ts          # Agent step interfaces, context types
+│   ├── orchestrator.ts   # Main 5-step pipeline orchestrator
+│   └── steps/            # Individual pipeline steps
+│       ├── analyzeDiff.ts      # Step 1: Structural diff analysis (local)
+│       ├── gatherContext.ts    # Step 2: Workspace context gathering
+│       ├── patternAnalysis.ts  # Step 3: Codebase pattern detection (AI)
+│       ├── deepReview.ts       # Step 4: Comprehensive review (AI)
+│       └── synthesis.ts        # Step 5: Self-critique & synthesis (AI)
+├── diagramGenerator.ts   # Architecture diagram generation — Mermaid.js (F-020)
 ├── notifications/        # Notification integrations (F-018)
 │   └── index.ts          # Slack / Teams / Discord webhook delivery
 ├── reviewScore.ts        # Review quality scoring & history (F-016)
@@ -92,6 +103,15 @@ out/                      # Compiled JavaScript output
 | `src/preCommitGuard.ts` | ~185 | Pre-commit guard: hook install/uninstall, severity assessment (F-014) |
 | `src/reviewScore.ts` | ~280 | Review quality scoring, score history store, status bar, history panel (F-016) |
 | `src/notifications/index.ts` | ~245 | Slack / Teams / Discord webhook notifications after reviews (F-018) |
+| `src/agent/index.ts` | ~15 | Barrel exports for agentic review module (F-007) |
+| `src/agent/types.ts` | ~120 | Agent step interfaces, context types, pipeline result (F-007) |
+| `src/agent/orchestrator.ts` | ~185 | 5-step pipeline orchestrator with cancellation & fallback (F-007) |
+| `src/agent/steps/analyzeDiff.ts` | ~95 | Step 1: Structural diff analysis (local, no AI call) (F-007) |
+| `src/agent/steps/gatherContext.ts` | ~90 | Step 2: Workspace context via F-008 + pattern discovery (F-007) |
+| `src/agent/steps/patternAnalysis.ts` | ~80 | Step 3: AI-powered codebase convention detection (F-007) |
+| `src/agent/steps/deepReview.ts` | ~90 | Step 4: Comprehensive AI code review (F-007) |
+| `src/agent/steps/synthesis.ts` | ~75 | Step 5: Self-critique and findings refinement (F-007) |
+| `src/diagramGenerator.ts` | ~120 | Mermaid.js diagram generation from code/diffs (F-020) |
 
 ## Commands
 
@@ -122,6 +142,8 @@ out/                      # Compiled JavaScript output
 | `ollama-code-review.reviewFolder` | Review all matching files in a folder without requiring a Git diff (F-019) |
 | `ollama-code-review.reviewSelection` | Review selected text in the editor without requiring a Git diff (F-019) |
 | `ollama-code-review.showReviewHistory` | Open the Review Quality History panel with score trends (F-016) |
+| `ollama-code-review.agentReview` | Run the 5-step agentic multi-step review pipeline on staged changes (F-007) |
+| `ollama-code-review.generateDiagram` | Generate a Mermaid architecture diagram from the current review or staged diff (F-020) |
 
 ## Configuration Settings
 
@@ -163,6 +185,7 @@ out/                      # Compiled JavaScript output
 | `ollama-code-review.batch.maxFileSizeKb` | `100` | Max file size (KB) for batch file reviews; larger files are truncated (F-019) |
 | `ollama-code-review.batch.includeGlob` | `**/*.{ts,js,...}` | Glob pattern for files included in folder reviews (F-019) |
 | `ollama-code-review.batch.excludeGlob` | `**/node_modules/**,...` | Comma-separated glob patterns for files excluded from folder reviews (F-019) |
+| `ollama-code-review.agentMode` | `{}` | Agentic multi-step review configuration (F-007) |
 
 ### Diff Filter Settings
 
@@ -912,6 +935,115 @@ Sub-scores (correctness, security, maintainability, performance) are approximate
 - `updateScoreStatusBar(item, score)` — update the status bar item text and color
 - `ReviewHistoryPanel.createOrShow(scores)` — open or focus the history webview
 
+## Agentic Multi-Step Reviews (F-007)
+
+The `src/agent/` module transforms single-pass reviews into a 5-step agentic pipeline that produces deeper, more accurate reviews by analysing context and self-critiquing.
+
+### Pipeline Steps
+
+| Step | Name | Type | Description |
+|------|------|------|-------------|
+| 1 | Analyze Diff | Local | Parses diff into per-file metadata, detects change types (feature, bugfix, refactor, etc.) |
+| 2 | Gather Context | Local + I/O | Leverages F-008 context gathering for imports, tests, type defs; discovers workspace patterns |
+| 3 | Pattern Analysis | AI | Identifies codebase conventions (naming, imports, error handling, testing patterns) |
+| 4 | Deep Review | AI | Comprehensive review with security, bugs, performance, and maintainability focus |
+| 5 | Synthesis | AI | Self-critique pass: removes false positives, prioritises findings, adds summary |
+
+### Configuration
+
+| Property | Default | Description |
+|----------|---------|-------------|
+| `enabled` | `false` | Enable the multi-step agentic review pipeline |
+| `maxContextFiles` | `10` | Max context files to resolve in step 2 |
+| `includeTests` | `true` | Include test files in context gathering |
+| `includeTypes` | `true` | Include `.d.ts` type definitions in context |
+| `selfCritique` | `true` | Run self-critique in step 5 to remove false positives |
+
+### Exported Functions (`src/agent/orchestrator.ts`)
+
+- `runAgentReview(diff, extensionContext, outputChannel, callAI, reportProgress, cancellationToken, profileContext?, skillContext?)` — Main pipeline orchestrator
+- `getAgentModeConfig()` — Read agent config from VS Code settings
+- `DEFAULT_AGENT_CONFIG` — Default configuration values
+
+### Key Types (`src/agent/types.ts`)
+
+```typescript
+interface AgentModeConfig {
+  enabled: boolean;
+  maxContextFiles: number;
+  includeTests: boolean;
+  includeTypes: boolean;
+  selfCritique: boolean;
+}
+
+interface AgentStep<TInput, TOutput> {
+  name: string;
+  label: string;
+  execute(input: TInput, ctx: AgentContext): Promise<TOutput>;
+}
+
+interface AgentReviewResult {
+  review: string;
+  diffAnalysis: DiffAnalysis;
+  gatheredContext: GatheredContext;
+  patternAnalysis: PatternAnalysis;
+  deepReview: DeepReview;
+  synthesis: SynthesisResult;
+  durationMs: number;
+  stepsCompleted: number;
+}
+```
+
+### Graceful Degradation
+
+- Steps 1–3 are non-fatal: if any fail, the pipeline continues with empty results
+- Step 4 (deep review) is critical: failure aborts the pipeline
+- Step 5 (synthesis) falls back to the raw deep review if self-critique fails
+- Cancellation is checked between every step
+- Progress is reported for each step via VS Code notification
+
+## Architecture Diagram Generation (F-020)
+
+The `src/diagramGenerator.ts` module generates Mermaid.js diagrams from code diffs or files. Diagrams are rendered in the review panel using the Mermaid.js CDN.
+
+### How It Works
+
+1. The user clicks the "📊 Diagram" button in the review panel toolbar (or runs the command from the palette)
+2. The current review diff (or staged changes) is sent to the AI with a diagram-specific prompt
+3. The AI selects the best diagram type and outputs valid Mermaid syntax
+4. The Mermaid.js CDN renders the diagram in the review panel
+5. A "Copy Source" button allows copying the raw Mermaid code
+
+### Supported Diagram Types
+
+| Type | When Used |
+|------|-----------|
+| `classDiagram` | Classes, interfaces, type relationships |
+| `flowchart TD` | Function call chains, control flow |
+| `sequenceDiagram` | API calls, async patterns, request/response |
+| `graph TD` | Import/module dependency graphs |
+
+### Exported Functions (`src/diagramGenerator.ts`)
+
+- `generateMermaidDiagram(codeContent, callAI)` — Generate a Mermaid diagram; returns `DiagramResult`
+
+### DiagramResult Interface
+
+```typescript
+interface DiagramResult {
+  mermaidCode: string;    // Raw Mermaid source (empty if failed)
+  diagramType: string;    // e.g., 'classDiagram', 'flowchart'
+  valid: boolean;         // Basic syntax validation
+}
+```
+
+### Review Panel Integration
+
+- Mermaid.js v10 CDN loaded alongside highlight.js and marked.js
+- `<div class="mermaid">` elements are auto-detected and rendered
+- Copy Source button extracts raw Mermaid from `data-mermaid-source` attribute
+- Invalid Mermaid syntax shows error message with raw source as fallback
+
 ## Related Projects
 
 ### MCP Server for Claude Desktop
@@ -1073,11 +1205,12 @@ See [docs/roadmap/](./docs/roadmap/) for comprehensive planning documents:
 | Review Quality Scoring & Trends (heuristic score, history panel, status bar) | F-016 | v4.1 |
 | Notification Integrations (Slack / Microsoft Teams / Discord webhooks) | F-018 | v4.1 |
 | Batch / Legacy Code Review (reviewFile, reviewFolder, reviewSelection) | F-019 | v4.1 |
+| Agentic Multi-Step Reviews (5-step pipeline, self-critique) | F-007 | v4.2 |
+| Architecture Diagram Generation (Mermaid.js, review panel integration) | F-020 | v4.2 |
 
 ### Remaining Planned Features
 
 | Phase | Features | Target |
 |-------|----------|--------|
-| v4.x | Agentic Multi-Step Reviews (F-007) | Q3 2026 |
 | v5.0 | RAG (F-009), CI/CD (F-010), Analytics (F-011), Knowledge Base (F-012) | Q4 2026 |
-| v6.0 | GitLab & Bitbucket Integration (F-015), Architecture Diagram Generation (F-020) | Q1–Q2 2027 |
+| v6.0 | GitLab & Bitbucket Integration (F-015) | Q1–Q2 2027 |

@@ -63,6 +63,9 @@ export class OllamaReviewPanel {
           case 'postToPR':
             await vscode.commands.executeCommand('ollama-code-review.postReviewToPR');
             break;
+          case 'generateDiagram':
+            await vscode.commands.executeCommand('ollama-code-review.generateDiagram');
+            break;
         }
       },
       null,
@@ -385,6 +388,7 @@ export class OllamaReviewPanel {
     <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/11.1.1/marked.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
     <style>
         body { font-family: var(--vscode-font-family); display: flex; flex-direction: column; height: 100vh; margin: 0; }
         .toolbar { display: flex; align-items: center; justify-content: flex-end; gap: 6px; padding: 6px 14px; background: var(--vscode-editorGroupHeader-tabsBackground, #1e1e1e); border-bottom: 1px solid #333; flex-shrink: 0; }
@@ -397,6 +401,13 @@ export class OllamaReviewPanel {
         .input-area { padding: 20px; border-top: 1px solid #333; display: flex; gap: 10px; }
         input { flex: 1; background: #222; color: white; border: 1px solid #444; padding: 8px; }
         #loading { display: none; color: gray; margin-left: 20px; }
+
+        /* Mermaid Diagram Styles */
+        .mermaid { background: #1e1e1e; border-radius: 6px; padding: 16px; margin: 12px 0; overflow-x: auto; }
+        .mermaid svg { max-width: 100%; }
+        .diagram-actions { display: flex; gap: 6px; margin: 8px 0; }
+        .diagram-actions button { background: var(--vscode-button-secondaryBackground, #3a3a3a); color: var(--vscode-button-secondaryForeground, #ccc); border: 1px solid #444; border-radius: 3px; padding: 3px 10px; font-size: 11px; cursor: pointer; }
+        .diagram-actions button:hover { background: var(--vscode-button-secondaryHoverBackground, #4a4a4a); }
 
         /* Performance Metrics Styles */
         .metrics-panel {
@@ -476,6 +487,7 @@ export class OllamaReviewPanel {
         <button class="export-btn" onclick="exportReview('markdown')" title="Save as Markdown file">💾 Markdown</button>
         <button class="export-btn" onclick="exportReview('prDescription')" title="Copy as PR description">📄 PR Desc</button>
         <button class="export-btn" onclick="exportReview('gist')" title="Create GitHub Gist">🔗 Gist</button>
+        <button class="export-btn" onclick="generateDiagram()" title="Generate Mermaid architecture diagram from code">📊 Diagram</button>
         <button class="export-btn" onclick="postToPR()" title="Post review to GitHub PR" style="background: var(--vscode-button-background, #0e639c); color: var(--vscode-button-foreground, #fff); border-color: var(--vscode-button-background, #0e639c);">⬆ Post to PR</button>
     </div>
     <div class="container" id="chat"></div>
@@ -618,6 +630,21 @@ export class OllamaReviewPanel {
             vscode.postMessage({ command: 'postToPR' });
         };
 
+        window.generateDiagram = function() {
+            vscode.postMessage({ command: 'generateDiagram' });
+        };
+
+        window.copyMermaidSource = function(id) {
+            const el = document.getElementById(id);
+            if (el) {
+                const source = el.getAttribute('data-mermaid-source') || el.textContent;
+                navigator.clipboard.writeText(source).then(() => {
+                    const btn = el.parentElement.querySelector('.copy-diagram-btn');
+                    if (btn) { btn.textContent = 'Copied!'; setTimeout(() => { btn.textContent = 'Copy Source'; }, 1500); }
+                });
+            }
+        };
+
         document.getElementById('send').onclick = () => {
             const val = document.getElementById('in').value;
             if(val) {
@@ -641,6 +668,7 @@ export class OllamaReviewPanel {
                 case 'updateMessages':
                     chatHistory = msg.messages;
                     render();
+                    renderMermaidDiagrams();
                     break;
                 case 'showLoading':
                     document.getElementById('loading').style.display = 'block';
@@ -653,7 +681,32 @@ export class OllamaReviewPanel {
             }
         });
 
+        // Initialize Mermaid.js
+        if (typeof mermaid !== 'undefined') {
+            mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'loose' });
+        }
+
+        async function renderMermaidDiagrams() {
+            const mermaidDivs = document.querySelectorAll('.mermaid');
+            for (let i = 0; i < mermaidDivs.length; i++) {
+                const el = mermaidDivs[i];
+                const source = el.textContent.trim();
+                if (!source || el.getAttribute('data-rendered')) continue;
+                try {
+                    const id = 'mermaid-' + i + '-' + Date.now();
+                    el.setAttribute('data-mermaid-source', source);
+                    el.id = id;
+                    const { svg } = await mermaid.render(id + '-svg', source);
+                    el.innerHTML = svg + '<div class="diagram-actions"><button class="copy-diagram-btn" onclick="copyMermaidSource(\\\'' + id + '\\\')">Copy Source</button></div>';
+                    el.setAttribute('data-rendered', 'true');
+                } catch (err) {
+                    el.innerHTML = '<pre style="color: #f48771;">Mermaid rendering error: ' + (err.message || err) + '</pre><pre>' + source + '</pre>';
+                }
+            }
+        }
+
         render(); // Initial render
+        renderMermaidDiagrams(); // Render any Mermaid diagrams
         renderMetrics(); // Render metrics panel
     </script>
 </body>

@@ -75,6 +75,8 @@ import {
 	updateScoreStatusBar,
 	type ReviewScore,
 } from './reviewScore';
+import { runAgentReview, getAgentModeConfig } from './agent';
+import { generateMermaidDiagram } from './diagramGenerator';
 
 const CLAUDE_API_ENDPOINT = 'https://api.anthropic.com/v1/messages';
 const GLM_API_ENDPOINT = 'https://api.z.ai/api/paas/v4/chat/completions';
@@ -2849,6 +2851,212 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 	}
 
+	// F-007: Agentic Multi-Step Review command
+	const agentReviewCommand = vscode.commands.registerCommand(
+		'ollama-code-review.agentReview',
+		async () => {
+			try {
+				const gitAPI = getGitAPI();
+				if (!gitAPI) { return; }
+				const repo = await selectRepository(gitAPI);
+				if (!repo) {
+					vscode.window.showInformationMessage('No Git repository found.');
+					return;
+				}
+				const repoPath = repo.rootUri.fsPath;
+				const diffResult = await runGitCommand(repoPath, ['diff', '--staged']);
+
+				if (!diffResult || !diffResult.trim()) {
+					vscode.window.showInformationMessage('No staged changes found for agentic review.');
+					return;
+				}
+
+				// Apply diff filtering
+				const filterConfig = await getDiffFilterConfigWithYaml(outputChannel);
+				const filterResult = filterDiff(diffResult, filterConfig);
+				const filteredDiff = filterResult.filteredDiff;
+
+				if (!filteredDiff || !filteredDiff.trim()) {
+					vscode.window.showInformationMessage('All changes were filtered out. No code to review.');
+					return;
+				}
+
+				const filterSummary = getFilterSummary(filterResult.stats);
+				if (filterSummary) {
+					outputChannel.appendLine(`\n--- Diff Filter (Agent) ---`);
+					outputChannel.appendLine(filterSummary);
+				}
+
+				await vscode.window.withProgress({
+					location: vscode.ProgressLocation.Notification,
+					title: 'Ollama: Agentic Review',
+					cancellable: true
+				}, async (progress, token) => {
+					// Build profile + skill context strings
+					let profileCtx = '';
+					const profile = getActiveProfile(context);
+					profileCtx = buildProfilePromptContext(profile);
+
+					let skillCtx = '';
+					const selectedSkills = context.globalState.get<any[]>('selectedSkills', []);
+					if (selectedSkills && selectedSkills.length > 0) {
+						const skillContents = selectedSkills.map((skill: any, idx: number) =>
+							`### Skill ${idx + 1}: ${skill.name}\n${skill.content}`
+						).join('\n\n');
+						skillCtx = `\n\nAdditional Review Guidelines (${selectedSkills.length} skill(s) applied):\n${skillContents}\n`;
+					}
+
+					// Build the AI caller that routes through the existing provider system
+					const callAI = async (prompt: string): Promise<string> => {
+						const cfg = vscode.workspace.getConfiguration('ollama-code-review');
+						const model = getOllamaModel(cfg);
+						const endpoint = cfg.get<string>('endpoint', 'http://localhost:11434/api/generate');
+						const temperature = cfg.get<number>('temperature', 0);
+						return callAIProvider(prompt, cfg, model, endpoint, temperature);
+					};
+
+					const reportProgressFn = (message: string) => {
+						progress.report({ message });
+					};
+
+					const result = await runAgentReview(
+						filteredDiff,
+						context,
+						outputChannel,
+						callAI,
+						reportProgressFn,
+						token,
+						profileCtx,
+						skillCtx
+					);
+
+					// Capture metrics from last AI call
+					const metrics = getLastPerformanceMetrics();
+					const config = vscode.workspace.getConfiguration('ollama-code-review');
+
+					if (metrics && metrics.provider === 'ollama') {
+						const activeModel = await checkActiveModels(config);
+						if (activeModel) { metrics.activeModel = activeModel; }
+					}
+					if (metrics) {
+						metrics.activeProfile = getActiveProfileName(context);
+					}
+
+					// F-016: Score
+					const findingCounts = parseFindingCounts(result.review);
+					const scoreResult = computeScore(findingCounts);
+					if (extensionGlobalStoragePath) {
+						const store = ReviewScoreStore.getInstance(extensionGlobalStoragePath);
+						const repoName = repo?.rootUri
+							? vscode.workspace.asRelativePath(repo.rootUri)
+							: 'unknown';
+						let branch = 'unknown';
+						try { branch = repo?.state?.HEAD?.name ?? 'unknown'; } catch { /* ignore */ }
+						const scoreEntry: ReviewScore = {
+							id: Date.now().toString(),
+							timestamp: new Date().toISOString(),
+							repo: repoName,
+							branch,
+							model: metrics?.model ?? getOllamaModel(config),
+							profile: getActiveProfileName(context) ?? 'general',
+							label: `[Agent] ${result.stepsCompleted}/5 steps, ${result.durationMs}ms`,
+							...scoreResult,
+							findingCounts,
+						};
+						store.addScore(scoreEntry);
+					}
+					if (scoreStatusBarItem) {
+						updateScoreStatusBar(scoreStatusBarItem, scoreResult.score);
+						scoreStatusBarItem.show();
+					}
+
+					// F-018: Notifications
+					const notifPayload: NotificationPayload = {
+						reviewText: result.review,
+						model: metrics?.model ?? getOllamaModel(config),
+						profile: getActiveProfileName(context) ?? 'general',
+						score: scoreResult.score,
+						findingCounts,
+					};
+					sendNotifications(notifPayload, outputChannel).catch(() => {});
+
+					progress.report({ message: 'Displaying review...' });
+					OllamaReviewPanel.createOrShow(result.review, filteredDiff, context, metrics);
+				});
+			} catch (error) {
+				handleError(error, 'Agentic review failed.');
+			}
+		}
+	);
+
+	// F-020: Generate Architecture Diagram (Mermaid) command
+	const generateDiagramCommand = vscode.commands.registerCommand(
+		'ollama-code-review.generateDiagram',
+		async () => {
+			// Get the current review content if available, otherwise use staged diff
+			let codeContent = '';
+			let label = '';
+
+			if (OllamaReviewPanel.currentPanel) {
+				codeContent = OllamaReviewPanel.currentPanel.getOriginalDiff();
+				label = 'current review';
+			}
+
+			if (!codeContent) {
+				// Fall back to staged diff
+				const gitAPI = getGitAPI();
+				if (gitAPI) {
+					const repo = await selectRepository(gitAPI);
+					if (repo) {
+						const repoPath = repo.rootUri.fsPath;
+						codeContent = await runGitCommand(repoPath, ['diff', '--staged']);
+						label = 'staged changes';
+					}
+				}
+			}
+
+			if (!codeContent || !codeContent.trim()) {
+				vscode.window.showInformationMessage('No code available for diagram generation. Open a review or stage some changes.');
+				return;
+			}
+
+			try {
+				await vscode.window.withProgress({
+					location: vscode.ProgressLocation.Notification,
+					title: 'Ollama: Generating diagram…',
+					cancellable: true
+				}, async (progress, token) => {
+					progress.report({ message: `Generating Mermaid diagram from ${label}…` });
+
+					const callAI = async (prompt: string): Promise<string> => {
+						const cfg = vscode.workspace.getConfiguration('ollama-code-review');
+						const model = getOllamaModel(cfg);
+						const endpoint = cfg.get<string>('endpoint', 'http://localhost:11434/api/generate');
+						const temperature = cfg.get<number>('temperature', 0.3);
+						return callAIProvider(prompt, cfg, model, endpoint, temperature);
+					};
+
+					const result = await generateMermaidDiagram(codeContent, callAI);
+
+					if (token.isCancellationRequested) { return; }
+
+					if (!result.mermaidCode) {
+						vscode.window.showWarningMessage('Could not generate a valid Mermaid diagram from the provided code.');
+						return;
+					}
+
+					// Show the diagram in the review panel
+					const diagramMarkdown = `## Architecture Diagram\n\n${result.diagramType ? `**Type:** ${result.diagramType}\n\n` : ''}\`\`\`mermaid\n${result.mermaidCode}\n\`\`\`\n\n<div class="mermaid">\n${result.mermaidCode}\n</div>\n\n---\n\n### Raw Mermaid Source\n\n\`\`\`\n${result.mermaidCode}\n\`\`\``;
+
+					const metrics = getLastPerformanceMetrics();
+					OllamaReviewPanel.createOrShow(diagramMarkdown, codeContent, context, metrics);
+				});
+			} catch (error) {
+				handleError(error, 'Failed to generate diagram.');
+			}
+		}
+	);
+
 	context.subscriptions.push(
 		reviewStagedChangesCommand,
 		reviewCommitRangeCommand,
@@ -2862,7 +3070,9 @@ export async function activate(context: vscode.ExtensionContext) {
 		yamlConfigWatcher,
 		togglePreCommitGuardCommand,
 		reviewAndCommitCommand,
-		guardStatusBarItem
+		guardStatusBarItem,
+		agentReviewCommand,
+		generateDiagramCommand
 	);
 }
 

@@ -160,6 +160,18 @@
         "title": "Show Review Quality History",
         "category": "Ollama Code Review",
         "icon": "$(graph)"
+      },
+      {
+        "command": "ollama-code-review.agentReview",
+        "title": "Agentic Multi-Step Review",
+        "category": "Ollama Code Review",
+        "icon": "$(hubot)"
+      },
+      {
+        "command": "ollama-code-review.generateDiagram",
+        "title": "Generate Architecture Diagram (Mermaid)",
+        "category": "Ollama Code Review",
+        "icon": "$(type-hierarchy)"
       }
     ],
     "menus": {
@@ -212,6 +224,11 @@
         },
         {
           "command": "ollama-code-review.reviewAndCommit",
+          "when": "scmProvider == 'git'",
+          "group": "navigation"
+        },
+        {
+          "command": "ollama-code-review.agentReview",
           "when": "scmProvider == 'git'",
           "group": "navigation"
         }
@@ -598,6 +615,40 @@
           "type": "string",
           "default": "**/node_modules/**,**/dist/**,**/build/**,**/out/**",
           "markdownDescription": "**F-019** — Comma-separated glob patterns for files to exclude from folder reviews."
+        },
+        "ollama-code-review.agentMode": {
+          "type": "object",
+          "description": "F-007 — Configure the agentic multi-step review pipeline. When enabled, reviews go through 5 sequential steps: diff analysis, context gathering, pattern analysis, deep review, and synthesis.",
+          "default": {},
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false,
+              "description": "Enable multi-step agentic reviews. When enabled, the 'Agentic Multi-Step Review' command runs a 5-step pipeline for deeper analysis."
+            },
+            "maxContextFiles": {
+              "type": "number",
+              "default": 10,
+              "minimum": 1,
+              "maximum": 30,
+              "description": "Maximum number of context files to resolve during the gather step"
+            },
+            "includeTests": {
+              "type": "boolean",
+              "default": true,
+              "description": "Include test files in the context gathering step"
+            },
+            "includeTypes": {
+              "type": "boolean",
+              "default": true,
+              "description": "Include .d.ts type definitions in the context gathering step"
+            },
+            "selfCritique": {
+              "type": "boolean",
+              "default": true,
+              "description": "Run a self-critique pass during synthesis to remove false positives and prioritize findings"
+            }
+          }
         }
       }
     }
