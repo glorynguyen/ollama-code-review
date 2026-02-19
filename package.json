@@ -2,7 +2,7 @@
   "name": "ollama-code-review",
   "displayName": "Ollama Code Review",
   "description": "Get AI code reviews and generate commit messages from a local Ollama instance before you commit.",
-  "version": "3.6.0",
+  "version": "4.0.0",
   "author": "Vinh Nguyen (vincent)",
   "publisher": "VinhNguyen-Vincent",
   "icon": "images/icon.png",
@@ -378,6 +378,35 @@
               "type": "boolean",
               "default": false,
               "description": "Skip files with only whitespace/formatting changes"
+            }
+          }
+        },
+        "ollama-code-review.contextGathering": {
+          "type": "object",
+          "description": "Configure multi-file context gathering for richer AI reviews (F-008). When enabled, the extension resolves imports, discovers tests, and includes related file contents in the review prompt.",
+          "default": {},
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true,
+              "description": "Include related files (imports, tests, type definitions) as context in reviews"
+            },
+            "maxFiles": {
+              "type": "number",
+              "default": 10,
+              "minimum": 1,
+              "maximum": 30,
+              "description": "Maximum number of context files to include"
+            },
+            "includeTests": {
+              "type": "boolean",
+              "default": true,
+              "description": "Include test files that correspond to changed source files"
+            },
+            "includeTypeDefinitions": {
+              "type": "boolean",
+              "default": true,
+              "description": "Include .d.ts type definition files for changed modules"
             }
           }
         },
