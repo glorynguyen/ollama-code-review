@@ -16,6 +16,7 @@ import {
 import {
 	ReviewProfile,
 	BUILTIN_PROFILES,
+	COMPLIANCE_PROFILES,
 	getAllProfiles,
 	getActiveProfileName,
 	setActiveProfileName,
@@ -1328,16 +1329,35 @@ export async function activate(context: vscode.ExtensionContext) {
 		const profiles = getAllProfiles(context);
 		const currentName = getActiveProfileName(context);
 
-		const items = profiles.map(p => ({
+		const makeItem = (p: ReviewProfile) => ({
 			label: p.name === currentName ? `$(check) ${p.name}` : p.name,
 			description: p.description,
 			detail: `${p.severity} severity | ${p.focusAreas.length} focus areas${p.includeExplanations ? ' | detailed explanations' : ''}`,
-			profileName: p.name
-		}));
+			profileName: p.name,
+			kind: vscode.QuickPickItemKind.Default
+		});
+
+		// Partition profiles into built-in, compliance, and custom groups
+		const builtinNames = new Set(BUILTIN_PROFILES.map(p => p.name));
+		const complianceNames = new Set(COMPLIANCE_PROFILES.map(p => p.name));
+		const builtinItems = profiles.filter(p => builtinNames.has(p.name)).map(makeItem);
+		const complianceItems = profiles.filter(p => complianceNames.has(p.name)).map(makeItem);
+		const customItems = profiles.filter(p => !builtinNames.has(p.name) && !complianceNames.has(p.name)).map(makeItem);
+
+		const items: Array<{ label: string; description?: string; detail?: string; profileName: string; kind?: vscode.QuickPickItemKind }> = [
+			...builtinItems,
+			{ label: 'Compliance', profileName: '', kind: vscode.QuickPickItemKind.Separator },
+			...complianceItems,
+		];
+
+		if (customItems.length > 0) {
+			items.push({ label: 'Custom', profileName: '', kind: vscode.QuickPickItemKind.Separator });
+			items.push(...customItems);
+		}
 
 		// Add management options at the bottom
 		items.push(
-			{ label: '', description: '', detail: '', profileName: '' } as any, // separator
+			{ label: '', description: '', detail: '', profileName: '', kind: vscode.QuickPickItemKind.Separator },
 			{ label: '$(add) Create Custom Profile...', description: 'Define a new review profile', detail: '', profileName: '__create__' },
 			{ label: '$(trash) Delete Custom Profile...', description: 'Remove a user-defined profile', detail: '', profileName: '__delete__' }
 		);
@@ -1400,7 +1420,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
 		if (selected.profileName === '__delete__') {
 			const customProfiles = getAllProfiles(context).filter(
-				p => !BUILTIN_PROFILES.some(b => b.name === p.name)
+				p => !BUILTIN_PROFILES.some(b => b.name === p.name) && !COMPLIANCE_PROFILES.some(c => c.name === p.name)
 			);
 			if (customProfiles.length === 0) {
 				vscode.window.showInformationMessage('No custom profiles to delete.');
