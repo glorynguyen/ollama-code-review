@@ -324,7 +324,47 @@ To configure via token:
 
 > **Note:** `ollama-code-review.github.gistToken` is used for creating Gists; if not set, the extension falls back to `ollama-code-review.github.token` for Gist creation as well.
 
-### 25. MCP Server for Claude Desktop
+### 25. Pre-Commit Guard
+Automatically review staged changes with AI before every commit to catch issues before they enter your history.
+
+- **Command**: `Ollama Code Review: Toggle Pre-Commit Guard` — install or uninstall the pre-commit hook for the current repository. A shield icon in the status bar shows `Guard ON` / `Guard OFF` and toggles the hook on click.
+- **Command**: `Ollama Code Review: Review & Commit` — run an AI review on staged changes, then commit automatically if the findings are within your configured threshold.
+
+**Workflow:**
+1. Enable the guard via the command or status bar shield icon
+2. A git pre-commit hook is installed that blocks direct `git commit` calls
+3. Use **Review & Commit** to review your staged changes before committing:
+   - The AI reviews the staged diff
+   - Findings are assessed against the configured severity threshold
+   - **Pass**: Immediately offered to commit or view the full review
+   - **Block**: Findings are shown with options to "Commit Anyway", "View Review", or "Cancel"
+
+**Settings:**
+- `ollama-code-review.preCommitGuard.severityThreshold`: Block commits when findings at or above this level are found. Options: `critical`, `high` _(default)_, `medium`, `low`.
+- `ollama-code-review.preCommitGuard.timeout`: AI review timeout in seconds for Review & Commit (10–300, default: `60`).
+
+> **Safety**: The hook will not overwrite an existing non-Ollama pre-commit hook. Users can always bypass the hook with `git commit --no-verify`.
+
+### 26. Multi-File Contextual Analysis
+Give the AI richer context by automatically including related files alongside your diff. When a review runs, the extension resolves imports, discovers related test files, and bundles relevant workspace files into the prompt — so the AI understands not just what changed, but how it fits into the wider codebase.
+
+**What gets included:**
+- **Imported modules**: Relative ES6 (`import`/`export`) and CommonJS (`require`) imports from changed files are resolved to actual workspace files.
+- **Test files**: Related test and spec files are discovered by naming conventions (`.test.ts`, `.spec.ts`, `__tests__/` directories, mirror test directories).
+- **Type definitions**: `.d.ts` type definition files for changed TypeScript modules.
+
+**Configuration** (under `ollama-code-review.contextGathering`):
+
+| Property | Default | Description |
+|----------|---------|-------------|
+| `enabled` | `true` | Include related files as context |
+| `maxFiles` | `10` | Maximum number of context files to include |
+| `includeTests` | `true` | Include related test/spec files |
+| `includeTypeDefinitions` | `true` | Include `.d.ts` type definitions |
+
+> Context gathering is non-fatal — if it fails or finds nothing, the review proceeds normally without context.
+
+### 27. MCP Server for Claude Desktop
 Use the code review functionality directly in Claude Desktop without copy-pasting diffs. The MCP server is available as a separate project:
 
 **Repository:** [gitsage](https://github.com/glorynguyen/gitsage)
@@ -436,6 +476,15 @@ This extension contributes the following settings to your VS Code `settings.json
     * `inline` — Comments placed on specific changed lines.
     * `both` — Summary comment plus inline comments.
 * `ollama-code-review.github.gistToken`: GitHub Personal Access Token with the `gist` scope, used to create private Gists from review results. Get one at [github.com/settings/tokens](https://github.com/settings/tokens).
+* `ollama-code-review.preCommitGuard.severityThreshold`: Block commits when AI findings reach or exceed this severity level.
+    * **Options**: `critical`, `high` _(default)_, `medium`, `low`
+* `ollama-code-review.preCommitGuard.timeout`: Timeout in seconds for the AI review during Review & Commit (range: 10–300).
+    * **Default**: `60`
+* `ollama-code-review.contextGathering`: Configure multi-file contextual analysis. Related files are automatically resolved and included in review prompts.
+    * `enabled`: Include related files as context (default: `true`)
+    * `maxFiles`: Maximum number of context files to include (default: `10`)
+    * `includeTests`: Discover and include related test/spec files (default: `true`)
+    * `includeTypeDefinitions`: Include `.d.ts` type definitions for changed TypeScript modules (default: `true`)
 
 You can configure these by opening the Command Palette (`Ctrl+Shift+P`) and searching for `Preferences: Open User Settings (JSON)`.
 
