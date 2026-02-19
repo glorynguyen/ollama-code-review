@@ -1,3 +1,10 @@
+# [3.5.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.4.0...v3.5.0) (2026-02-19)
+
+
+### Features
+
+* **F-013:** add OpenAI-compatible provider support ([62d80da](https://github.com/glorynguyen/ollama-code-review/commit/62d80da150bf5dfde16c0cd1fa6c2f3acbfcf2e7))
+
 # [3.4.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.3.0...v3.4.0) (2026-02-18)
 
 
