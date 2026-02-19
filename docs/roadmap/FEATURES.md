@@ -928,10 +928,10 @@ rules:
 | F-013 | OpenAI-Compatible Provider | 5 | ✅ Complete | v3.5 |
 | F-014 | Pre-Commit Guard | 5 | 📋 Planned | — |
 | F-015 | GitLab & Bitbucket Integration | 5 | 📋 Planned | — |
-| F-016 | Review Quality Scoring & Trends | 5 | 📋 Planned | — |
+| F-016 | Review Quality Scoring & Trends | 5 | ✅ Complete | v4.1 |
 | F-017 | Compliance Review Profiles | 5 | ✅ Complete | v4.0 |
-| F-018 | Notification Integrations | 5 | 📋 Planned | — |
-| F-019 | Batch / Legacy Code Review | 5 | 📋 Planned | — |
+| F-018 | Notification Integrations | 5 | ✅ Complete | v4.1 |
+| F-019 | Batch / Legacy Code Review | 5 | ✅ Complete | v4.1 |
 | F-020 | Architecture Diagram Generation | 5 | 📋 Planned | — |
 
 ### Effort Estimation Guide
@@ -1125,7 +1125,8 @@ A large portion of teams use GitLab or Bitbucket. The GitHub-only F-004 leaves t
 
 ### F-016: Review Quality Scoring & Trends
 
-**Status:** 📋 Planned
+**Status:** ✅ Complete
+**Shipped:** v4.1.0 (Feb 2026)
 **Priority:** 🟡 P2 — High Impact, Medium Effort
 **Effort:** Medium (3–5 days)
 
@@ -1244,7 +1245,8 @@ Add a set of pre-built review profiles focused on regulatory and security compli
 
 ### F-018: Notification Integrations (Slack / Teams / Discord)
 
-**Status:** 📋 Planned
+**Status:** ✅ Complete
+**Shipped:** v4.1.0 (Feb 2026)
 **Priority:** 🟢 P3 — Medium Impact, Low Effort
 **Effort:** Low (1–2 days)
 
@@ -1298,7 +1300,8 @@ Post review summaries to Slack, Microsoft Teams, or Discord via incoming webhook
 
 ### F-019: Batch / Legacy Code Review (No Git Diff Required)
 
-**Status:** 📋 Planned
+**Status:** ✅ Complete
+**Shipped:** v4.1.0 (Feb 2026)
 **Priority:** 🟡 P2 — High Impact, Low Effort
 **Effort:** Low (2–3 days)
 

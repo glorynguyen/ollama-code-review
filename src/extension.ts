@@ -66,6 +66,15 @@ import {
 	getContextGatheringConfig,
 	ContextBundle,
 } from './context';
+import { sendNotifications, type NotificationPayload } from './notifications';
+import {
+	parseFindingCounts,
+	computeScore,
+	ReviewScoreStore,
+	ReviewHistoryPanel,
+	updateScoreStatusBar,
+	type ReviewScore,
+} from './reviewScore';
 
 const CLAUDE_API_ENDPOINT = 'https://api.anthropic.com/v1/messages';
 const GLM_API_ENDPOINT = 'https://api.z.ai/api/paas/v4/chat/completions';
@@ -901,6 +910,11 @@ async function callOpenAICompatibleAPI(prompt: string, config: vscode.WorkspaceC
 
 
 let outputChannel: vscode.OutputChannel;
+
+// F-016: Score status bar item (initialised in activate())
+let scoreStatusBarItem: vscode.StatusBarItem | undefined;
+// Extension context reference for score store (set in activate())
+let extensionGlobalStoragePath: string | undefined;
 
 interface GitCommitDetails {
 	hash: string;
@@ -2562,6 +2576,127 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 	);
 
+	// F-016: Review Quality Score — status bar item (priority 97, just left of guard)
+	scoreStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 97);
+	scoreStatusBarItem.command = 'ollama-code-review.showReviewHistory';
+	scoreStatusBarItem.tooltip = 'Review Quality Score — click to view history';
+	// Don't show until first review completes
+
+	// Set global storage path for score persistence
+	extensionGlobalStoragePath = context.globalStorageUri.fsPath;
+
+	// F-016: Show Review History command
+	const showReviewHistoryCommand = vscode.commands.registerCommand(
+		'ollama-code-review.showReviewHistory',
+		() => {
+			const store = ReviewScoreStore.getInstance(context.globalStorageUri.fsPath);
+			ReviewHistoryPanel.createOrShow(store.getScores(100));
+		}
+	);
+	context.subscriptions.push(showReviewHistoryCommand, scoreStatusBarItem);
+
+	// F-019: Batch / Legacy Code Review — Review File command
+	const reviewFileCommand = vscode.commands.registerCommand(
+		'ollama-code-review.reviewFile',
+		async (uri?: vscode.Uri) => {
+			const fileUri = uri ?? vscode.window.activeTextEditor?.document.uri;
+			if (!fileUri) {
+				vscode.window.showWarningMessage('Open a file or right-click a file in the Explorer to review it.');
+				return;
+			}
+			try {
+				const bytes = await vscode.workspace.fs.readFile(fileUri);
+				const content = Buffer.from(bytes).toString('utf-8');
+				const relativePath = vscode.workspace.asRelativePath(fileUri);
+				const maxKb = vscode.workspace.getConfiguration('ollama-code-review').get<number>('batch.maxFileSizeKb', 100);
+				if (content.length > maxKb * 1024) {
+					vscode.window.showWarningMessage(`File is larger than ${maxKb} KB. Only the first ${maxKb} KB will be reviewed.`);
+				}
+				const truncated = content.slice(0, maxKb * 1024);
+				await runFileReview(truncated, `[File Review: ${relativePath}]`, context);
+			} catch (error) {
+				handleError(error, 'Failed to review file.');
+			}
+		}
+	);
+	context.subscriptions.push(reviewFileCommand);
+
+	// F-019: Batch / Legacy Code Review — Review Folder command
+	const reviewFolderCommand = vscode.commands.registerCommand(
+		'ollama-code-review.reviewFolder',
+		async (uri?: vscode.Uri) => {
+			const folderUri = uri ?? vscode.workspace.workspaceFolders?.[0]?.uri;
+			if (!folderUri) {
+				vscode.window.showWarningMessage('Open a folder or right-click a folder in the Explorer to review it.');
+				return;
+			}
+			try {
+				const cfg = vscode.workspace.getConfiguration('ollama-code-review');
+				const includeGlob = cfg.get<string>('batch.includeGlob', '**/*.{ts,js,tsx,jsx,py,go,java,php,rb,cs,cpp,c,h}');
+				const excludeGlob = cfg.get<string>('batch.excludeGlob', '**/node_modules/**,**/dist/**,**/build/**,**/out/**');
+				const maxKb = cfg.get<number>('batch.maxFileSizeKb', 100);
+
+				const pattern = new vscode.RelativePattern(folderUri, includeGlob);
+				const files = await vscode.workspace.findFiles(pattern, `{${excludeGlob}}`, 50);
+
+				if (files.length === 0) {
+					vscode.window.showInformationMessage('No matching files found in the selected folder.');
+					return;
+				}
+
+				const relativeFolderPath = vscode.workspace.asRelativePath(folderUri);
+				let combined = '';
+				let totalChars = 0;
+				const budgetChars = maxKb * 1024 * 10; // Allow up to 10× maxKb for folder reviews
+
+				for (const file of files) {
+					if (totalChars >= budgetChars) { break; }
+					try {
+						const bytes = await vscode.workspace.fs.readFile(file);
+						const content = Buffer.from(bytes).toString('utf-8').slice(0, maxKb * 1024);
+						const rel = vscode.workspace.asRelativePath(file);
+						combined += `\n--- ${rel} ---\n${content}\n`;
+						totalChars += content.length;
+					} catch {
+						// Skip unreadable files
+					}
+				}
+
+				if (!combined.trim()) {
+					vscode.window.showInformationMessage('Could not read any files in the selected folder.');
+					return;
+				}
+
+				await runFileReview(combined.trim(), `[Folder Review: ${relativeFolderPath} — ${files.length} file(s)]`, context);
+			} catch (error) {
+				handleError(error, 'Failed to review folder.');
+			}
+		}
+	);
+	context.subscriptions.push(reviewFolderCommand);
+
+	// F-019: Batch / Legacy Code Review — Review Selection command
+	const reviewSelectionCommand = vscode.commands.registerCommand(
+		'ollama-code-review.reviewSelection',
+		async () => {
+			const editor = vscode.window.activeTextEditor;
+			if (!editor || editor.selection.isEmpty) {
+				vscode.window.showWarningMessage('Select some code first, then run "Review Selection".');
+				return;
+			}
+			const selectedText = editor.document.getText(editor.selection);
+			const relativePath = vscode.workspace.asRelativePath(editor.document.uri);
+			const startLine = editor.selection.start.line + 1;
+			const endLine = editor.selection.end.line + 1;
+			await runFileReview(
+				selectedText,
+				`[Selection Review: ${relativePath} lines ${startLine}–${endLine}]`,
+				context
+			);
+		}
+	);
+	context.subscriptions.push(reviewSelectionCommand);
+
 	// F-014: Review & Commit command
 	const reviewAndCommitCommand = vscode.commands.registerCommand(
 		'ollama-code-review.reviewAndCommit',
@@ -2802,9 +2937,195 @@ async function runReview(diff: string, context: vscode.ExtensionContext) {
 			metrics.activeProfile = getActiveProfileName(context);
 		}
 
+		// F-016: Compute quality score and persist to history
+		const findingCounts = parseFindingCounts(review);
+		const scoreResult = computeScore(findingCounts);
+		if (extensionGlobalStoragePath) {
+			const store = ReviewScoreStore.getInstance(extensionGlobalStoragePath);
+			const gitAPI = getGitAPI();
+			const repo = gitAPI?.repositories?.[0];
+			const repoName = repo?.rootUri
+				? vscode.workspace.asRelativePath(repo.rootUri)
+				: 'unknown';
+			let branch = 'unknown';
+			try { branch = repo?.state?.HEAD?.name ?? 'unknown'; } catch { /* ignore */ }
+			const scoreEntry: ReviewScore = {
+				id: Date.now().toString(),
+				timestamp: new Date().toISOString(),
+				repo: repoName,
+				branch,
+				model: metrics?.model ?? getOllamaModel(vscode.workspace.getConfiguration('ollama-code-review')),
+				profile: getActiveProfileName(context) ?? 'general',
+				...scoreResult,
+				findingCounts,
+			};
+			store.addScore(scoreEntry);
+			outputChannel.appendLine(`[Score] Quality score: ${scoreResult.score}/100 (${findingCounts.critical}C ${findingCounts.high}H ${findingCounts.medium}M ${findingCounts.low}L)`);
+		}
+
+		// F-016: Update score status bar
+		if (scoreStatusBarItem) {
+			updateScoreStatusBar(scoreStatusBarItem, scoreResult.score);
+			scoreStatusBarItem.show();
+		}
+
+		// F-018: Send notifications (non-blocking, failures are logged)
+		{
+			const cfg = vscode.workspace.getConfiguration('ollama-code-review');
+			const notifPayload: NotificationPayload = {
+				reviewText: review,
+				model: metrics?.model ?? getOllamaModel(cfg),
+				profile: getActiveProfileName(context) ?? 'general',
+				score: scoreResult.score,
+				findingCounts,
+			};
+			// Attempt to get branch for notification label
+			try {
+				const gitAPI = getGitAPI();
+				const repo = gitAPI?.repositories?.[0];
+				notifPayload.branch = repo?.state?.HEAD?.name ?? undefined;
+				notifPayload.repoName = repo?.rootUri
+					? vscode.workspace.asRelativePath(repo.rootUri)
+					: undefined;
+			} catch { /* ignore */ }
+			sendNotifications(notifPayload, outputChannel).catch(() => { /* already logged inside */ });
+		}
+
 		progress.report({ message: "Displaying review..." });
 		OllamaReviewPanel.createOrShow(review, filteredDiff, context, metrics);
 	});
+}
+
+/**
+ * F-019: Run a review on arbitrary file/folder/selection content (no Git diff required).
+ *
+ * Bypasses diff filtering and uses a simpler file-review prompt so the model
+ * knows there is no diff context. Integrates with F-016 scoring and F-018 notifications.
+ */
+async function runFileReview(content: string, label: string, context: vscode.ExtensionContext) {
+	if (!content || !content.trim()) {
+		vscode.window.showInformationMessage('No content to review.');
+		return;
+	}
+
+	await vscode.window.withProgress({
+		location: vscode.ProgressLocation.Notification,
+		title: "Ollama Code Review",
+		cancellable: false,
+	}, async (progress) => {
+		progress.report({ message: `${label} — asking AI for review…` });
+
+		// Use a file-review flavoured prompt that does not mention git diff format
+		const review = await getOllamaFileReview(content, label, context);
+
+		// F-016: Score
+		const findingCounts = parseFindingCounts(review);
+		const scoreResult = computeScore(findingCounts);
+		if (extensionGlobalStoragePath) {
+			const store = ReviewScoreStore.getInstance(extensionGlobalStoragePath);
+			const scoreEntry: ReviewScore = {
+				id: Date.now().toString(),
+				timestamp: new Date().toISOString(),
+				repo: 'local',
+				branch: 'n/a',
+				model: getOllamaModel(vscode.workspace.getConfiguration('ollama-code-review')),
+				profile: getActiveProfileName(context) ?? 'general',
+				label,
+				...scoreResult,
+				findingCounts,
+			};
+			store.addScore(scoreEntry);
+		}
+		if (scoreStatusBarItem) {
+			updateScoreStatusBar(scoreStatusBarItem, scoreResult.score);
+			scoreStatusBarItem.show();
+		}
+
+		// F-018: Notifications
+		const notifPayload: NotificationPayload = {
+			reviewText: review,
+			model: getOllamaModel(vscode.workspace.getConfiguration('ollama-code-review')),
+			profile: getActiveProfileName(context) ?? 'general',
+			score: scoreResult.score,
+			findingCounts,
+			label,
+		};
+		sendNotifications(notifPayload, outputChannel).catch(() => { /* already logged inside */ });
+
+		progress.report({ message: "Displaying review..." });
+		// Show review panel — pass content as the "diff" so follow-up chat has it as context
+		const metrics = getLastPerformanceMetrics();
+		OllamaReviewPanel.createOrShow(review, content, context, metrics ?? undefined);
+	});
+}
+
+/**
+ * Build and execute a file-review prompt (no git diff context).
+ * Reuses the AI provider routing from getOllamaReview().
+ */
+async function getOllamaFileReview(content: string, label: string, context?: vscode.ExtensionContext): Promise<string> {
+	const config = vscode.workspace.getConfiguration('ollama-code-review');
+	const model = getOllamaModel(config);
+	const endpoint = config.get<string>('endpoint', 'http://localhost:11434/api/generate');
+	const temperature = config.get<number>('temperature', 0);
+	const frameworksList = (await getEffectiveFrameworks(outputChannel)).join(', ');
+
+	let skillContext = '';
+	if (context) {
+		const selectedSkills = context.globalState.get<any[]>('selectedSkills', []);
+		if (selectedSkills?.length > 0) {
+			const skillContents = selectedSkills.map((skill, i) =>
+				`### Skill ${i + 1}: ${skill.name}\n${skill.content}`
+			).join('\n\n');
+			skillContext = `\n\nAdditional Review Guidelines (${selectedSkills.length} skill(s) applied):\n${skillContents}\n`;
+		}
+	}
+
+	let profileContext = '';
+	if (context) {
+		const profile = getActiveProfile(context);
+		profileContext = buildProfilePromptContext(profile);
+	}
+
+	const prompt = `You are an expert software engineer and code reviewer with deep knowledge of **${frameworksList}**.
+${skillContext}${profileContext}
+Review the following code and provide constructive, actionable feedback. This is a direct file review (no git diff context).
+${label}
+
+**Review Focus:**
+- Potential bugs or logical errors
+- Security vulnerabilities
+- Performance issues
+- Code style and readability
+- Maintainability concerns
+
+Use Markdown for formatting. For each finding include a severity badge (🔴 Critical / 🟠 High / 🟡 Medium / 🟢 Low) and a concrete suggestion.
+
+If you find no issues, respond with: "I have reviewed the code and found no significant issues."
+
+Code to review:
+\`\`\`
+${content}
+\`\`\``;
+
+	clearPerformanceMetrics();
+
+	if (isClaudeModel(model))              { return await callClaudeAPI(prompt, config, true); }
+	if (isGlmModel(model))                 { return await callGlmAPI(prompt, config, true); }
+	if (isHuggingFaceModel(model))         { return await callHuggingFaceAPI(prompt, config, true); }
+	if (isGeminiModel(model))              { return await callGeminiAPI(prompt, config, true); }
+	if (isMistralModel(model))             { return await callMistralAPI(prompt, config, true); }
+	if (isMiniMaxModel(model))             { return await callMiniMaxAPI(prompt, config, true); }
+	if (isOpenAICompatibleModel(model))    { return await callOpenAICompatibleAPI(prompt, config, true); }
+
+	// Ollama
+	const response = await axios.post(endpoint, {
+		model,
+		prompt,
+		stream: false,
+		options: { temperature },
+	});
+	return response.data?.response ?? '';
 }
 
 async function getOllamaReview(diff: string, context?: vscode.ExtensionContext, contextBundle?: ContextBundle): Promise<string> {
