@@ -49,6 +49,16 @@ import {
 } from './github/prReview';
 import { getGitHubAuth, showAuthSetupGuide } from './github/auth';
 import { parseReviewIntoFindings } from './github/commentMapper';
+import {
+	getPreCommitGuardConfig,
+	isHookInstalled,
+	installHook,
+	uninstallHook,
+	createBypassFile,
+	removeBypassFile,
+	assessSeverity,
+	formatAssessmentSummary
+} from './preCommitGuard';
 
 const CLAUDE_API_ENDPOINT = 'https://api.anthropic.com/v1/messages';
 const GLM_API_ENDPOINT = 'https://api.z.ai/api/paas/v4/chat/completions';
@@ -2467,6 +2477,205 @@ export async function activate(context: vscode.ExtensionContext) {
 		outputChannel.appendLine('[Ollama Code Review] .ollama-review.yaml deleted — config cache invalidated.');
 	});
 
+	// F-014: Pre-Commit Guard — status bar item
+	const guardStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 98);
+	guardStatusBarItem.command = 'ollama-code-review.togglePreCommitGuard';
+	function updateGuardStatusBar() {
+		const gitAPI = vscode.extensions.getExtension('vscode.git')?.exports?.getAPI(1);
+		const repo = gitAPI?.repositories?.[0];
+		if (repo) {
+			const installed = isHookInstalled(repo.rootUri.fsPath);
+			guardStatusBarItem.text = installed ? '$(shield) Guard ON' : '$(shield) Guard OFF';
+			guardStatusBarItem.tooltip = installed
+				? 'Ollama Pre-Commit Guard is active — click to disable'
+				: 'Ollama Pre-Commit Guard is inactive — click to enable';
+			guardStatusBarItem.show();
+		} else {
+			guardStatusBarItem.hide();
+		}
+	}
+	updateGuardStatusBar();
+
+	// F-014: Toggle Pre-Commit Guard command
+	const togglePreCommitGuardCommand = vscode.commands.registerCommand(
+		'ollama-code-review.togglePreCommitGuard',
+		async () => {
+			try {
+				const gitAPI = getGitAPI();
+				if (!gitAPI) { return; }
+				const repo = await selectRepository(gitAPI);
+				if (!repo) {
+					vscode.window.showInformationMessage('No Git repository found.');
+					return;
+				}
+				const repoPath = repo.rootUri.fsPath;
+
+				if (isHookInstalled(repoPath)) {
+					const result = uninstallHook(repoPath);
+					if (result.success) {
+						vscode.window.showInformationMessage('Pre-commit guard disabled.');
+						outputChannel.appendLine('[Pre-Commit Guard] Hook removed.');
+					} else {
+						vscode.window.showWarningMessage(result.message);
+					}
+				} else {
+					const result = installHook(repoPath);
+					if (result.success) {
+						vscode.window.showInformationMessage(
+							'Pre-commit guard enabled. Use "Ollama: Review & Commit" to commit with AI review.'
+						);
+						outputChannel.appendLine('[Pre-Commit Guard] Hook installed.');
+					} else {
+						vscode.window.showWarningMessage(result.message);
+					}
+				}
+				updateGuardStatusBar();
+			} catch (error) {
+				handleError(error, 'Failed to toggle pre-commit guard.');
+			}
+		}
+	);
+
+	// F-014: Review & Commit command
+	const reviewAndCommitCommand = vscode.commands.registerCommand(
+		'ollama-code-review.reviewAndCommit',
+		async () => {
+			try {
+				const gitAPI = getGitAPI();
+				if (!gitAPI) { return; }
+				const repo = await selectRepository(gitAPI);
+				if (!repo) {
+					vscode.window.showInformationMessage('No Git repository found.');
+					return;
+				}
+				const repoPath = repo.rootUri.fsPath;
+
+				const diffResult = await runGitCommand(repoPath, ['diff', '--staged']);
+				if (!diffResult || !diffResult.trim()) {
+					vscode.window.showInformationMessage('No staged changes to review and commit.');
+					return;
+				}
+
+				const guardConfig = getPreCommitGuardConfig();
+
+				// Run AI review with progress and timeout
+				const review = await vscode.window.withProgress({
+					location: vscode.ProgressLocation.Notification,
+					title: 'Ollama: Review & Commit',
+					cancellable: true
+				}, async (progress, token) => {
+					progress.report({ message: 'Running AI review on staged changes...' });
+
+					// Race the review against the configured timeout
+					const timeoutMs = guardConfig.timeout * 1000;
+					const reviewPromise = getOllamaReview(diffResult, context);
+					const timeoutPromise = new Promise<null>((resolve) =>
+						setTimeout(() => resolve(null), timeoutMs)
+					);
+					const cancellationPromise = new Promise<null>((resolve) => {
+						token.onCancellationRequested(() => resolve(null));
+					});
+
+					const result = await Promise.race([reviewPromise, timeoutPromise, cancellationPromise]);
+
+					if (token.isCancellationRequested) {
+						return undefined; // User cancelled
+					}
+					if (result === null) {
+						vscode.window.showWarningMessage(
+							`AI review timed out after ${guardConfig.timeout}s. You can increase the timeout in settings or commit with --no-verify.`
+						);
+						return undefined;
+					}
+					return result as string;
+				});
+
+				if (!review) { return; } // Cancelled or timed out
+
+				// Assess severity
+				const assessment = assessSeverity(review, diffResult, guardConfig.severityThreshold);
+				const summary = formatAssessmentSummary(assessment);
+
+				if (assessment.pass) {
+					// Below threshold — show review and offer to commit
+					outputChannel.appendLine('[Pre-Commit Guard] Review passed threshold check.');
+
+					const action = await vscode.window.showInformationMessage(
+						`Pre-commit review passed (threshold: ${assessment.threshold}).\n${summary}`,
+						{ modal: true },
+						'Commit',
+						'View Review',
+						'Cancel'
+					);
+
+					if (action === 'Commit') {
+						await performCommit(repo, repoPath);
+					} else if (action === 'View Review') {
+						const metrics = getLastPerformanceMetrics();
+						OllamaReviewPanel.createOrShow(review, diffResult, context, metrics);
+					}
+				} else {
+					// Above threshold — show findings, offer options
+					outputChannel.appendLine(`[Pre-Commit Guard] Review BLOCKED — ${assessment.blockingFindings.length} finding(s) at or above "${assessment.threshold}".`);
+
+					const action = await vscode.window.showWarningMessage(
+						`Pre-commit review found issues:\n${summary}`,
+						{ modal: true },
+						'View Review',
+						'Commit Anyway',
+						'Cancel'
+					);
+
+					if (action === 'Commit Anyway') {
+						await performCommit(repo, repoPath);
+					} else if (action === 'View Review') {
+						const metrics = getLastPerformanceMetrics();
+						OllamaReviewPanel.createOrShow(review, diffResult, context, metrics);
+					}
+				}
+			} catch (error) {
+				handleError(error, 'Failed to complete Review & Commit.');
+			}
+		}
+	);
+
+	/** Helper: Perform the actual git commit, creating a bypass file if the hook is installed. */
+	async function performCommit(repo: any, repoPath: string) {
+		const hookActive = isHookInstalled(repoPath);
+		try {
+			if (hookActive) {
+				createBypassFile(repoPath);
+			}
+			// Use the SCM input box value as the commit message, or prompt for one
+			let commitMessage = repo.inputBox?.value?.trim();
+			if (!commitMessage) {
+				commitMessage = await vscode.window.showInputBox({
+					prompt: 'Enter commit message',
+					placeHolder: 'feat: describe your changes',
+					ignoreFocusOut: true
+				});
+			}
+			if (!commitMessage) {
+				removeBypassFile(repoPath);
+				return; // User cancelled
+			}
+
+			await runGitCommand(repoPath, ['commit', '-m', commitMessage]);
+			// Clear the SCM input box after successful commit
+			if (repo.inputBox) {
+				repo.inputBox.value = '';
+			}
+			vscode.window.showInformationMessage('Changes committed successfully.');
+			outputChannel.appendLine(`[Pre-Commit Guard] Committed: ${commitMessage}`);
+		} catch (error) {
+			handleError(error, 'Commit failed.');
+		} finally {
+			if (hookActive) {
+				removeBypassFile(repoPath);
+			}
+		}
+	}
+
 	context.subscriptions.push(
 		reviewStagedChangesCommand,
 		reviewCommitRangeCommand,
@@ -2477,7 +2686,10 @@ export async function activate(context: vscode.ExtensionContext) {
 		reviewGitHubPRCommand,
 		postReviewToPRCommand,
 		reloadProjectConfigCommand,
-		yamlConfigWatcher
+		yamlConfigWatcher,
+		togglePreCommitGuardCommand,
+		reviewAndCommitCommand,
+		guardStatusBarItem
 	);
 }
 
