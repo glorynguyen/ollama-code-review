@@ -1,3 +1,10 @@
+# [3.8.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.7.0...v3.8.0) (2026-02-19)
+
+
+### Features
+
+* F-017 — Compliance Review Profiles (OWASP, PCI-DSS, GDPR, HIPAA, SOC2, NIST CSF) ([a639221](https://github.com/glorynguyen/ollama-code-review/commit/a63922137a9dada007d9bc7ca9964cfed622293c))
+
 # [3.7.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.6.0...v3.7.0) (2026-02-19)
 
 
