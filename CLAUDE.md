@@ -3,7 +3,7 @@
 ## Project Overview
 
 - **Name:** Ollama Code Review VS Code Extension
-- **Version:** 4.0.0
+- **Version:** 4.1.0
 - **Purpose:** AI-powered code reviews and commit message generation using local Ollama or cloud models
 - **Author:** Vinh Nguyen (vincent)
 - **License:** MIT
@@ -52,6 +52,9 @@ src/
 │   ├── testAction.ts     # Generate Tests action provider
 │   ├── fixAction.ts      # Fix Issue action provider
 │   └── documentAction.ts # Add Documentation action provider
+├── notifications/        # Notification integrations (F-018)
+│   └── index.ts          # Slack / Teams / Discord webhook delivery
+├── reviewScore.ts        # Review quality scoring & history (F-016)
 └── test/
     └── extension.test.ts # Mocha test suite
 
@@ -87,6 +90,8 @@ out/                      # Compiled JavaScript output
 | `src/codeActions/documentAction.ts` | ~369 | Add Documentation action with preview |
 | `src/codeActions/types.ts` | ~103 | Common types and parsing utilities |
 | `src/preCommitGuard.ts` | ~185 | Pre-commit guard: hook install/uninstall, severity assessment (F-014) |
+| `src/reviewScore.ts` | ~280 | Review quality scoring, score history store, status bar, history panel (F-016) |
+| `src/notifications/index.ts` | ~245 | Slack / Teams / Discord webhook notifications after reviews (F-018) |
 
 ## Commands
 
@@ -113,6 +118,10 @@ out/                      # Compiled JavaScript output
 | `ollama-code-review.reloadProjectConfig` | Reload/reset the .ollama-review.yaml config file cache |
 | `ollama-code-review.togglePreCommitGuard` | Enable/disable the pre-commit guard git hook |
 | `ollama-code-review.reviewAndCommit` | Review staged changes with AI, then commit if findings pass threshold |
+| `ollama-code-review.reviewFile` | Review the currently open file without requiring a Git diff (F-019) |
+| `ollama-code-review.reviewFolder` | Review all matching files in a folder without requiring a Git diff (F-019) |
+| `ollama-code-review.reviewSelection` | Review selected text in the editor without requiring a Git diff (F-019) |
+| `ollama-code-review.showReviewHistory` | Open the Review Quality History panel with score trends (F-016) |
 
 ## Configuration Settings
 
@@ -147,6 +156,13 @@ out/                      # Compiled JavaScript output
 | `ollama-code-review.skills.defaultRepository` | `vercel-labs/agent-skills` | Default GitHub repo for skills |
 | `ollama-code-review.skills.additionalRepositories` | `[]` | Additional GitHub repos for skills |
 | `ollama-code-review.skills.autoApply` | `true` | Auto-apply selected skill |
+| `ollama-code-review.notifications.slack.webhookUrl` | `""` | Slack incoming webhook URL for review notifications (F-018) |
+| `ollama-code-review.notifications.teams.webhookUrl` | `""` | Microsoft Teams incoming webhook URL for review notifications (F-018) |
+| `ollama-code-review.notifications.discord.webhookUrl` | `""` | Discord webhook URL for review notifications (F-018) |
+| `ollama-code-review.notifications.triggerOn` | `["critical","high"]` | Severity levels that trigger a notification (F-018) |
+| `ollama-code-review.batch.maxFileSizeKb` | `100` | Max file size (KB) for batch file reviews; larger files are truncated (F-019) |
+| `ollama-code-review.batch.includeGlob` | `**/*.{ts,js,...}` | Glob pattern for files included in folder reviews (F-019) |
+| `ollama-code-review.batch.excludeGlob` | `**/node_modules/**,...` | Comma-separated glob patterns for files excluded from folder reviews (F-019) |
 
 ### Diff Filter Settings
 
@@ -805,6 +821,97 @@ The review panel toolbar exposes four export actions via `_handleExport()` in `r
 
 If `ollama-code-review.github.gistToken` is empty when the user clicks "Create Gist", an error message with an "Open Settings" button is shown to guide the user to configure their PAT.
 
+## Batch / Legacy Code Review (F-019)
+
+The extension can review arbitrary files, folders, or selected text without requiring a Git diff. Aimed at legacy codebases, third-party code, or files not tracked by Git.
+
+### New Commands
+
+| Command | Entry Point | Description |
+|---------|-------------|-------------|
+| `ollama-code-review.reviewFile` | Explorer context menu / command palette | Review the active or selected file in full |
+| `ollama-code-review.reviewFolder` | Explorer context menu / command palette | Review all matching files in a selected folder |
+| `ollama-code-review.reviewSelection` | Editor context menu / command palette | Review only the selected text |
+
+### Configuration
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `batch.maxFileSizeKb` | `100` | Files larger than this (KB) are truncated before review |
+| `batch.includeGlob` | `**/*.{ts,js,...}` | File types included in folder reviews |
+| `batch.excludeGlob` | `**/node_modules/**,...` | Paths excluded from folder reviews |
+
+### Implementation
+
+- `reviewFile` reads the file via `vscode.workspace.fs.readFile`, truncates to `maxFileSizeKb`, and passes content to `runFileReview()`.
+- `reviewFolder` uses `vscode.workspace.findFiles()` with the configured globs, concatenates files with `--- filename ---` separators up to a token budget, and calls `runFileReview()`.
+- `reviewSelection` reads `editor.document.getText(editor.selection)` and calls `runFileReview()`.
+- `runFileReview()` in `src/extension.ts` bypasses diff filtering and uses `getOllamaFileReview()` with a file-review–flavoured prompt that doesn't reference git diff format.
+- Score (F-016) and notifications (F-018) integrate automatically.
+
+## Notification Integrations (F-018)
+
+Post review summaries to Slack, Microsoft Teams, or Discord via incoming webhooks. Notifications are sent after every review if a webhook URL is configured and the finding severity meets the trigger threshold.
+
+### Configuration
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `notifications.slack.webhookUrl` | `""` | Slack incoming webhook URL |
+| `notifications.teams.webhookUrl` | `""` | Microsoft Teams incoming webhook URL |
+| `notifications.discord.webhookUrl` | `""` | Discord webhook URL |
+| `notifications.triggerOn` | `["critical","high"]` | Severity levels that trigger a notification; empty = always |
+
+### Implementation (`src/notifications/index.ts`)
+
+- `getNotificationConfig()` — read webhook URLs and trigger filter from VS Code settings
+- `sendNotifications(payload, outputChannel?)` — fire-and-forget dispatch to all configured platforms
+- Each platform has a dedicated payload builder: `buildSlackPayload()`, `buildTeamsPayload()`, `buildDiscordPayload()`
+- Uses existing Axios dependency; no new packages required
+- Notification failures are logged to the output channel but never interrupt the review flow
+
+### Payload Formats
+
+| Platform | Format |
+|----------|--------|
+| Slack | Block Kit with header, source/model/profile fields, and findings summary |
+| Teams | MessageCard v1 (Adaptive Card) with facts table |
+| Discord | Embed with colored border (green ≥ 80, orange ≥ 60, red < 60) |
+
+## Review Quality Scoring & Trends (F-016)
+
+Each review produces a 0–100 quality score derived from finding severity counts. Scores are persisted in a local JSON file and surfaced in a status bar item and a history panel.
+
+### Scoring Algorithm
+
+```
+score = 100 − (critical × 20) − (high × 10) − (medium × 5) − (low × 2)
+score = clamp(score, 0, 100)
+```
+
+Sub-scores (correctness, security, maintainability, performance) are approximated from the same deduction using fixed weights.
+
+### Storage
+
+- `ReviewScoreStore` in `src/reviewScore.ts` persists up to 200 entries in `{globalStorage}/review-scores.json`
+- Survives VS Code restarts; no native (SQLite) dependency
+- `id`, `timestamp`, `repo`, `branch`, `model`, `profile`, `score`, `findingCounts`, and optional `label` (for batch reviews) are stored per entry
+
+### UI
+
+| Component | Description |
+|-----------|-------------|
+| Status bar | Shows `$(check|warning|error) N/100` after every review; click to open history panel |
+| History panel | Line chart (Chart.js CDN) of last N scores, summary cards (latest / average / best), and a sortable table |
+
+### Exported Functions (`src/reviewScore.ts`)
+
+- `parseFindingCounts(reviewText)` — heuristic extraction of severity counts from review Markdown
+- `computeScore(counts)` — returns `{ score, correctness, security, maintainability, performance }`
+- `ReviewScoreStore.getInstance(storagePath)` — singleton store with `addScore()`, `getScores()`, `getLastScore()`, `clear()`
+- `updateScoreStatusBar(item, score)` — update the status bar item text and color
+- `ReviewHistoryPanel.createOrShow(scores)` — open or focus the history webview
+
 ## Related Projects
 
 ### MCP Server for Claude Desktop
@@ -963,11 +1070,14 @@ See [docs/roadmap/](./docs/roadmap/) for comprehensive planning documents:
 | Pre-Commit Guard (review before commit, severity threshold, hook management) | F-014 | v3.6 |
 | Multi-File Contextual Analysis (import resolution, test discovery, type defs) | F-008 | v4.0 |
 | Compliance Review Profiles (OWASP Top 10, PCI-DSS, GDPR, HIPAA, SOC2, NIST CSF) | F-017 | v4.0 |
+| Review Quality Scoring & Trends (heuristic score, history panel, status bar) | F-016 | v4.1 |
+| Notification Integrations (Slack / Microsoft Teams / Discord webhooks) | F-018 | v4.1 |
+| Batch / Legacy Code Review (reviewFile, reviewFolder, reviewSelection) | F-019 | v4.1 |
 
 ### Remaining Planned Features
 
 | Phase | Features | Target |
 |-------|----------|--------|
-| v4.0 | Agentic Multi-Step Reviews (F-007) | Q3 2026 |
+| v4.x | Agentic Multi-Step Reviews (F-007) | Q3 2026 |
 | v5.0 | RAG (F-009), CI/CD (F-010), Analytics (F-011), Knowledge Base (F-012) | Q4 2026 |
-| v6.0 | GitLab & Bitbucket Integration (F-015), Review Quality Scoring & Trends (F-016), Notification Integrations (F-018), Batch / Legacy Code Review (F-019), Architecture Diagram Generation (F-020) | Q1–Q2 2027 |
+| v6.0 | GitLab & Bitbucket Integration (F-015), Architecture Diagram Generation (F-020) | Q1–Q2 2027 |

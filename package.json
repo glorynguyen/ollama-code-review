@@ -136,6 +136,30 @@
         "title": "Review & Commit",
         "category": "Ollama Code Review",
         "icon": "$(checklist)"
+      },
+      {
+        "command": "ollama-code-review.reviewFile",
+        "title": "Review File (No Git Required)",
+        "category": "Ollama Code Review",
+        "icon": "$(file-code)"
+      },
+      {
+        "command": "ollama-code-review.reviewFolder",
+        "title": "Review Folder (No Git Required)",
+        "category": "Ollama Code Review",
+        "icon": "$(folder)"
+      },
+      {
+        "command": "ollama-code-review.reviewSelection",
+        "title": "Review Selected Code",
+        "category": "Ollama Code Review",
+        "icon": "$(selection)"
+      },
+      {
+        "command": "ollama-code-review.showReviewHistory",
+        "title": "Show Review Quality History",
+        "category": "Ollama Code Review",
+        "icon": "$(graph)"
       }
     ],
     "menus": {
@@ -144,6 +168,28 @@
           "when": "editorHasSelection && (editorLangId == javascript || editorLangId == typescript || editorLangId == javascriptreact || editorLangId == typescriptreact || editorLangId == php)",
           "command": "ollama-code-review.suggestRefactoring",
           "group": "1_modification"
+        },
+        {
+          "when": "editorHasSelection",
+          "command": "ollama-code-review.reviewSelection",
+          "group": "9_ollama@1"
+        },
+        {
+          "when": "editorIsOpen",
+          "command": "ollama-code-review.reviewFile",
+          "group": "9_ollama@2"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "ollama-code-review.reviewFile",
+          "when": "!explorerResourceIsFolder",
+          "group": "9_ollama@1"
+        },
+        {
+          "command": "ollama-code-review.reviewFolder",
+          "when": "explorerResourceIsFolder",
+          "group": "9_ollama@1"
         }
       ],
       "scm/resourceState/context": [
@@ -503,6 +549,47 @@
           "editPresentation": "multilineText",
           "default": "You are an expert at writing git commit messages for Semantic Release.\nGenerate a commit message based on the git diff below following the Conventional Commits specification.\n\n### Structural Requirements:\n1. **Subject Line**: <type>(<scope>): <short description>\n   - Keep under 50 characters.\n   - Use imperative mood (\"add\" not \"added\").\n   - Types: feat (new feature), fix (bug fix), docs, style, refactor, perf, test, build, ci, chore, revert.\n2. **Body**: Explain 'what' and 'why'. Required if the change is complex.\n3. **Breaking Changes**: If the diff contains breaking changes, the footer MUST start with \"BREAKING CHANGE:\" followed by a description.\n\n### Rules:\n- If the user's draft mentions a breaking change, prioritize documenting it in the footer.\n- Semantic Release triggers: 'feat' for MINOR, 'fix' for PATCH, and 'BREAKING CHANGE' in footer for MAJOR.\n- Output ONLY the raw commit message text. No markdown blocks, no \"Here is your message,\" no preamble.\n\nDeveloper's draft message (may reflect intent):\n${draftMessage}\n\nStaged git diff:\n---\n${diff}\n---",
           "markdownDescription": "Custom prompt template for commit message generation. Available variables:\n- `${diff}` - The staged git diff\n- `${draftMessage}` - Developer's draft message (or \"(none provided)\")\n\nLeave empty to use the built-in default prompt."
+        },
+        "ollama-code-review.notifications.slack.webhookUrl": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "**F-018** — Slack incoming webhook URL. When set, a review summary is posted to your Slack channel after each review. Get a webhook at https://api.slack.com/messaging/webhooks"
+        },
+        "ollama-code-review.notifications.teams.webhookUrl": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "**F-018** — Microsoft Teams incoming webhook URL. When set, a review summary card is posted to your Teams channel after each review."
+        },
+        "ollama-code-review.notifications.discord.webhookUrl": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "**F-018** — Discord webhook URL. When set, a review embed is posted to your Discord channel after each review."
+        },
+        "ollama-code-review.notifications.triggerOn": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["critical", "high", "medium", "low"]
+          },
+          "default": ["critical", "high"],
+          "markdownDescription": "**F-018** — Only send notifications when the review contains findings at or above these severity levels. An empty array always sends notifications regardless of findings."
+        },
+        "ollama-code-review.batch.maxFileSizeKb": {
+          "type": "number",
+          "default": 100,
+          "minimum": 10,
+          "maximum": 500,
+          "markdownDescription": "**F-019** — Maximum file size in kilobytes for batch file reviews. Files larger than this will be truncated."
+        },
+        "ollama-code-review.batch.includeGlob": {
+          "type": "string",
+          "default": "**/*.{ts,js,tsx,jsx,py,go,java,php,rb,cs,cpp,c,h}",
+          "markdownDescription": "**F-019** — Glob pattern for files to include in folder reviews (e.g. `**/*.{ts,js,py}`)."
+        },
+        "ollama-code-review.batch.excludeGlob": {
+          "type": "string",
+          "default": "**/node_modules/**,**/dist/**,**/build/**,**/out/**",
+          "markdownDescription": "**F-019** — Comma-separated glob patterns for files to exclude from folder reviews."
         }
       }
     }
