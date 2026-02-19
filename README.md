@@ -389,6 +389,76 @@ Features include:
 - **Skills Support**: Apply agent skills to enhance reviews
 - **Git Integration**: Full access to repository status, commits, and branches
 
+### 28. Batch / Legacy Code Review (No Git Required)
+Review any file, folder, or selected text without needing a Git diff — perfect for legacy codebases, third-party code, or files not tracked by Git.
+
+- **Command**: `Ollama Code Review: Review File` — review the currently open file or an Explorer-selected file in full.
+- **Command**: `Ollama Code Review: Review Folder` — review all matching files in a selected folder (configurable via glob patterns).
+- **Command**: `Ollama Code Review: Review Selection` — review only the selected text in the active editor.
+
+All three commands are accessible from the **Explorer context menu**, the **Editor context menu**, and the **Command Palette**.
+
+**Configuration** (under `ollama-code-review.batch`):
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `maxFileSizeKb` | `100` | Files larger than this (KB) are truncated before review |
+| `includeGlob` | `**/*.{ts,js,...}` | File types included in folder reviews |
+| `excludeGlob` | `**/node_modules/**,...` | Paths excluded from folder reviews |
+
+> Batch reviews integrate automatically with Review Quality Scoring (F-016) and Notification Integrations (F-018).
+
+### 29. Review Quality Scoring & Trends
+Track the quality of your code over time with a 0–100 score derived from AI finding counts after every review.
+
+- **Command**: `Ollama Code Review: Show Review Quality History` — open the history panel with score trends.
+- A **status bar item** shows the latest score (`$(check|warning|error) N/100`) after every review. Click it to open the history panel.
+
+**Scoring Algorithm:**
+
+| Finding Severity | Score Deduction |
+|-----------------|----------------|
+| Critical | −20 per finding |
+| High | −10 per finding |
+| Medium | −5 per finding |
+| Low | −2 per finding |
+
+Score is clamped between 0 and 100. Sub-scores for correctness, security, maintainability, and performance are also computed.
+
+**History Panel** features:
+- Line chart (Chart.js) showing score trends over time
+- Summary cards: latest score, average, and best score
+- Full sortable table of past reviews with model, profile, and branch info
+
+> Score history is persisted locally (up to 200 entries) — no external database required.
+
+### 30. Notification Integrations (Slack / Teams / Discord)
+Automatically post review summaries to your team communication channels after each review.
+
+**Supported platforms:**
+
+| Platform | Format |
+|----------|--------|
+| **Slack** | Block Kit message with header, source/model/profile fields, and findings summary |
+| **Microsoft Teams** | MessageCard with a facts table |
+| **Discord** | Embed with severity-coloured border (green ≥ 80, orange ≥ 60, red < 60) |
+
+**Configuration** (under `ollama-code-review.notifications`):
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `slack.webhookUrl` | `""` | Slack incoming webhook URL |
+| `teams.webhookUrl` | `""` | Microsoft Teams incoming webhook URL |
+| `discord.webhookUrl` | `""` | Discord webhook URL |
+| `triggerOn` | `["critical","high"]` | Severity levels that trigger a notification; empty array = always notify |
+
+**Setup:**
+1. Create an incoming webhook for your platform (Slack: *App Directory → Incoming Webhooks*, Teams: *Channel → Connectors*, Discord: *Channel Settings → Integrations → Webhooks*)
+2. Paste the webhook URL into the corresponding setting
+3. Optionally adjust `triggerOn` to control which severity levels trigger notifications
+
+> Notification failures are logged to the output channel but never interrupt the review flow.
+
 ---
 
 ## Requirements
@@ -500,6 +570,23 @@ This extension contributes the following settings to your VS Code `settings.json
     * `maxFiles`: Maximum number of context files to include (default: `10`)
     * `includeTests`: Discover and include related test/spec files (default: `true`)
     * `includeTypeDefinitions`: Include `.d.ts` type definitions for changed TypeScript modules (default: `true`)
+* `ollama-code-review.notifications.slack.webhookUrl`: Slack incoming webhook URL. When set, a review summary is posted to your Slack channel after each review.
+    * **Default**: `""`
+* `ollama-code-review.notifications.teams.webhookUrl`: Microsoft Teams incoming webhook URL. When set, a review summary card is posted to your Teams channel after each review.
+    * **Default**: `""`
+* `ollama-code-review.notifications.discord.webhookUrl`: Discord webhook URL. When set, a review embed is posted to your Discord channel after each review.
+    * **Default**: `""`
+* `ollama-code-review.notifications.triggerOn`: Only send notifications when the review contains findings at or above these severity levels. An empty array always sends notifications.
+    * **Type**: `array`
+    * **Default**: `["critical", "high"]`
+    * **Options**: `critical`, `high`, `medium`, `low`
+* `ollama-code-review.batch.maxFileSizeKb`: Maximum file size (in KB) for batch file reviews. Files larger than this limit are truncated before being sent to the AI.
+    * **Type**: `number`
+    * **Default**: `100`
+* `ollama-code-review.batch.includeGlob`: Glob pattern for file types to include in folder reviews (e.g., `reviewFolder` command).
+    * **Default**: `**/*.{ts,js,tsx,jsx,py,java,cs,go,rb,php,rs,swift,kt,vue,svelte,html,css,scss,json,yaml,yml,md}`
+* `ollama-code-review.batch.excludeGlob`: Comma-separated glob patterns for paths to exclude from folder reviews.
+    * **Default**: `**/node_modules/**,**/dist/**,**/build/**,**/out/**,**/.next/**,**/coverage/**`
 
 You can configure these by opening the Command Palette (`Ctrl+Shift+P`) and searching for `Preferences: Open User Settings (JSON)`.
 
