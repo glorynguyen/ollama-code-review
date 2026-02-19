@@ -124,6 +124,18 @@
         "title": "Reload Project Config (.ollama-review.yaml)",
         "category": "Ollama Code Review",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "ollama-code-review.togglePreCommitGuard",
+        "title": "Toggle Pre-Commit Guard",
+        "category": "Ollama Code Review",
+        "icon": "$(shield)"
+      },
+      {
+        "command": "ollama-code-review.reviewAndCommit",
+        "title": "Review & Commit",
+        "category": "Ollama Code Review",
+        "icon": "$(checklist)"
       }
     ],
     "menus": {
@@ -149,6 +161,11 @@
         },
         {
           "command": "ollama-code-review.generateCommitMessage",
+          "when": "scmProvider == 'git'",
+          "group": "navigation"
+        },
+        {
+          "command": "ollama-code-review.reviewAndCommit",
           "when": "scmProvider == 'git'",
           "group": "navigation"
         }
@@ -363,6 +380,24 @@
               "description": "Skip files with only whitespace/formatting changes"
             }
           }
+        },
+        "ollama-code-review.preCommitGuard.severityThreshold": {
+          "type": "string",
+          "enum": [
+            "critical",
+            "high",
+            "medium",
+            "low"
+          ],
+          "default": "high",
+          "markdownDescription": "Block commits when findings at or above this severity are detected. `critical` blocks only on critical issues; `low` blocks on almost everything."
+        },
+        "ollama-code-review.preCommitGuard.timeout": {
+          "type": "number",
+          "default": 60,
+          "minimum": 10,
+          "maximum": 300,
+          "description": "Timeout in seconds for the AI review during Review & Commit. The review is cancelled if it exceeds this limit."
         },
         "ollama-code-review.customProfiles": {
           "type": "array",

@@ -29,6 +29,7 @@ src/
 ├── skillsService.ts      # Agent skills download/caching from GitHub
 ├── skillsBrowserPanel.ts # Skills browser UI webview
 ├── diffFilter.ts         # Diff filtering & ignore patterns (F-002)
+├── preCommitGuard.ts     # Pre-commit guard: hook management & severity assessment (F-014)
 ├── profiles.ts           # Review profiles & presets (F-001)
 ├── utils.ts              # Config helper functions
 ├── config/               # Project-level config file support (F-006)
@@ -72,6 +73,7 @@ out/                      # Compiled JavaScript output
 | `src/codeActions/fixAction.ts` | ~422 | Fix Issue action with diff preview |
 | `src/codeActions/documentAction.ts` | ~369 | Add Documentation action with preview |
 | `src/codeActions/types.ts` | ~103 | Common types and parsing utilities |
+| `src/preCommitGuard.ts` | ~185 | Pre-commit guard: hook install/uninstall, severity assessment (F-014) |
 
 ## Commands
 
@@ -96,6 +98,8 @@ out/                      # Compiled JavaScript output
 | `ollama-code-review.reviewGitHubPR` | Review a GitHub Pull Request by URL or number |
 | `ollama-code-review.postReviewToPR` | Post AI review as a comment to a GitHub PR |
 | `ollama-code-review.reloadProjectConfig` | Reload/reset the .ollama-review.yaml config file cache |
+| `ollama-code-review.togglePreCommitGuard` | Enable/disable the pre-commit guard git hook |
+| `ollama-code-review.reviewAndCommit` | Review staged changes with AI, then commit if findings pass threshold |
 
 ## Configuration Settings
 
@@ -118,6 +122,8 @@ out/                      # Compiled JavaScript output
 | `ollama-code-review.temperature` | `0` | Model temperature (0-1) |
 | `ollama-code-review.frameworks` | `["React"]` | Target frameworks for context |
 | `ollama-code-review.diffFilter` | `{}` | Diff filtering configuration (see Diff Filtering section) |
+| `ollama-code-review.preCommitGuard.severityThreshold` | `"high"` | Block commits when findings at or above this severity (critical/high/medium/low) |
+| `ollama-code-review.preCommitGuard.timeout` | `60` | AI review timeout in seconds for Review & Commit (10–300) |
 | `ollama-code-review.customProfiles` | `[]` | Custom review profiles (array of objects with name, focusAreas, severity, etc.) |
 | `ollama-code-review.prompt.review` | (built-in review prompt) | Custom prompt template for code reviews. Variables: `${code}`, `${frameworks}`, `${skills}`, `${profile}` |
 | `ollama-code-review.prompt.commitMessage` | (built-in commit prompt) | Custom prompt template for commit messages. Variables: `${diff}`, `${draftMessage}` |
@@ -393,6 +399,59 @@ diffFilter:
 `extension.ts` automatically watches `**/.ollama-review.yaml` for create, change, and delete events. When any event fires, `clearProjectConfigCache()` is called so the next review picks up the updated config without requiring a manual reload.
 
 The `reloadProjectConfig` command (`$(refresh)`) allows manual cache invalidation from the command palette.
+
+## Pre-Commit Guard (F-014)
+
+The `src/preCommitGuard.ts` module provides a pre-commit review workflow that runs an AI review on staged changes before committing.
+
+### How It Works
+
+1. **Enable the guard** via the "Toggle Pre-Commit Guard" command or the status bar shield icon
+2. A git pre-commit hook is installed in `.git/hooks/pre-commit` that blocks direct commits
+3. Use the **"Review & Commit"** command to:
+   - Get staged diff
+   - Run AI review through the existing review pipeline
+   - Parse findings using `commentMapper.ts` severity detection
+   - Compare findings against the configured severity threshold
+   - If findings pass: offer to commit immediately or view the review
+   - If findings block: show findings and offer "Commit Anyway", "View Review", or "Cancel"
+4. The hook uses a temporary bypass file (`.git/.ollama-review-bypass`) to allow commits after review
+
+### Commands
+
+| Command | Description |
+|---------|-------------|
+| `togglePreCommitGuard` | Install/uninstall the pre-commit hook for the current repository |
+| `reviewAndCommit` | Run AI review on staged changes, then commit if findings pass threshold |
+
+### Settings
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `preCommitGuard.severityThreshold` | `"high"` | Block on findings at or above this level: `critical`, `high`, `medium`, `low` |
+| `preCommitGuard.timeout` | `60` | Review timeout in seconds (10–300) |
+
+### Exported Functions (src/preCommitGuard.ts)
+
+- `getPreCommitGuardConfig()` — Read guard settings from VS Code configuration
+- `isHookInstalled(repoPath)` — Check if the Ollama pre-commit hook is installed
+- `installHook(repoPath)` — Write the pre-commit hook script (refuses to overwrite non-Ollama hooks)
+- `uninstallHook(repoPath)` — Remove the hook (only if it was installed by Ollama)
+- `createBypassFile(repoPath)` — Create a temporary bypass marker for the next commit
+- `removeBypassFile(repoPath)` — Clean up the bypass marker
+- `assessSeverity(reviewText, diff, threshold)` — Parse review into findings and check against threshold
+- `formatAssessmentSummary(assessment)` — Format findings into a human-readable summary
+
+### Status Bar
+
+A shield icon in the status bar shows `Guard ON` / `Guard OFF` and toggles the hook on click.
+
+### Safety
+
+- The hook will **not** overwrite an existing non-Ollama pre-commit hook
+- Uninstall only removes hooks that contain the Ollama marker comment
+- Users can always bypass the hook with `git commit --no-verify`
+- The bypass file is cleaned up in a `finally` block after each commit attempt
 
 ## Inline Code Actions (F-005)
 
@@ -793,6 +852,7 @@ See [docs/roadmap/](./docs/roadmap/) for comprehensive planning documents:
 | PHP Language Support (inline code actions + context menu) | — | v3.4 |
 | Multi-strategy GitHub Auth (gh CLI / VS Code session / token) | — | v3.4 |
 | OpenAI-Compatible Provider (LM Studio, vLLM, LocalAI, Groq, OpenRouter) | F-013 | v3.5 |
+| Pre-Commit Guard (review before commit, severity threshold, hook management) | F-014 | v3.6 |
 
 ### Remaining Planned Features
 
@@ -800,4 +860,4 @@ See [docs/roadmap/](./docs/roadmap/) for comprehensive planning documents:
 |-------|----------|--------|
 | v4.0 | Agentic Multi-Step Reviews (F-007), Multi-File Analysis (F-008) | Q3 2026 |
 | v5.0 | RAG (F-009), CI/CD (F-010), Analytics (F-011), Knowledge Base (F-012) | Q4 2026 |
-| v6.0 | Pre-Commit Guard (F-014), GitLab & Bitbucket Integration (F-015), Review Quality Scoring & Trends (F-016), Compliance Review Profiles (F-017), Notification Integrations (F-018), Batch / Legacy Code Review (F-019), Architecture Diagram Generation (F-020) | Q1–Q2 2027 |
+| v6.0 | GitLab & Bitbucket Integration (F-015), Review Quality Scoring & Trends (F-016), Compliance Review Profiles (F-017), Notification Integrations (F-018), Batch / Legacy Code Review (F-019), Architecture Diagram Generation (F-020) | Q1–Q2 2027 |
