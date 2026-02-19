@@ -1,3 +1,10 @@
+# [3.7.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.6.0...v3.7.0) (2026-02-19)
+
+
+### Features
+
+* **F-008:** add multi-file contextual analysis for richer AI reviews ([660a93e](https://github.com/glorynguyen/ollama-code-review/commit/660a93ed5e11b96bbc911a94e904a511ef29b9af))
+
 # [3.6.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.5.0...v3.6.0) (2026-02-19)
 
 
