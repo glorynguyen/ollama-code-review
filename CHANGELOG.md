@@ -1,3 +1,10 @@
+# [3.9.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.8.0...v3.9.0) (2026-02-19)
+
+
+### Features
+
+* implement F-016, F-018, F-019 — quality scoring, notifications, batch review ([e3011de](https://github.com/glorynguyen/ollama-code-review/commit/e3011deefea1c5d26b56cc43e48a44e514fc1248))
+
 # [3.8.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.7.0...v3.8.0) (2026-02-19)
 
 

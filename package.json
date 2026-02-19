@@ -2,7 +2,7 @@
   "name": "ollama-code-review",
   "displayName": "Ollama Code Review",
   "description": "Get AI code reviews and generate commit messages from a local Ollama instance before you commit.",
-  "version": "3.8.0",
+  "version": "3.9.0",
   "author": "Vinh Nguyen (vincent)",
   "publisher": "VinhNguyen-Vincent",
   "icon": "images/icon.png",
@@ -569,9 +569,17 @@
           "type": "array",
           "items": {
             "type": "string",
-            "enum": ["critical", "high", "medium", "low"]
+            "enum": [
+              "critical",
+              "high",
+              "medium",
+              "low"
+            ]
           },
-          "default": ["critical", "high"],
+          "default": [
+            "critical",
+            "high"
+          ],
           "markdownDescription": "**F-018** — Only send notifications when the review contains findings at or above these severity levels. An empty array always sends notifications regardless of findings."
         },
         "ollama-code-review.batch.maxFileSizeKb": {
