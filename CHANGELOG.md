@@ -1,3 +1,10 @@
+# [3.10.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.9.0...v3.10.0) (2026-02-19)
+
+
+### Features
+
+* implement F-007 (agentic multi-step reviews) and F-020 (Mermaid diagram generation) ([53bdd02](https://github.com/glorynguyen/ollama-code-review/commit/53bdd02e87ce839e810c48bb8fc5b254605d8e2a))
+
 # [3.9.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.8.0...v3.9.0) (2026-02-19)
 
 
