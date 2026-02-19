@@ -68,7 +68,7 @@ out/                      # Compiled JavaScript output
 | `src/skillsService.ts` | ~593 | Fetches/caches agent skills from GitHub repos |
 | `src/skillsBrowserPanel.ts` | ~516 | UI for browsing and downloading skills |
 | `src/diffFilter.ts` | ~245 | Diff filtering with ignore patterns and formatting detection |
-| `src/profiles.ts` | ~234 | Review profiles: built-in presets, custom profiles, prompt context builder |
+| `src/profiles.ts` | ~365 | Review profiles: built-in presets, 6 compliance profiles, custom profiles, prompt context builder |
 | `src/utils.ts` | ~33 | Helper for model config, HTML escaping, and prompt template resolution |
 | `src/config/promptLoader.ts` | ~270 | .ollama-review.yaml loader with config hierarchy and workspace-aware caching |
 | `src/context/index.ts` | ~25 | Barrel exports for the context module |
@@ -962,6 +962,7 @@ See [docs/roadmap/](./docs/roadmap/) for comprehensive planning documents:
 | OpenAI-Compatible Provider (LM Studio, vLLM, LocalAI, Groq, OpenRouter) | F-013 | v3.5 |
 | Pre-Commit Guard (review before commit, severity threshold, hook management) | F-014 | v3.6 |
 | Multi-File Contextual Analysis (import resolution, test discovery, type defs) | F-008 | v4.0 |
+| Compliance Review Profiles (OWASP Top 10, PCI-DSS, GDPR, HIPAA, SOC2, NIST CSF) | F-017 | v4.0 |
 
 ### Remaining Planned Features
 
@@ -969,4 +970,4 @@ See [docs/roadmap/](./docs/roadmap/) for comprehensive planning documents:
 |-------|----------|--------|
 | v4.0 | Agentic Multi-Step Reviews (F-007) | Q3 2026 |
 | v5.0 | RAG (F-009), CI/CD (F-010), Analytics (F-011), Knowledge Base (F-012) | Q4 2026 |
-| v6.0 | GitLab & Bitbucket Integration (F-015), Review Quality Scoring & Trends (F-016), Compliance Review Profiles (F-017), Notification Integrations (F-018), Batch / Legacy Code Review (F-019), Architecture Diagram Generation (F-020) | Q1–Q2 2027 |
+| v6.0 | GitLab & Bitbucket Integration (F-015), Review Quality Scoring & Trends (F-016), Notification Integrations (F-018), Batch / Legacy Code Review (F-019), Architecture Diagram Generation (F-020) | Q1–Q2 2027 |

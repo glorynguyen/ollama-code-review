@@ -51,7 +51,6 @@ v6.0 (Q1-Q2   ── OpenAI-Compatible Provider (F-013)
       2027)        Pre-Commit Guard (F-014)
                    GitLab & Bitbucket Integration (F-015)
                    Review Quality Scoring & Trends (F-016)
-                   Compliance Review Profiles (F-017)
                    Notification Integrations (F-018)
                    Batch / Legacy Code Review (F-019)
                    Architecture Diagram Generation (F-020)
@@ -65,7 +64,6 @@ v6.0 (Q1-Q2   ── OpenAI-Compatible Provider (F-013)
 | 🟠 P1 | High | Low | F-013: OpenAI-Compatible Provider, F-014: Pre-Commit Guard |
 | 🟡 P2 | High | High | F-009: RAG, F-015: GitLab & Bitbucket Integration |
 | 🟡 P2 | High | Medium | F-016: Review Quality Scoring, F-019: Batch Code Review |
-| 🟡 P2 | High | Low | F-017: Compliance Profiles |
 | 🟢 P3 | Medium | High | F-010: CI/CD, F-012: Knowledge Base, F-020: Diagram Generation |
 | 🟢 P3 | Medium | Low | F-011: Analytics, F-018: Notification Integrations |
 

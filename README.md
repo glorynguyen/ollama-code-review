@@ -273,7 +273,9 @@ Configure in settings under `ollama-code-review.diffFilter`.
 
 ### 22. Review Profiles & Presets
 - **Command**: `Ollama Code Review: Select Review Profile`
-- Focus the AI on what matters most by switching between six built-in review profiles — or create your own:
+- Focus the AI on what matters most by switching between built-in review profiles — or create your own:
+
+**General Profiles:**
 
 | Profile | Focus |
 |---------|-------|
@@ -283,6 +285,19 @@ Configure in settings under `ollama-code-review.diffFilter`.
 | **Accessibility** | ARIA attributes, keyboard navigation, screen reader support |
 | **Educational** | Explains *why* changes are good/bad — great for learning |
 | **Strict** | High-severity findings only, zero tolerance for issues |
+
+**Compliance Profiles** (appear under a "Compliance" group in the picker):
+
+| Profile | Framework | What the AI cites |
+|---------|-----------|-------------------|
+| **OWASP Top 10** | OWASP Top 10 (2021) | A0x:2021 category identifiers (e.g. A03:2021 – Injection) |
+| **PCI-DSS** | PCI-DSS v4 | Requirement numbers (e.g. Requirement 6.2.4) |
+| **GDPR** | GDPR / CCPA | Article references (e.g. Art. 5 – Principles) |
+| **HIPAA** | HIPAA Security & Privacy Rules | Section citations (e.g. § 164.312) |
+| **SOC 2** | SOC 2 Type II | Trust Services Criteria IDs (e.g. CC6.1) |
+| **NIST CSF** | NIST Cybersecurity Framework 2.0 | CSF functions + subcategories (e.g. PR.AC-1) |
+
+Compliance profiles inject a framework-specific audit preamble into the prompt, so the AI ties every finding back to a specific standard identifier — making it easy to trace review comments directly to compliance requirements.
 
 - **Status Bar**: A shield icon next to the model indicator shows the active profile. Click it to switch instantly.
 - **Custom Profiles**: Define your own profiles in `ollama-code-review.customProfiles` or via the profile picker ("Create new profile...").

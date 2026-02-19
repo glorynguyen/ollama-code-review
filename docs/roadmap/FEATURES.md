@@ -929,7 +929,7 @@ rules:
 | F-014 | Pre-Commit Guard | 5 | 📋 Planned | — |
 | F-015 | GitLab & Bitbucket Integration | 5 | 📋 Planned | — |
 | F-016 | Review Quality Scoring & Trends | 5 | 📋 Planned | — |
-| F-017 | Compliance Review Profiles | 5 | 📋 Planned | — |
+| F-017 | Compliance Review Profiles | 5 | ✅ Complete | v4.0 |
 | F-018 | Notification Integrations | 5 | 📋 Planned | — |
 | F-019 | Batch / Legacy Code Review | 5 | 📋 Planned | — |
 | F-020 | Architecture Diagram Generation | 5 | 📋 Planned | — |
@@ -1192,7 +1192,8 @@ CREATE TABLE reviews (
 
 ### F-017: Compliance Review Profiles
 
-**Status:** 📋 Planned
+**Status:** ✅ Complete
+**Shipped:** v4.0.0 (Feb 2026)
 **Priority:** 🟡 P2 — High Impact, Low Effort
 **Effort:** Low (1–2 days)
 
@@ -1234,10 +1235,10 @@ Add a set of pre-built review profiles focused on regulatory and security compli
 
 #### Acceptance Criteria
 
-- [ ] All 6 compliance profiles appear in profile picker under a `Compliance` group
-- [ ] OWASP profile finds a SQL injection in a test diff
-- [ ] Profile-specific context is injected into the prompt
-- [ ] Profiles persist across sessions via existing profile storage
+- [x] All 6 compliance profiles appear in profile picker under a `Compliance` group
+- [x] OWASP profile finds a SQL injection in a test diff
+- [x] Profile-specific context is injected into the prompt
+- [x] Profiles persist across sessions via existing profile storage
 
 ---
 

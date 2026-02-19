@@ -9,6 +9,10 @@ export interface ReviewProfile {
 	focusAreas: string[];
 	severity: 'lenient' | 'balanced' | 'strict';
 	includeExplanations: boolean;
+	/** Optional grouping label shown as a separator in the picker (e.g. 'Compliance'). */
+	group?: string;
+	/** Optional compliance-specific preamble injected before the focus areas in the prompt. */
+	complianceContext?: string;
 }
 
 /**
@@ -105,6 +109,123 @@ export const BUILTIN_PROFILES: ReviewProfile[] = [
 ];
 
 /**
+ * Compliance-focused profiles for regulatory and security framework auditing.
+ * These appear under a "Compliance" group separator in the profile picker.
+ */
+export const COMPLIANCE_PROFILES: ReviewProfile[] = [
+	{
+		name: 'owasp-top10',
+		group: 'Compliance',
+		description: 'OWASP Top 10 (2021) — web application security risks',
+		focusAreas: [
+			'A01 Broken Access Control — missing authorization checks, IDOR',
+			'A02 Cryptographic Failures — weak algorithms, plaintext secrets, insecure TLS',
+			'A03 Injection — SQL, NoSQL, LDAP, OS command, and template injection',
+			'A04 Insecure Design — missing threat modelling, flawed business logic',
+			'A05 Security Misconfiguration — default credentials, verbose errors, open CORS',
+			'A06 Vulnerable Components — outdated or unpatched dependencies',
+			'A07 Auth & Session Failures — weak passwords, improper session management',
+			'A08 Software Integrity Failures — unsigned updates, insecure deserialization',
+			'A09 Logging & Monitoring Failures — missing audit trails, silent catch blocks',
+			'A10 Server-Side Request Forgery (SSRF) — unvalidated URL inputs'
+		],
+		severity: 'strict',
+		includeExplanations: true,
+		complianceContext: 'You are auditing code against the OWASP Top 10 (2021 edition). For every finding, cite the relevant OWASP category identifier (e.g. A03:2021 – Injection) and explain the risk it poses. Prioritise exploitability and real-world impact.'
+	},
+	{
+		name: 'pci-dss',
+		group: 'Compliance',
+		description: 'PCI-DSS v4 — cardholder data protection and payment security',
+		focusAreas: [
+			'Cardholder data (PAN, CVV, expiry) stored, logged, or transmitted unencrypted',
+			'Missing TLS 1.2+ enforcement on all payment data channels',
+			'Weak or default credentials for payment system components',
+			'Insufficient access controls — least privilege not applied',
+			'Lack of audit logging for sensitive operations (Requirement 10)',
+			'Missing input validation on payment form fields',
+			'Insecure key management — hardcoded keys or weak key storage',
+			'Unpatched dependencies in the payment processing path'
+		],
+		severity: 'strict',
+		includeExplanations: true,
+		complianceContext: 'You are auditing code for PCI-DSS v4 compliance. Cite the relevant PCI-DSS requirement number (e.g. Requirement 6.2.4) for each finding. Flag any code that could expose cardholder data or weaken payment security controls.'
+	},
+	{
+		name: 'gdpr',
+		group: 'Compliance',
+		description: 'GDPR / CCPA — personal data handling and privacy by design',
+		focusAreas: [
+			'PII collected without explicit consent or beyond stated purpose (data minimisation)',
+			'Personal data stored longer than necessary (retention limits)',
+			'Missing or insufficient data anonymisation / pseudonymisation',
+			'Logging or debugging output that captures personal data',
+			'Third-party data sharing without adequate safeguards',
+			'Missing right-to-erasure (delete) or right-to-access (export) support',
+			'Insecure transfer of personal data across borders',
+			'Insufficient encryption of data at rest containing personal data'
+		],
+		severity: 'strict',
+		includeExplanations: true,
+		complianceContext: 'You are auditing code for GDPR and CCPA compliance. Reference the relevant GDPR article (e.g. Art. 5 – Principles) for each finding. Emphasise privacy-by-design: data minimisation, purpose limitation, and the data subject rights.'
+	},
+	{
+		name: 'hipaa',
+		group: 'Compliance',
+		description: 'HIPAA — protected health information (PHI) safeguards',
+		focusAreas: [
+			'PHI stored, logged, or transmitted without encryption (AES-256 / TLS 1.2+)',
+			'Missing access controls and authentication for PHI systems',
+			'Insufficient audit logging for PHI access and modifications',
+			'PHI exposed in URLs, query strings, or error messages',
+			'Inadequate session management for clinical applications',
+			'Missing de-identification before data is used for analytics',
+			'Unauthorized data sharing with business associates lacking BAAs',
+			'Missing automatic logoff for sessions accessing PHI'
+		],
+		severity: 'strict',
+		includeExplanations: true,
+		complianceContext: 'You are auditing code for HIPAA compliance (Security Rule § 164.312 and Privacy Rule § 164.502). Cite the relevant HIPAA section for each finding. Prioritise any code path that handles, stores, or transmits Protected Health Information (PHI).'
+	},
+	{
+		name: 'soc2',
+		group: 'Compliance',
+		description: 'SOC 2 Type II — availability, confidentiality, and change management',
+		focusAreas: [
+			'Missing or insufficient access control and authentication (CC6)',
+			'Lack of encryption for data in transit and at rest (CC6.1)',
+			'Insufficient audit logging and monitoring (CC7.2)',
+			'Missing error handling that could cause availability failures (A1)',
+			'Hardcoded credentials or secrets in source code (CC6.7)',
+			'Missing input validation leading to data integrity issues (PI1)',
+			'Inadequate change management — missing tests or review gates (CC8)',
+			'Insecure third-party integrations without vendor risk assessment (CC9)'
+		],
+		severity: 'strict',
+		includeExplanations: true,
+		complianceContext: 'You are auditing code for SOC 2 Type II compliance. Reference the relevant SOC 2 Common Criteria identifier (e.g. CC6.1) for each finding. Focus on the five Trust Services Criteria: Security, Availability, Processing Integrity, Confidentiality, and Privacy.'
+	},
+	{
+		name: 'nist-csf',
+		group: 'Compliance',
+		description: 'NIST CSF 2.0 — identify, protect, detect, respond, recover',
+		focusAreas: [
+			'IDENTIFY — missing asset inventory, undocumented data flows, unclear trust boundaries',
+			'PROTECT — inadequate access control, missing encryption, no least-privilege principle',
+			'PROTECT — missing input validation and output encoding against injection',
+			'DETECT — insufficient logging, missing anomaly detection hooks, silent failures',
+			'DETECT — hardcoded credentials or secrets that hinder detection of misuse',
+			'RESPOND — missing error handling and incident response hooks',
+			'RECOVER — no graceful degradation, missing backup/restore logic for critical data',
+			'GOVERN — missing security documentation, policy enforcement in code'
+		],
+		severity: 'strict',
+		includeExplanations: true,
+		complianceContext: 'You are auditing code against the NIST Cybersecurity Framework 2.0. Prefix each finding with its CSF function (IDENTIFY / PROTECT / DETECT / RESPOND / RECOVER / GOVERN) and the relevant subcategory (e.g. PR.AC-1). Focus on systemic risk reduction rather than individual bugs.'
+	}
+];
+
+/**
  * GlobalState key for the active profile name.
  */
 const ACTIVE_PROFILE_KEY = 'activeReviewProfile';
@@ -115,16 +236,19 @@ const ACTIVE_PROFILE_KEY = 'activeReviewProfile';
 const CUSTOM_PROFILES_KEY = 'customReviewProfiles';
 
 /**
- * Get all available profiles (built-in + custom from settings + custom from globalState).
+ * Get all available profiles (built-in + compliance + custom from settings + custom from globalState).
  */
 export function getAllProfiles(context: vscode.ExtensionContext): ReviewProfile[] {
 	const config = vscode.workspace.getConfiguration('ollama-code-review');
 	const settingsProfiles = config.get<ReviewProfile[]>('customProfiles', []);
 	const stateProfiles = context.globalState.get<ReviewProfile[]>(CUSTOM_PROFILES_KEY, []);
 
-	// Merge: built-in first, then settings, then globalState (later entries override by name)
+	// Merge: built-in first, then compliance, then settings, then globalState (later entries override by name)
 	const byName = new Map<string, ReviewProfile>();
 	for (const p of BUILTIN_PROFILES) {
+		byName.set(p.name, p);
+	}
+	for (const p of COMPLIANCE_PROFILES) {
 		byName.set(p.name, p);
 	}
 	for (const p of settingsProfiles) {
@@ -178,11 +302,11 @@ export async function saveCustomProfile(context: vscode.ExtensionContext, profil
 }
 
 /**
- * Delete a custom profile from globalState. Cannot delete built-in profiles.
+ * Delete a custom profile from globalState. Cannot delete built-in or compliance profiles.
  */
 export async function deleteCustomProfile(context: vscode.ExtensionContext, name: string): Promise<boolean> {
-	if (BUILTIN_PROFILES.some(p => p.name === name)) {
-		return false; // Cannot delete built-in
+	if (BUILTIN_PROFILES.some(p => p.name === name) || COMPLIANCE_PROFILES.some(p => p.name === name)) {
+		return false; // Cannot delete built-in or compliance profiles
 	}
 	const existing = context.globalState.get<ReviewProfile[]>(CUSTOM_PROFILES_KEY, []);
 	const filtered = existing.filter((p: ReviewProfile) => p.name !== name);
@@ -216,13 +340,20 @@ export function buildProfilePromptContext(profile: ReviewProfile): string {
 	const lines = [
 		`\n**Active Review Profile: ${profile.name}**`,
 		`*${profile.description}*`,
+	];
+
+	if (profile.complianceContext) {
+		lines.push('', profile.complianceContext);
+	}
+
+	lines.push(
 		'',
 		'**Profile-Specific Focus Areas (prioritize these):**',
 		...profile.focusAreas.map(area => `- ${area}`),
 		'',
 		`**Severity Level:** ${profile.severity}`,
 		severityInstructions[profile.severity] || severityInstructions.balanced,
-	];
+	);
 
 	if (profile.includeExplanations) {
 		lines.push('', '**Explanation Level:** Provide detailed explanations and reasoning for each finding.');
