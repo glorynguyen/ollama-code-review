@@ -67,6 +67,11 @@ src/
 │       ├── deepReview.ts       # Step 4: Comprehensive review (AI)
 │       └── synthesis.ts        # Step 5: Self-critique & synthesis (AI)
 ├── diagramGenerator.ts   # Architecture diagram generation — Mermaid.js (F-020)
+├── knowledge/            # Team Knowledge Base (F-012)
+│   ├── index.ts          # Barrel exports
+│   ├── types.ts          # Knowledge entry interfaces
+│   ├── loader.ts         # .ollama-review-knowledge.yaml loader with caching
+│   └── matcher.ts        # Keyword-based knowledge matching for review context
 ├── notifications/        # Notification integrations (F-018)
 │   └── index.ts          # Slack / Teams / Discord webhook delivery
 ├── reviewScore.ts        # Review quality scoring & history (F-016)
@@ -116,6 +121,10 @@ out/                      # Compiled JavaScript output
 | `src/agent/steps/deepReview.ts` | ~90 | Step 4: Comprehensive AI code review (F-007) |
 | `src/agent/steps/synthesis.ts` | ~75 | Step 5: Self-critique and findings refinement (F-007) |
 | `src/diagramGenerator.ts` | ~120 | Mermaid.js diagram generation from code/diffs (F-020) |
+| `src/knowledge/index.ts` | ~25 | Barrel exports for knowledge base module (F-012) |
+| `src/knowledge/types.ts` | ~85 | Knowledge entry interfaces, config types (F-012) |
+| `src/knowledge/loader.ts` | ~215 | .ollama-review-knowledge.yaml loader with caching and validation (F-012) |
+| `src/knowledge/matcher.ts` | ~150 | Keyword-based knowledge matching for review context (F-012) |
 | `src/analytics/index.ts` | ~15 | Barrel exports for analytics module (F-011) |
 | `src/analytics/tracker.ts` | ~250 | Category extraction, aggregation, weekly trends, CSV/JSON export (F-011) |
 | `src/analytics/dashboard.ts` | ~320 | Rich analytics dashboard webview with Chart.js (F-011) |
@@ -152,6 +161,7 @@ out/                      # Compiled JavaScript output
 | `ollama-code-review.agentReview` | Run the 5-step agentic multi-step review pipeline on staged changes (F-007) |
 | `ollama-code-review.generateDiagram` | Generate a Mermaid architecture diagram from the current review or staged diff (F-020) |
 | `ollama-code-review.showAnalyticsDashboard` | Open the Review Analytics Dashboard with comprehensive metrics, charts, and export (F-011) |
+| `ollama-code-review.reloadKnowledgeBase` | Reload the Team Knowledge Base (.ollama-review-knowledge.yaml) cache (F-012) |
 
 ## Configuration Settings
 
@@ -194,6 +204,7 @@ out/                      # Compiled JavaScript output
 | `ollama-code-review.batch.includeGlob` | `**/*.{ts,js,...}` | Glob pattern for files included in folder reviews (F-019) |
 | `ollama-code-review.batch.excludeGlob` | `**/node_modules/**,...` | Comma-separated glob patterns for files excluded from folder reviews (F-019) |
 | `ollama-code-review.agentMode` | `{}` | Agentic multi-step review configuration (F-007) |
+| `ollama-code-review.knowledgeBase` | `{}` | Team Knowledge Base configuration (F-012) |
 
 ### Diff Filter Settings
 
@@ -1105,6 +1116,124 @@ Opened via `ollama-code-review.showAnalyticsDashboard` command. Features:
 
 Analytics data is stored alongside F-016 scores in `{globalStorage}/review-scores.json`. The store limit has been increased from 200 to 500 entries. No new database dependency is required.
 
+## Team Knowledge Base (F-012)
+
+The `src/knowledge/` module allows teams to encode architecture decisions, coding patterns, and review rules in a `.ollama-review-knowledge.yaml` file checked into the repository. The AI references these entries during reviews to enforce team conventions consistently.
+
+### How It Works
+
+1. The extension loads `.ollama-review-knowledge.yaml` from the workspace root on startup
+2. A file watcher auto-reloads the knowledge on create, change, or delete events
+3. When a review runs, knowledge entries are matched against the diff using keyword relevance scoring
+4. Relevant decisions, patterns, and rules are injected into the review prompt
+5. The AI cites specific entry IDs when flagging violations
+
+### Knowledge Entry Types
+
+| Type | Required Fields | Purpose |
+|------|----------------|---------|
+| **Decisions** | `id`, `title`, `decision` | Architecture Decision Records the AI checks code against |
+| **Patterns** | `id`, `name`, `description` | Reusable code patterns with optional examples |
+| **Rules** | (plain string) | Universal team conventions — always injected into reviews |
+
+### .ollama-review-knowledge.yaml Schema
+
+```yaml
+decisions:
+  - id: ADR-001
+    title: Use Redux for state management
+    context: Need consistent state across the app
+    decision: All global state must be managed through Redux
+    date: "2024-01-15"
+    tags: [state, redux, react]
+
+patterns:
+  - id: PAT-001
+    name: API error handling
+    description: Standard try/catch with toast notification
+    tags: [error-handling, api]
+    example: |
+      try {
+        const data = await api.fetch('/endpoint');
+      } catch (error) {
+        toast.error(error.message);
+        logger.error(error);
+      }
+
+rules:
+  - Always use TypeScript strict mode
+  - Prefer named exports over default exports
+  - Tests required for business logic
+```
+
+### Configuration
+
+| Property | Default | Description |
+|----------|---------|-------------|
+| `enabled` | `true` | Load and inject knowledge base entries into reviews |
+| `maxEntries` | `10` | Maximum number of knowledge entries per review (1–50) |
+
+### Exported Functions (`src/knowledge/loader.ts`)
+
+- `loadKnowledgeBase(outputChannel?)` — Read and parse `.ollama-review-knowledge.yaml` from workspace root; workspace-aware caching
+- `clearKnowledgeCache()` — Invalidate the cached knowledge (called by file watcher and `reloadKnowledgeBase` command)
+- `getKnowledgeBaseConfig()` — Read knowledge base settings from VS Code configuration
+- `formatKnowledgeForPrompt(knowledge, maxEntries?)` — Format knowledge entries into a prompt-ready string section
+
+### Exported Functions (`src/knowledge/matcher.ts`)
+
+- `matchKnowledge(knowledge, content, maxResults?)` — Find relevant knowledge entries for the given code context using keyword-based scoring; returns `KnowledgeMatchResult`
+
+### Key Types (`src/knowledge/types.ts`)
+
+```typescript
+interface KnowledgeDecision {
+  id: string;
+  title: string;
+  context?: string;
+  decision: string;
+  date?: string;
+  tags?: string[];
+}
+
+interface KnowledgePattern {
+  id: string;
+  name: string;
+  description: string;
+  example?: string;
+  tags?: string[];
+}
+
+type KnowledgeRule = string;
+
+interface KnowledgeYamlConfig {
+  decisions?: KnowledgeDecision[];
+  patterns?: KnowledgePattern[];
+  rules?: KnowledgeRule[];
+}
+
+interface MatchedKnowledge {
+  type: KnowledgeEntryType;
+  title: string;
+  content: string;
+  relevance: number;
+}
+
+interface KnowledgeMatchResult {
+  matches: MatchedKnowledge[];
+  totalEntries: number;
+}
+
+interface KnowledgeBaseConfig {
+  enabled: boolean;
+  maxEntries: number;
+}
+```
+
+### Integration
+
+Knowledge is injected automatically during `getOllamaReview()` and `getOllamaFileReview()`. If the knowledge base file doesn't exist or loading fails, the review proceeds without knowledge context (non-fatal). The file watcher pattern mirrors the existing `.ollama-review.yaml` watcher from F-006.
+
 ## Related Projects
 
 ### MCP Server for Claude Desktop
@@ -1269,10 +1398,11 @@ See [docs/roadmap/](./docs/roadmap/) for comprehensive planning documents:
 | Agentic Multi-Step Reviews (5-step pipeline, self-critique) | F-007 | v4.2 |
 | Architecture Diagram Generation (Mermaid.js, review panel integration) | F-020 | v4.2 |
 | Review History & Analytics (dashboard, categories, export, duration tracking) | F-011 | v4.3 |
+| Team Knowledge Base (decisions, patterns, rules YAML, keyword matching, prompt injection) | F-012 | v4.4 |
 
 ### Remaining Planned Features
 
 | Phase | Features | Target |
 |-------|----------|--------|
-| v5.0 | RAG (F-009), CI/CD (F-010), Knowledge Base (F-012) | Q4 2026 |
+| v5.0 | RAG (F-009), CI/CD (F-010) | Q4 2026 |
 | v6.0 | GitLab & Bitbucket Integration (F-015) | Q1–Q2 2027 |
