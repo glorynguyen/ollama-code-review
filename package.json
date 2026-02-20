@@ -178,6 +178,12 @@
         "title": "Show Review Analytics Dashboard",
         "category": "Ollama Code Review",
         "icon": "$(dashboard)"
+      },
+      {
+        "command": "ollama-code-review.reloadKnowledgeBase",
+        "title": "Reload Team Knowledge Base (.ollama-review-knowledge.yaml)",
+        "category": "Ollama Code Review",
+        "icon": "$(book)"
       }
     ],
     "menus": {
@@ -653,6 +659,25 @@
               "type": "boolean",
               "default": true,
               "description": "Run a self-critique pass during synthesis to remove false positives and prioritize findings"
+            }
+          }
+        },
+        "ollama-code-review.knowledgeBase": {
+          "type": "object",
+          "description": "F-012 — Configure the Team Knowledge Base. When enabled, the extension loads team decisions, patterns, and rules from .ollama-review-knowledge.yaml and injects relevant entries into review prompts.",
+          "default": {},
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true,
+              "description": "Load and inject knowledge base entries into review prompts"
+            },
+            "maxEntries": {
+              "type": "number",
+              "default": 10,
+              "minimum": 1,
+              "maximum": 50,
+              "description": "Maximum number of knowledge entries to inject per review"
             }
           }
         }

@@ -78,6 +78,13 @@ import {
 import { runAgentReview, getAgentModeConfig } from './agent';
 import { generateMermaidDiagram } from './diagramGenerator';
 import { parseIssueCategories, extractFilesFromDiff, AnalyticsDashboardPanel } from './analytics';
+import {
+	loadKnowledgeBase,
+	clearKnowledgeCache,
+	getKnowledgeBaseConfig,
+	formatKnowledgeForPrompt,
+	matchKnowledge,
+} from './knowledge';
 
 const CLAUDE_API_ENDPOINT = 'https://api.anthropic.com/v1/messages';
 const GLM_API_ENDPOINT = 'https://api.z.ai/api/paas/v4/chat/completions';
@@ -2520,6 +2527,31 @@ export async function activate(context: vscode.ExtensionContext) {
 		outputChannel.appendLine('[Ollama Code Review] .ollama-review.yaml deleted — config cache invalidated.');
 	});
 
+	// F-012: Reload knowledge base command
+	const reloadKnowledgeBaseCommand = vscode.commands.registerCommand(
+		'ollama-code-review.reloadKnowledgeBase',
+		() => {
+			clearKnowledgeCache();
+			vscode.window.showInformationMessage('Ollama Code Review: Knowledge base reloaded.');
+			outputChannel.appendLine('[Ollama Code Review] Knowledge base cache cleared. Will re-read .ollama-review-knowledge.yaml on next review.');
+		}
+	);
+
+	// F-012: Watch .ollama-review-knowledge.yaml for changes and auto-invalidate the cache
+	const knowledgeWatcher = vscode.workspace.createFileSystemWatcher('**/.ollama-review-knowledge.yaml');
+	knowledgeWatcher.onDidChange(() => {
+		clearKnowledgeCache();
+		outputChannel.appendLine('[Ollama Code Review] .ollama-review-knowledge.yaml changed — knowledge cache invalidated.');
+	});
+	knowledgeWatcher.onDidCreate(() => {
+		clearKnowledgeCache();
+		outputChannel.appendLine('[Ollama Code Review] .ollama-review-knowledge.yaml created — knowledge cache invalidated.');
+	});
+	knowledgeWatcher.onDidDelete(() => {
+		clearKnowledgeCache();
+		outputChannel.appendLine('[Ollama Code Review] .ollama-review-knowledge.yaml deleted — knowledge cache invalidated.');
+	});
+
 	// F-014: Pre-Commit Guard — status bar item
 	const guardStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 98);
 	guardStatusBarItem.command = 'ollama-code-review.togglePreCommitGuard';
@@ -3089,7 +3121,9 @@ export async function activate(context: vscode.ExtensionContext) {
 		reviewAndCommitCommand,
 		guardStatusBarItem,
 		agentReviewCommand,
-		generateDiagramCommand
+		generateDiagramCommand,
+		reloadKnowledgeBaseCommand,
+		knowledgeWatcher
 	);
 }
 
@@ -3327,8 +3361,22 @@ async function getOllamaFileReview(content: string, label: string, context?: vsc
 		profileContext = buildProfilePromptContext(profile);
 	}
 
+	// F-012: Build knowledge base context for file reviews
+	let knowledgeContext = '';
+	const fileKbConfig = getKnowledgeBaseConfig();
+	if (fileKbConfig.enabled) {
+		try {
+			const knowledge = await loadKnowledgeBase(outputChannel);
+			if (knowledge) {
+				knowledgeContext = formatKnowledgeForPrompt(knowledge, fileKbConfig.maxEntries);
+			}
+		} catch {
+			// Non-fatal — continue without knowledge base
+		}
+	}
+
 	const prompt = `You are an expert software engineer and code reviewer with deep knowledge of **${frameworksList}**.
-${skillContext}${profileContext}
+${skillContext}${profileContext}${knowledgeContext}
 Review the following code and provide constructive, actionable feedback. This is a direct file review (no git diff context).
 ${label}
 
@@ -3422,6 +3470,26 @@ async function getOllamaReview(diff: string, context?: vscode.ExtensionContext, 
 		prompt += '\n' + profileContext;
 	}
 
+	// F-012: Append team knowledge base context if available
+	const kbConfig = getKnowledgeBaseConfig();
+	if (kbConfig.enabled) {
+		try {
+			const knowledge = await loadKnowledgeBase(outputChannel);
+			if (knowledge) {
+				const matchResult = matchKnowledge(knowledge, diff, kbConfig.maxEntries);
+				if (matchResult.matches.length > 0) {
+					const knowledgeSection = formatKnowledgeForPrompt(knowledge, kbConfig.maxEntries);
+					if (knowledgeSection) {
+						prompt += knowledgeSection;
+						outputChannel.appendLine(`[Knowledge Base] Injected ${matchResult.matches.length} of ${matchResult.totalEntries} entries into review prompt.`);
+					}
+				}
+			}
+		} catch (err) {
+			// Non-fatal — continue review without knowledge base
+			outputChannel.appendLine(`[Knowledge Base] Error: ${err}`);
+		}
+	}
 
 	try {
 		// Clear previous metrics

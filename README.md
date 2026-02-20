@@ -543,6 +543,84 @@ Get a comprehensive, visual overview of your review history with the analytics d
 
 > All analytics data is stored locally alongside review scores — no new dependencies or external services required.
 
+### 34. Team Knowledge Base
+
+Encode your team's architecture decisions, coding patterns, and review rules in a `.ollama-review-knowledge.yaml` file checked into your repository. The AI references these entries during every review, ensuring consistent enforcement of team conventions.
+
+- **Command**: `Ollama Code Review: Reload Team Knowledge Base (.ollama-review-knowledge.yaml)` — manually refresh the cached knowledge (usually not needed, as the extension auto-detects changes).
+
+**Example `.ollama-review-knowledge.yaml`:**
+
+```yaml
+# Architecture decisions
+decisions:
+  - id: ADR-001
+    title: Use Redux for state management
+    context: Need consistent state across the app
+    decision: All global state must be managed through Redux; no local component state for shared data.
+    date: "2024-01-15"
+    tags: [state, redux, react]
+
+  - id: ADR-002
+    title: REST over GraphQL
+    context: Team familiarity and simpler caching
+    decision: All new API endpoints must be RESTful. GraphQL is not permitted without ADR approval.
+    tags: [api, rest]
+
+# Reusable code patterns
+patterns:
+  - id: PAT-001
+    name: API error handling
+    description: Standard try/catch with toast notification for all API calls
+    tags: [error-handling, api]
+    example: |
+      try {
+        const data = await api.fetch('/endpoint');
+        return data;
+      } catch (error) {
+        toast.error(error.message);
+        logger.error('API call failed', { error });
+        throw error;
+      }
+
+  - id: PAT-002
+    name: React component file structure
+    description: Each component folder contains index.ts, Component.tsx, Component.test.tsx, and Component.module.css
+    tags: [react, structure]
+
+# Team rules (always applied)
+rules:
+  - Always use TypeScript strict mode
+  - Prefer named exports over default exports
+  - Tests are required for all business logic functions
+  - Use Conventional Commits format for all commit messages
+  - No console.log in production code — use the logger utility
+```
+
+**How it works:**
+1. The extension loads the YAML file on startup and watches for changes
+2. Knowledge entries are matched against the current diff using keyword relevance
+3. Relevant decisions, patterns, and rules are injected into the review prompt
+4. The AI cites specific entry IDs (e.g., `ADR-001`, `PAT-001`) when flagging violations
+5. Rules are always included since they represent universal team conventions
+
+**Knowledge entry types:**
+
+| Type | Required Fields | Purpose |
+|------|----------------|---------|
+| **Decisions** | `id`, `title`, `decision` | Architecture Decision Records — the AI checks code against these |
+| **Patterns** | `id`, `name`, `description` | Reusable code patterns with optional examples — the AI verifies adherence |
+| **Rules** | (plain string) | Universal team conventions — always injected into reviews |
+
+**Configuration** (under `ollama-code-review.knowledgeBase`):
+
+| Property | Default | Description |
+|----------|---------|-------------|
+| `enabled` | `true` | Load and inject knowledge base entries into reviews |
+| `maxEntries` | `10` | Maximum number of knowledge entries per review |
+
+> The knowledge base file is Git-friendly (YAML format) — all decisions are versioned with the repository. The extension auto-reloads on file changes.
+
 ---
 
 ## Requirements
@@ -671,6 +749,9 @@ This extension contributes the following settings to your VS Code `settings.json
     * **Default**: `**/*.{ts,js,tsx,jsx,py,java,cs,go,rb,php,rs,swift,kt,vue,svelte,html,css,scss,json,yaml,yml,md}`
 * `ollama-code-review.batch.excludeGlob`: Comma-separated glob patterns for paths to exclude from folder reviews.
     * **Default**: `**/node_modules/**,**/dist/**,**/build/**,**/out/**,**/.next/**,**/coverage/**`
+* `ollama-code-review.knowledgeBase`: Configure the Team Knowledge Base for encoding team decisions, patterns, and rules.
+    * `enabled`: Load and inject knowledge base entries into review prompts (default: `true`)
+    * `maxEntries`: Maximum number of knowledge entries to inject per review (default: `10`, range: 1–50)
 
 You can configure these by opening the Command Palette (`Ctrl+Shift+P`) and searching for `Preferences: Open User Settings (JSON)`.
 
