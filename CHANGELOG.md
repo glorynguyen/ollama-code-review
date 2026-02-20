@@ -1,3 +1,10 @@
+# [3.12.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.11.0...v3.12.0) (2026-02-20)
+
+
+### Features
+
+* implement F-012 Team Knowledge Base ([2605d39](https://github.com/glorynguyen/ollama-code-review/commit/2605d393ba46125f8bef39a46cbebd1b253a784e))
+
 # [3.11.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.10.0...v3.11.0) (2026-02-20)
 
 
