@@ -339,7 +339,47 @@ To configure via token:
 
 > **Note:** `ollama-code-review.github.gistToken` is used for creating Gists; if not set, the extension falls back to `ollama-code-review.github.token` for Gist creation as well.
 
-### 25. Pre-Commit Guard
+### 25. GitLab MR Integration
+Review GitLab Merge Requests directly from VS Code and post AI-generated reviews as MR comments:
+
+- **Command**: `Ollama Code Review: Review GitLab MR`
+  - Enter an MR URL (e.g., `https://gitlab.com/owner/repo/-/merge_requests/123`), a shorthand like `!123` or `owner/repo!123`.
+  - Fetches the MR diff from the GitLab API and runs it through the selected AI model.
+  - The review opens in the standard review panel with full chat and export support.
+
+- **Command**: `Ollama Code Review: Post Review to GitLab MR`
+  - After reviewing, post the AI output directly to the MR as a GitLab note (comment).
+
+**GitLab Authentication** — The extension tries to authenticate in this order:
+1. `glab` CLI (if installed and authenticated via `glab auth login`)
+2. Stored `ollama-code-review.gitlab.token` setting (Personal Access Token)
+
+To configure via token:
+1. Get a GitLab Personal Access Token with the **`api`** scope from your GitLab instance (**Settings > Access Tokens**)
+2. Set your token in settings: `ollama-code-review.gitlab.token`
+3. (Optional) Set `ollama-code-review.gitlab.baseUrl` for self-hosted GitLab (default: `https://gitlab.com`)
+
+> **Self-Hosted GitLab**: The extension fully supports self-hosted GitLab instances. Set `gitlab.baseUrl` to your instance URL (e.g., `https://gitlab.mycompany.com`).
+
+### 26. Bitbucket PR Integration
+Review Bitbucket Pull Requests directly from VS Code and post AI-generated reviews as PR comments:
+
+- **Command**: `Ollama Code Review: Review Bitbucket PR`
+  - Enter a PR URL (e.g., `https://bitbucket.org/workspace/repo/pull-requests/123`), a shorthand like `#123` or `workspace/repo#123`.
+  - Fetches the PR diff from the Bitbucket API and runs it through the selected AI model.
+  - The review opens in the standard review panel with full chat and export support.
+
+- **Command**: `Ollama Code Review: Post Review to Bitbucket PR`
+  - After reviewing, post the AI output directly to the PR as a Bitbucket comment.
+
+**Bitbucket Authentication** — Uses App Passwords for Bitbucket Cloud API access:
+1. Create an App Password at **Bitbucket > Personal settings > App passwords** with `Pullrequests: Read` and `Pullrequests: Write` scopes
+2. Set your username in settings: `ollama-code-review.bitbucket.username`
+3. Set your App Password in settings: `ollama-code-review.bitbucket.appPassword`
+
+> **Platform Auto-Detection**: When your workspace has a git remote pointing to GitLab or Bitbucket, the extension automatically offers to list open MRs/PRs from that platform.
+
+### 27. Pre-Commit Guard
 Automatically review staged changes with AI before every commit to catch issues before they enter your history.
 
 - **Command**: `Ollama Code Review: Toggle Pre-Commit Guard` — install or uninstall the pre-commit hook for the current repository. A shield icon in the status bar shows `Guard ON` / `Guard OFF` and toggles the hook on click.
@@ -360,7 +400,7 @@ Automatically review staged changes with AI before every commit to catch issues 
 
 > **Safety**: The hook will not overwrite an existing non-Ollama pre-commit hook. Users can always bypass the hook with `git commit --no-verify`.
 
-### 26. Multi-File Contextual Analysis
+### 28. Multi-File Contextual Analysis
 Give the AI richer context by automatically including related files alongside your diff. When a review runs, the extension resolves imports, discovers related test files, and bundles relevant workspace files into the prompt — so the AI understands not just what changed, but how it fits into the wider codebase.
 
 **What gets included:**
@@ -379,7 +419,7 @@ Give the AI richer context by automatically including related files alongside yo
 
 > Context gathering is non-fatal — if it fails or finds nothing, the review proceeds normally without context.
 
-### 27. MCP Server for Claude Desktop
+### 29. MCP Server for Claude Desktop
 Use the code review functionality directly in Claude Desktop without copy-pasting diffs. The MCP server is available as a separate project:
 
 **Repository:** [gitsage](https://github.com/glorynguyen/gitsage)
@@ -389,7 +429,7 @@ Features include:
 - **Skills Support**: Apply agent skills to enhance reviews
 - **Git Integration**: Full access to repository status, commits, and branches
 
-### 28. Batch / Legacy Code Review (No Git Required)
+### 30. Batch / Legacy Code Review (No Git Required)
 Review any file, folder, or selected text without needing a Git diff — perfect for legacy codebases, third-party code, or files not tracked by Git.
 
 - **Command**: `Ollama Code Review: Review File` — review the currently open file or an Explorer-selected file in full.
@@ -408,7 +448,7 @@ All three commands are accessible from the **Explorer context menu**, the **Edit
 
 > Batch reviews integrate automatically with Review Quality Scoring (F-016) and Notification Integrations (F-018).
 
-### 29. Review Quality Scoring & Trends
+### 31. Review Quality Scoring & Trends
 Track the quality of your code over time with a 0–100 score derived from AI finding counts after every review.
 
 - **Command**: `Ollama Code Review: Show Review Quality History` — open the history panel with score trends.
@@ -432,7 +472,7 @@ Score is clamped between 0 and 100. Sub-scores for correctness, security, mainta
 
 > Score history is persisted locally (up to 500 entries) — no external database required.
 
-### 30. Notification Integrations (Slack / Teams / Discord)
+### 32. Notification Integrations (Slack / Teams / Discord)
 Automatically post review summaries to your team communication channels after each review.
 
 **Supported platforms:**
@@ -459,7 +499,7 @@ Automatically post review summaries to your team communication channels after ea
 
 > Notification failures are logged to the output channel but never interrupt the review flow.
 
-### 31. Agentic Multi-Step Reviews
+### 33. Agentic Multi-Step Reviews
 Go beyond single-pass reviews with a 5-step AI pipeline that analyses context, detects codebase patterns, and self-critiques its own findings.
 
 - **Command**: `Ollama Code Review: Agentic Multi-Step Review`
@@ -492,7 +532,7 @@ Go beyond single-pass reviews with a 5-step AI pipeline that analyses context, d
 - Integrates with review profiles, agent skills, quality scoring, and notifications
 - Results display in the same review panel with full chat and export support
 
-### 32. Architecture Diagram Generation (Mermaid)
+### 34. Architecture Diagram Generation (Mermaid)
 Generate visual architecture diagrams from your code changes using Mermaid.js — rendered directly in the review panel.
 
 - **Command**: `Ollama Code Review: Generate Architecture Diagram (Mermaid)`
@@ -514,7 +554,7 @@ Generate visual architecture diagrams from your code changes using Mermaid.js �
 - Graceful fallback: invalid Mermaid syntax shows raw source with error message
 - Separate AI call — does not slow down the main review
 
-### 33. Review Analytics Dashboard
+### 35. Review Analytics Dashboard
 Get a comprehensive, visual overview of your review history with the analytics dashboard.
 
 - **Command**: `Ollama Code Review: Show Review Analytics Dashboard`
@@ -543,7 +583,7 @@ Get a comprehensive, visual overview of your review history with the analytics d
 
 > All analytics data is stored locally alongside review scores — no new dependencies or external services required.
 
-### 34. Team Knowledge Base
+### 36. Team Knowledge Base
 
 Encode your team's architecture decisions, coding patterns, and review rules in a `.ollama-review-knowledge.yaml` file checked into your repository. The AI references these entries during every review, ensuring consistent enforcement of team conventions.
 
@@ -752,6 +792,14 @@ This extension contributes the following settings to your VS Code `settings.json
 * `ollama-code-review.knowledgeBase`: Configure the Team Knowledge Base for encoding team decisions, patterns, and rules.
     * `enabled`: Load and inject knowledge base entries into review prompts (default: `true`)
     * `maxEntries`: Maximum number of knowledge entries to inject per review (default: `10`, range: 1–50)
+* `ollama-code-review.gitlab.token`: GitLab Personal Access Token with the `api` scope for reviewing MRs and posting comments.
+    * **Default**: `""`
+* `ollama-code-review.gitlab.baseUrl`: Base URL of your GitLab instance for self-hosted installations.
+    * **Default**: `"https://gitlab.com"`
+* `ollama-code-review.bitbucket.username`: Your Bitbucket username for API authentication.
+    * **Default**: `""`
+* `ollama-code-review.bitbucket.appPassword`: Bitbucket App Password with `Pullrequests: Read` and `Pullrequests: Write` scopes.
+    * **Default**: `""`
 
 You can configure these by opening the Command Palette (`Ctrl+Shift+P`) and searching for `Preferences: Open User Settings (JSON)`.
 

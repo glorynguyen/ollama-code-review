@@ -1,7 +1,7 @@
 # Ollama Code Review - Product Roadmap
 
-> **Document Version:** 3.0.0
-> **Last Updated:** 2026-02-18
+> **Document Version:** 4.0.0
+> **Last Updated:** 2026-02-20
 > **Status:** Active Development
 > **Owner:** Vinh Nguyen
 
@@ -19,7 +19,7 @@ This roadmap outlines future enhancements for the Ollama Code Review VS Code ext
 
 ## What's Been Shipped
 
-All original roadmap phases through v3.4.0 have shipped:
+All original roadmap phases through v4.5.0 have shipped:
 
 ```
 ✅ Shipped ─────── Smart Diff Filtering (F-002)
@@ -34,44 +34,39 @@ All original roadmap phases through v3.4.0 have shipped:
                    Export Options — clipboard/markdown/PR desc/Gist (F-003)
                    GitHub PR Integration (F-004) — review PRs, post comments
                    PHP language support + multi-strategy GitHub auth (v3.4)
+                   OpenAI-Compatible Provider (F-013) — LM Studio, vLLM, etc.
+                   Pre-Commit Guard (F-014) — hook-based review before commits
+                   Multi-File Contextual Analysis (F-008) — import resolution
+                   Compliance Review Profiles (F-017) — OWASP, PCI-DSS, etc.
+                   Review Quality Scoring & Trends (F-016)
+                   Notification Integrations (F-018) — Slack/Teams/Discord
+                   Batch / Legacy Code Review (F-019) — files/folders/selections
+                   Agentic Multi-Step Reviews (F-007) — 5-step pipeline
+                   Architecture Diagram Generation (F-020) — Mermaid.js
+                   Review History & Analytics (F-011) — dashboard + export
+                   Team Knowledge Base (F-012) — decisions/patterns/rules YAML
+                   GitLab & Bitbucket Integration (F-015) — MR/PR reviews
 ```
 
 ## Remaining Roadmap
 
 ```
-v4.0 (Q3 2026) ── Agentic Multi-Step Reviews (F-007)
-       │           Multi-File Contextual Analysis (F-008)
-       │
 v5.0 (Q4 2026) ── RAG-Enhanced Reviews (F-009)
-       │           CI/CD Integration (F-010)
-       │           Review History & Analytics (F-011)
-       │           Team Knowledge Base (F-012)
-       │
-v6.0 (Q1-Q2   ── OpenAI-Compatible Provider (F-013)
-      2027)        Pre-Commit Guard (F-014)
-                   GitLab & Bitbucket Integration (F-015)
-                   Review Quality Scoring & Trends (F-016)
-                   Notification Integrations (F-018)
-                   Batch / Legacy Code Review (F-019)
-                   Architecture Diagram Generation (F-020)
+                   CI/CD Integration (F-010)
 ```
 
 ## Priority Matrix (Remaining Features)
 
 | Priority | Impact | Effort | Features |
 |----------|--------|--------|----------|
-| 🟠 P1 | High | High | F-007: Agentic Reviews, F-008: Multi-File Analysis |
-| 🟠 P1 | High | Low | F-013: OpenAI-Compatible Provider, F-014: Pre-Commit Guard |
-| 🟡 P2 | High | High | F-009: RAG, F-015: GitLab & Bitbucket Integration |
-| 🟡 P2 | High | Medium | F-016: Review Quality Scoring, F-019: Batch Code Review |
-| 🟢 P3 | Medium | High | F-010: CI/CD, F-012: Knowledge Base, F-020: Diagram Generation |
-| 🟢 P3 | Medium | Low | F-011: Analytics, F-018: Notification Integrations |
+| 🟡 P2 | High | High | F-009: RAG-Enhanced Reviews |
+| 🟢 P3 | Medium | High | F-010: CI/CD Integration |
 
 ## Current Status
 
-- **Current Version:** 3.4.0
-- **Next Milestone:** v4.0.0 (Agentic Reviews + Multi-File Analysis)
-- **Target Release:** Q3 2026
+- **Current Version:** 4.5.0
+- **Next Milestone:** v5.0.0 (RAG-Enhanced Reviews + CI/CD Integration)
+- **Target Release:** Q4 2026
 
 ---
 
@@ -83,10 +78,10 @@ v6.0 (Q1-Q2   ── OpenAI-Compatible Provider (F-013)
 3. Update status in feature files as progress is made
 
 ### For Contributors
-1. F-013 (OpenAI-Compatible Provider) and F-017 (Compliance Profiles) are best next picks — low dependencies, high impact, low effort
-2. F-014 (Pre-Commit Guard) and F-019 (Batch Review) are good solo contributions with clear scope
+1. F-009 (RAG-Enhanced Reviews) — uses existing embeddings infrastructure, high impact
+2. F-010 (CI/CD Integration) — clear scope, CLI extraction + GitHub Action
 3. Open issues to discuss implementation approaches
-4. PRs should reference the feature ID (e.g., `F-013`)
+4. PRs should reference the feature ID (e.g., `F-009`)
 
 ### Status Legend
 - `📋 Planned` - Specified, not started

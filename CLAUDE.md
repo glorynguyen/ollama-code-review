@@ -3,7 +3,7 @@
 ## Project Overview
 
 - **Name:** Ollama Code Review VS Code Extension
-- **Version:** 4.3.0
+- **Version:** 4.5.0
 - **Purpose:** AI-powered code reviews and commit message generation using local Ollama or cloud models
 - **Author:** Vinh Nguyen (vincent)
 - **License:** MIT
@@ -72,6 +72,12 @@ src/
 │   ├── types.ts          # Knowledge entry interfaces
 │   ├── loader.ts         # .ollama-review-knowledge.yaml loader with caching
 │   └── matcher.ts        # Keyword-based knowledge matching for review context
+├── gitlab/               # GitLab MR integration module (F-015)
+│   ├── auth.ts           # GitLab auth (glab CLI / stored token)
+│   └── mrReview.ts       # MR fetching, diff retrieval, comment posting
+├── bitbucket/            # Bitbucket PR integration module (F-015)
+│   ├── auth.ts           # Bitbucket auth (App Passwords)
+│   └── prReview.ts       # PR fetching, diff retrieval, comment posting
 ├── notifications/        # Notification integrations (F-018)
 │   └── index.ts          # Slack / Teams / Discord webhook delivery
 ├── reviewScore.ts        # Review quality scoring & history (F-016)
@@ -125,6 +131,10 @@ out/                      # Compiled JavaScript output
 | `src/knowledge/types.ts` | ~85 | Knowledge entry interfaces, config types (F-012) |
 | `src/knowledge/loader.ts` | ~215 | .ollama-review-knowledge.yaml loader with caching and validation (F-012) |
 | `src/knowledge/matcher.ts` | ~150 | Keyword-based knowledge matching for review context (F-012) |
+| `src/gitlab/auth.ts` | ~97 | GitLab auth: glab CLI → stored token (F-015) |
+| `src/gitlab/mrReview.ts` | ~330 | MR fetching, diff retrieval, comment posting, MR listing (F-015) |
+| `src/bitbucket/auth.ts` | ~72 | Bitbucket auth via App Passwords (F-015) |
+| `src/bitbucket/prReview.ts` | ~290 | PR fetching, diff retrieval, comment posting, PR listing (F-015) |
 | `src/analytics/index.ts` | ~15 | Barrel exports for analytics module (F-011) |
 | `src/analytics/tracker.ts` | ~250 | Category extraction, aggregation, weekly trends, CSV/JSON export (F-011) |
 | `src/analytics/dashboard.ts` | ~320 | Rich analytics dashboard webview with Chart.js (F-011) |
@@ -162,6 +172,10 @@ out/                      # Compiled JavaScript output
 | `ollama-code-review.generateDiagram` | Generate a Mermaid architecture diagram from the current review or staged diff (F-020) |
 | `ollama-code-review.showAnalyticsDashboard` | Open the Review Analytics Dashboard with comprehensive metrics, charts, and export (F-011) |
 | `ollama-code-review.reloadKnowledgeBase` | Reload the Team Knowledge Base (.ollama-review-knowledge.yaml) cache (F-012) |
+| `ollama-code-review.reviewGitLabMR` | Review a GitLab Merge Request by URL or number (F-015) |
+| `ollama-code-review.postReviewToMR` | Post AI review as a comment to a GitLab MR (F-015) |
+| `ollama-code-review.reviewBitbucketPR` | Review a Bitbucket Pull Request by URL or number (F-015) |
+| `ollama-code-review.postReviewToBitbucketPR` | Post AI review as a comment to a Bitbucket PR (F-015) |
 
 ## Configuration Settings
 
@@ -205,6 +219,10 @@ out/                      # Compiled JavaScript output
 | `ollama-code-review.batch.excludeGlob` | `**/node_modules/**,...` | Comma-separated glob patterns for files excluded from folder reviews (F-019) |
 | `ollama-code-review.agentMode` | `{}` | Agentic multi-step review configuration (F-007) |
 | `ollama-code-review.knowledgeBase` | `{}` | Team Knowledge Base configuration (F-012) |
+| `ollama-code-review.gitlab.token` | `""` | GitLab Personal Access Token (api scope) for MR reviews and posting comments (F-015) |
+| `ollama-code-review.gitlab.baseUrl` | `"https://gitlab.com"` | Base URL for self-hosted GitLab instances (F-015) |
+| `ollama-code-review.bitbucket.username` | `""` | Bitbucket username for API authentication (F-015) |
+| `ollama-code-review.bitbucket.appPassword` | `""` | Bitbucket App Password (Pullrequests Read/Write scope) (F-015) |
 
 ### Diff Filter Settings
 
@@ -1344,6 +1362,137 @@ formatFindingAsComment(finding: ReviewFinding): string  // Emoji severity badges
 formatFindingsAsSummary(findings: ReviewFinding[], model: string): string  // Summary table
 ```
 
+## GitLab & Bitbucket Integration (F-015)
+
+The extension supports reviewing Merge Requests from GitLab and Pull Requests from Bitbucket, mirroring the existing GitHub PR integration (F-004).
+
+### GitLab Module (`src/gitlab/`)
+
+#### Authentication (`src/gitlab/auth.ts`)
+
+Multi-strategy authentication with the following priority order:
+1. `glab` CLI (`glab auth status`) — used if `glab` is installed and authenticated
+2. Stored `gitlab.token` setting
+
+```typescript
+interface GitLabAuth {
+  token: string;
+  baseUrl: string;
+  source: 'glab-cli' | 'settings';
+}
+
+// Key exports
+getGitLabAuth(promptIfNeeded?: boolean): Promise<GitLabAuth | null>
+showGitLabAuthSetupGuide(): void
+```
+
+#### MR Review (`src/gitlab/mrReview.ts`)
+
+```typescript
+interface MRReference {
+  projectPath: string;  // e.g. "owner/repo" or "group/subgroup/project"
+  mrNumber: number;
+}
+
+interface MRInfo {
+  title: string;
+  description: string | null;
+  state: string;
+  author: string;
+  sourceBranch: string;
+  targetBranch: string;
+  webUrl: string;
+  changedFiles: number;
+  additions: number;
+  deletions: number;
+}
+
+// Key exports
+parseMRInput(input: string, projectContext?: string): MRReference | null
+parseGitLabRemoteUrl(remoteUrl: string): string | null
+isGitLabRemote(remoteUrl: string): boolean
+fetchMRDiff(ref: MRReference, auth: GitLabAuth): Promise<string>
+fetchMRInfo(ref: MRReference, auth: GitLabAuth): Promise<MRInfo>
+postMRComment(ref: MRReference, auth: GitLabAuth, content: string, model: string): Promise<string>
+listOpenMRs(projectPath: string, auth: GitLabAuth): Promise<Array<...>>
+promptAndFetchMR(repoPath: string, runGitCommand: ...): Promise<{ diff, ref, info, auth } | null>
+```
+
+Accepts MR input in these formats: full URL, `!123`, `owner/repo!123`.
+
+#### Self-Hosted GitLab
+
+The `gitlab.baseUrl` setting supports self-hosted GitLab instances. All API calls use `${baseUrl}/api/v4/...` so any GitLab-compatible instance works.
+
+### Bitbucket Module (`src/bitbucket/`)
+
+#### Authentication (`src/bitbucket/auth.ts`)
+
+Uses Bitbucket App Passwords (HTTP Basic Auth):
+
+```typescript
+interface BitbucketAuth {
+  username: string;
+  appPassword: string;
+  source: 'settings';
+}
+
+// Key exports
+getBitbucketAuth(promptIfNeeded?: boolean): Promise<BitbucketAuth | null>
+buildBitbucketAuthHeader(auth: BitbucketAuth): string
+showBitbucketAuthSetupGuide(): void
+```
+
+#### PR Review (`src/bitbucket/prReview.ts`)
+
+```typescript
+interface BitbucketPRReference {
+  workspace: string;
+  repoSlug: string;
+  prId: number;
+}
+
+interface BitbucketPRInfo {
+  title: string;
+  description: string | null;
+  state: string;
+  author: string;
+  sourceBranch: string;
+  destinationBranch: string;
+  webUrl: string;
+  taskCount: number;
+}
+
+// Key exports
+parseBitbucketPRInput(input: string, repoContext?: ...): BitbucketPRReference | null
+parseBitbucketRemoteUrl(remoteUrl: string): { workspace, repoSlug } | null
+isBitbucketRemote(remoteUrl: string): boolean
+fetchBitbucketPRDiff(ref, auth): Promise<string>
+fetchBitbucketPRInfo(ref, auth): Promise<BitbucketPRInfo>
+postBitbucketPRComment(ref, auth, content, model): Promise<string>
+listOpenBitbucketPRs(workspace, repoSlug, auth): Promise<Array<...>>
+promptAndFetchBitbucketPR(repoPath, runGitCommand): Promise<{ diff, ref, info, auth } | null>
+```
+
+Accepts PR input in these formats: full URL, `#123`, `workspace/repo#123`.
+
+### API Endpoints
+
+| Platform | API Base |
+|----------|----------|
+| GitLab Cloud | `https://gitlab.com/api/v4` |
+| GitLab Self-Hosted | `${gitlab.baseUrl}/api/v4` |
+| Bitbucket Cloud | `https://api.bitbucket.org/2.0` |
+
+### Platform Auto-Detection
+
+When the user runs a review command, the extension reads `remote.origin.url` from git config and checks:
+- `isGitLabRemote()` — URL contains "gitlab" (not "github" or "bitbucket")
+- `isBitbucketRemote()` — URL contains "bitbucket" (not "github" or "gitlab")
+- GitHub is detected via the existing `parseRemoteUrl()` function
+
+This enables automatic project context detection and open MR/PR listing.
+
 ## Notes
 
 - Cloud models available as fallback when local Ollama unreachable
@@ -1359,6 +1508,9 @@ formatFindingsAsSummary(findings: ReviewFinding[], model: string): string  // Su
 - GitHub auth falls back gracefully through: `gh` CLI → VS Code session → stored `github.token` setting
 - `github.gistToken` falls back to `github.token` if the gist-specific token is not set
 - OpenAI-compatible provider supports any server exposing `/v1/chat/completions` — LM Studio, vLLM, LocalAI, Groq, OpenRouter, Together AI — configured via `openaiCompatible.*` settings; API key is optional for local servers
+- GitLab integration supports self-hosted instances via `gitlab.baseUrl` setting; auth falls back through `glab` CLI → stored `gitlab.token` setting
+- Bitbucket integration uses App Passwords with HTTP Basic Auth; auto-detects Bitbucket remotes for project context
+- Platform auto-detection reads `remote.origin.url` and checks for GitHub, GitLab, or Bitbucket patterns to enable context-aware MR/PR listing
 
 ## Roadmap & Future Development
 
@@ -1399,10 +1551,10 @@ See [docs/roadmap/](./docs/roadmap/) for comprehensive planning documents:
 | Architecture Diagram Generation (Mermaid.js, review panel integration) | F-020 | v4.2 |
 | Review History & Analytics (dashboard, categories, export, duration tracking) | F-011 | v4.3 |
 | Team Knowledge Base (decisions, patterns, rules YAML, keyword matching, prompt injection) | F-012 | v4.4 |
+| GitLab & Bitbucket Integration (review MRs/PRs, post comments, platform auto-detection) | F-015 | v4.5 |
 
 ### Remaining Planned Features
 
 | Phase | Features | Target |
 |-------|----------|--------|
 | v5.0 | RAG (F-009), CI/CD (F-010) | Q4 2026 |
-| v6.0 | GitLab & Bitbucket Integration (F-015) | Q1–Q2 2027 |
