@@ -459,6 +459,61 @@ Automatically post review summaries to your team communication channels after ea
 
 > Notification failures are logged to the output channel but never interrupt the review flow.
 
+### 31. Agentic Multi-Step Reviews
+Go beyond single-pass reviews with a 5-step AI pipeline that analyses context, detects codebase patterns, and self-critiques its own findings.
+
+- **Command**: `Ollama Code Review: Agentic Multi-Step Review`
+- **Quick Access**: Available in the Source Control panel's title bar alongside the regular review button.
+
+**Pipeline Steps:**
+
+| Step | Name | Type | What it does |
+|------|------|------|-------------|
+| 1 | **Analyze Diff** | Local | Parses changed files, classifies them (source/test/config/docs), counts lines, infers change types (feature, bugfix, refactor) |
+| 2 | **Gather Context** | Local + I/O | Resolves imports, discovers related tests and type definitions, detects workspace patterns (TypeScript strict mode, ESLint config, test framework) |
+| 3 | **Pattern Analysis** | AI | Identifies codebase conventions — naming, imports, error handling, testing patterns |
+| 4 | **Deep Review** | AI | Comprehensive review covering security, bugs, performance, and maintainability with full context from steps 1–3 |
+| 5 | **Synthesis** | AI | Self-critique pass: removes false positives, prioritises findings, consolidates duplicates, adds executive summary |
+
+**Configuration** (under `ollama-code-review.agentMode`):
+
+| Property | Default | Description |
+|----------|---------|-------------|
+| `enabled` | `false` | Enable multi-step agentic reviews |
+| `maxContextFiles` | `10` | Maximum context files to resolve in step 2 |
+| `includeTests` | `true` | Include test files in context gathering |
+| `includeTypes` | `true` | Include `.d.ts` type definitions in context |
+| `selfCritique` | `true` | Run self-critique in step 5 to remove false positives |
+
+**Key features:**
+- Progress is reported at each step via VS Code notifications
+- Cancellable at any point between steps
+- Graceful fallback: if non-critical steps fail, the pipeline continues
+- Integrates with review profiles, agent skills, quality scoring, and notifications
+- Results display in the same review panel with full chat and export support
+
+### 32. Architecture Diagram Generation (Mermaid)
+Generate visual architecture diagrams from your code changes using Mermaid.js — rendered directly in the review panel.
+
+- **Command**: `Ollama Code Review: Generate Architecture Diagram (Mermaid)`
+- **Quick Access**: Click the **📊 Diagram** button in the review panel toolbar after any review.
+
+**Supported diagram types** (automatically selected by the AI):
+
+| Type | When used |
+|------|-----------|
+| **Class Diagram** | Classes, interfaces, type relationships |
+| **Flowchart** | Function call chains, control flow, module dependencies |
+| **Sequence Diagram** | API calls, async patterns, request/response flows |
+| **Dependency Graph** | Import/module relationships between changed files |
+
+**Features:**
+- Diagrams render live in the review panel using the Mermaid.js CDN
+- **Copy Source** button to copy raw Mermaid code for use in docs or PRs
+- Works from the current review diff or staged changes
+- Graceful fallback: invalid Mermaid syntax shows raw source with error message
+- Separate AI call — does not slow down the main review
+
 ---
 
 ## Requirements
