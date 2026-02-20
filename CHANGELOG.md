@@ -1,3 +1,10 @@
+# [3.13.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.12.0...v3.13.0) (2026-02-20)
+
+
+### Features
+
+* implement F-015 GitLab & Bitbucket integration ([c88691d](https://github.com/glorynguyen/ollama-code-review/commit/c88691d0a8a707f0baa9c91b47bd34e9d678e583))
+
 # [3.12.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.11.0...v3.12.0) (2026-02-20)
 
 
