@@ -1,3 +1,10 @@
+# [3.14.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.13.0...v3.14.0) (2026-02-20)
+
+
+### Features
+
+* implement F-009 RAG-Enhanced Reviews and F-010 CI/CD Integration (v5.0.0) ([1d6a417](https://github.com/glorynguyen/ollama-code-review/commit/1d6a4171f2046eb077ac8181cc884dacc43cbb3d))
+
 # [3.13.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.12.0...v3.13.0) (2026-02-20)
 
 
