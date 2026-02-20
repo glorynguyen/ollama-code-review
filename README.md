@@ -430,7 +430,7 @@ Score is clamped between 0 and 100. Sub-scores for correctness, security, mainta
 - Summary cards: latest score, average, and best score
 - Full sortable table of past reviews with model, profile, and branch info
 
-> Score history is persisted locally (up to 200 entries) — no external database required.
+> Score history is persisted locally (up to 500 entries) — no external database required.
 
 ### 30. Notification Integrations (Slack / Teams / Discord)
 Automatically post review summaries to your team communication channels after each review.
@@ -513,6 +513,35 @@ Generate visual architecture diagrams from your code changes using Mermaid.js �
 - Works from the current review diff or staged changes
 - Graceful fallback: invalid Mermaid syntax shows raw source with error message
 - Separate AI call — does not slow down the main review
+
+### 33. Review Analytics Dashboard
+Get a comprehensive, visual overview of your review history with the analytics dashboard.
+
+- **Command**: `Ollama Code Review: Show Review Analytics Dashboard`
+
+**Dashboard components:**
+
+| Component | Type | Description |
+|-----------|------|-------------|
+| **Summary cards** | Grid | Total reviews, average score, best score, total issues, this week, this month |
+| **Score trend** | Line chart | Score over all reviews |
+| **Severity distribution** | Doughnut chart | Critical / High / Medium / Low / Info breakdown |
+| **Category distribution** | Horizontal bar | Issues grouped by category (security, performance, bugs, style, maintainability, accessibility, documentation) |
+| **Review types** | Doughnut chart | Breakdown by review type (staged, commit, PR, file, folder, selection, agent) |
+| **Model usage** | Horizontal bar | Reviews per AI model |
+| **Most reviewed files** | Table | Top 15 most-reviewed files |
+| **Profile usage** | Table | Review count and percentage per profile |
+| **Weekly activity** | Table | Reviews and avg score per week (last 12 weeks) |
+
+**Data export**: Export all review data as **CSV** or **JSON** for external analysis.
+
+**Enhanced tracking** — every review now automatically records:
+- **Duration**: Wall-clock time for each review
+- **Review type**: Which command was used (staged changes, commit, PR, file review, agent, etc.)
+- **Files reviewed**: Which files were in the diff
+- **Issue categories**: Security, performance, bugs, style, maintainability, accessibility, and documentation findings detected via keyword analysis
+
+> All analytics data is stored locally alongside review scores — no new dependencies or external services required.
 
 ---
 
