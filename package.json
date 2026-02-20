@@ -2,7 +2,7 @@
   "name": "ollama-code-review",
   "displayName": "Ollama Code Review",
   "description": "Get AI code reviews and generate commit messages from a local Ollama instance before you commit.",
-  "version": "3.13.0",
+  "version": "5.0.0",
   "author": "Vinh Nguyen (vincent)",
   "publisher": "VinhNguyen-Vincent",
   "icon": "images/icon.png",
@@ -208,6 +208,18 @@
         "title": "Post Review to Bitbucket PR",
         "category": "Ollama Code Review",
         "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "ollama-code-review.indexCodebase",
+        "title": "Index Codebase for RAG-Enhanced Reviews",
+        "category": "Ollama Code Review",
+        "icon": "$(database)"
+      },
+      {
+        "command": "ollama-code-review.clearRagIndex",
+        "title": "Clear RAG Codebase Index",
+        "category": "Ollama Code Review",
+        "icon": "$(trash)"
       }
     ],
     "menus": {
@@ -724,6 +736,66 @@
           "type": "string",
           "default": "",
           "markdownDescription": "**F-015** — Bitbucket App Password with `Pullrequests: Read` and `Pullrequests: Write` scopes. Create one at **Bitbucket > Personal settings > App passwords**."
+        },
+        "ollama-code-review.rag": {
+          "type": "object",
+          "default": {},
+          "markdownDescription": "**F-009** — RAG-Enhanced Reviews configuration. Retrieve semantically similar code from your codebase to provide richer context during reviews.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false,
+              "description": "Enable RAG-enhanced reviews. Retrieves similar code snippets from the indexed codebase and injects them into review prompts."
+            },
+            "indexOnStartup": {
+              "type": "boolean",
+              "default": false,
+              "description": "Automatically index (or re-index) the workspace on extension startup (background). Useful for always-fresh indexes on smaller projects."
+            },
+            "embeddingModel": {
+              "type": "string",
+              "default": "nomic-embed-text",
+              "description": "Ollama model to use for generating embeddings (e.g. 'nomic-embed-text', 'mxbai-embed-large'). Falls back to TF-IDF if the model is unavailable."
+            },
+            "maxResults": {
+              "type": "number",
+              "default": 5,
+              "minimum": 1,
+              "maximum": 20,
+              "description": "Maximum number of similar code snippets to retrieve and inject per review."
+            },
+            "similarityThreshold": {
+              "type": "number",
+              "default": 0.65,
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Minimum cosine similarity score (0–1) for a retrieved snippet to be included. Higher = more selective."
+            },
+            "includeGlob": {
+              "type": "string",
+              "default": "**/*.{ts,js,tsx,jsx,py,java,cs,go,rb,php,rs,swift,kt,vue,svelte}",
+              "description": "Glob pattern for files to include when indexing the codebase."
+            },
+            "excludeGlob": {
+              "type": "string",
+              "default": "**/node_modules/**,**/dist/**,**/build/**,**/out/**,**/.next/**,**/coverage/**,**/*.min.js,**/*.d.ts",
+              "description": "Comma-separated glob patterns for files to exclude when indexing."
+            },
+            "chunkSize": {
+              "type": "number",
+              "default": 1500,
+              "minimum": 200,
+              "maximum": 8000,
+              "description": "Maximum characters per code chunk when splitting files for indexing."
+            },
+            "chunkOverlap": {
+              "type": "number",
+              "default": 150,
+              "minimum": 0,
+              "maximum": 1000,
+              "description": "Character overlap between consecutive chunks to preserve context across chunk boundaries."
+            }
+          }
         }
       }
     }

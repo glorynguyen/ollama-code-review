@@ -1,0 +1,38 @@
+{
+  "name": "@ollama-code-review/cli",
+  "version": "1.0.0",
+  "description": "Headless CLI for Ollama Code Review — run AI-powered code reviews in CI/CD pipelines",
+  "author": "Vinh Nguyen (vincent)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/glorynguyen/ollama-code-review.git",
+    "directory": "packages/cli"
+  },
+  "bin": {
+    "ollama-review": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "ts-node src/index.ts",
+    "test": "echo \"No tests yet\"",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "axios": "^1.11.0",
+    "commander": "^12.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.9.2",
+    "ts-node": "^10.9.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

@@ -1,0 +1,118 @@
+# Ollama Code Review — GitHub Actions Workflow Template
+# Copy this file to .github/workflows/code-review.yml in your repository.
+#
+# This workflow runs an AI code review on every pull request and (optionally)
+# posts the results as a PR comment. It can also fail the pipeline when the
+# review finds issues above a configurable severity threshold.
+#
+# Required secrets (set in repo Settings → Secrets → Actions):
+#   ANTHROPIC_API_KEY  — if using Claude models
+#   GEMINI_API_KEY     — if using Gemini models
+#   MISTRAL_API_KEY    — if using Mistral models
+#   GITHUB_TOKEN       — automatically provided by GitHub Actions
+#
+# Documentation: https://github.com/glorynguyen/ollama-code-review
+
+name: AI Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write  # needed to post PR comments
+
+jobs:
+  code-review:
+    name: AI Code Review
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history required for accurate diffs
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Ollama Code Review CLI
+        run: npm install -g @ollama-code-review/cli
+
+      # ── Option A: Use a cloud AI model (recommended for CI, no local GPU needed) ──
+      # Uncomment ONE of the provider blocks below and comment out Option B.
+
+      # Claude (Anthropic) — fast, high quality, great for security reviews
+      - name: Run AI Code Review (Claude)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git diff origin/${{ github.base_ref }}...HEAD > /tmp/pr.diff
+          ollama-review \
+            --provider claude \
+            --model claude-sonnet-4-20250514 \
+            --profile security \
+            --fail-on-severity high \
+            --output-format markdown \
+            --post-to-github \
+            --diff-file /tmp/pr.diff
+
+      # ── Option B: Use a local Ollama model (self-hosted runner with GPU) ──
+      # Requires a self-hosted runner with Ollama installed.
+      #
+      # - name: Start Ollama
+      #   run: ollama serve &
+      #
+      # - name: Pull model
+      #   run: ollama pull qwen2.5-coder:14b-instruct-q4_0
+      #
+      # - name: Run AI Code Review (local Ollama)
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #   run: |
+      #     git diff origin/${{ github.base_ref }}...HEAD > /tmp/pr.diff
+      #     ollama-review \
+      #       --provider ollama \
+      #       --model qwen2.5-coder:14b-instruct-q4_0 \
+      #       --profile general \
+      #       --fail-on-severity critical \
+      #       --output-format markdown \
+      #       --post-to-github \
+      #       --diff-file /tmp/pr.diff
+
+      # ── Save review as artifact ────────────────────────────────────────────
+      - name: Save review artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-review-${{ github.run_number }}
+          path: /tmp/review-output.md
+          retention-days: 30
+
+# ─── Advanced configuration examples ────────────────────────────────────────
+#
+# Run compliance review on security-sensitive PRs:
+#
+# - name: OWASP Top 10 Review
+#   if: contains(github.event.pull_request.labels.*.name, 'security')
+#   run: |
+#     ollama-review \
+#       --provider claude \
+#       --profile owasp-top10 \
+#       --fail-on-severity critical \
+#       --diff-base origin/${{ github.base_ref }}
+#
+# Matrix review (multiple profiles in parallel):
+#
+# strategy:
+#   matrix:
+#     profile: [security, performance, accessibility]
+#
+# - name: Run ${{ matrix.profile }} Review
+#   run: |
+#     ollama-review --provider gemini --profile ${{ matrix.profile }}

@@ -614,7 +614,8 @@ Analyze related files beyond the diff to understand the full impact of changes. 
 | **ID** | F-009 |
 | **Priority** | 🟡 P2 |
 | **Effort** | High (7-10 days) |
-| **Status** | 📋 Planned |
+| **Status** | ✅ Complete |
+| **Shipped** | v5.0.0 (Feb 2026) |
 | **Dependencies** | F-008 (context system) |
 
 #### Description
@@ -657,24 +658,37 @@ Implement Retrieval-Augmented Generation to pull relevant code examples, documen
 
 #### Implementation Notes
 
-1. Use Ollama embedding models for local operation
-2. Store vectors in SQLite with `better-sqlite3`
-3. Index on-demand or background process
-4. Include relevance scores in context
+1. Use Ollama's `/api/embeddings` endpoint for local embedding generation
+2. JSON file-based vector store in globalStorage (no native SQLite required)
+3. TF-IDF fallback when embedding model is unavailable
+4. Index on-demand via `indexCodebase` command or background startup
+5. Cosine similarity search for retrieval; changed files excluded from results
 
-#### Files to Create
+#### Files Created
 
-- `src/rag/indexer.ts` - Code indexing
-- `src/rag/embeddings.ts` - Embedding generation
-- `src/rag/vectorStore.ts` - Vector storage
-- `src/rag/retriever.ts` - Similarity search
+- `src/rag/types.ts` — RagConfig, CodeChunk, VectorStore, RetrievalResult interfaces
+- `src/rag/config.ts` — `getRagConfig()` VS Code settings reader
+- `src/rag/embeddings.ts` — Ollama embedding generation + TF-IDF fallback + cosine similarity
+- `src/rag/vectorStore.ts` — `JsonVectorStore` class (JSON persistence, no native deps)
+- `src/rag/indexer.ts` — `indexWorkspace()`, `indexFile()`, `chunkText()`
+- `src/rag/retriever.ts` — `getRagContext()`, `buildRagContextSection()`
+- `src/rag/index.ts` — Barrel exports
+
+#### Integration
+
+- Two new commands: `ollama-code-review.indexCodebase`, `ollama-code-review.clearRagIndex`
+- RAG context injected after F-012 knowledge base context in `getOllamaReview()`
+- New `ollama-code-review.rag.*` settings with 9 configurable properties
 
 #### Acceptance Criteria
 
-- [ ] Codebase can be indexed
-- [ ] Similar code found for context
-- [ ] Index updates incrementally
-- [ ] Works with local Ollama embeddings
+- [x] Codebase can be indexed via command
+- [x] Similar code found for context using cosine similarity
+- [x] Works with local Ollama embeddings (nomic-embed-text)
+- [x] TF-IDF fallback when Ollama embedding model unavailable
+- [x] Index persists to disk in globalStorage
+- [x] RAG context shown in review prompt with similarity scores
+- [x] Non-fatal — reviews proceed without context if index is empty
 
 ---
 
@@ -687,7 +701,8 @@ Implement Retrieval-Augmented Generation to pull relevant code examples, documen
 | **ID** | F-010 |
 | **Priority** | 🟢 P3 |
 | **Effort** | High (5-7 days) |
-| **Status** | 📋 Planned |
+| **Status** | ✅ Complete |
+| **Shipped** | v5.0.0 (Feb 2026) |
 | **Dependencies** | F-004 (GitHub integration) |
 
 #### Description
@@ -721,23 +736,34 @@ jobs:
 
 #### Implementation Notes
 
-1. Extract core review logic into separate package
-2. Build CLI wrapper with Node.js
-3. Publish GitHub Action to marketplace
-4. Document self-hosted Ollama setup for CI
+1. Standalone `@ollama-code-review/cli` Node.js package (no VS Code dependency)
+2. Supports all 7 AI providers: ollama, claude, gemini, mistral, glm, minimax, openai-compatible
+3. GitHub Actions and GitLab CI workflow templates provided
+4. All config settable via env vars for secret management
 
-#### Files to Create
+#### Files Created
 
-- `packages/cli/` - CLI tool
-- `packages/action/` - GitHub Action
-- `.github/workflows/action.yml` - Action definition
+- `packages/cli/package.json` — CLI package manifest
+- `packages/cli/tsconfig.json` — TypeScript config for the CLI
+- `packages/cli/src/index.ts` — CLI entry point with Commander.js argument parsing
+- `packages/cli/src/config.ts` — Config builder from args + env vars; review profile prompts
+- `packages/cli/src/review.ts` — `buildPrompt()` + `callAIProvider()` for all 7 providers
+- `packages/cli/src/output.ts` — `parseSeverityCounts()`, `shouldFail()`, `formatOutput()` (text/json/markdown)
+- `packages/cli/src/github.ts` — GitHub PR comment posting; PR context from env (GitHub Actions)
+- `ci-templates/github-actions.yml` — Production-ready GitHub Actions workflow template
+- `ci-templates/gitlab-ci.yml` — GitLab CI YAML template
+- `ci-templates/README.md` — CI/CD integration guide
 
 #### Acceptance Criteria
 
-- [ ] CLI runs reviews headlessly
-- [ ] GitHub Action works in workflows
-- [ ] Results posted to PR
-- [ ] Can fail pipeline on severity threshold
+- [x] CLI runs reviews headlessly (no VS Code required)
+- [x] Supports diff from file, stdin pipe, `--diff-base`, and `git diff HEAD`
+- [x] GitHub Actions workflow template provided with PR comment posting
+- [x] GitLab CI template provided
+- [x] Results posted to GitHub PR via `--post-to-github` flag
+- [x] Exits with code 1 when `--fail-on-severity` threshold is met
+- [x] Output formats: `text`, `json`, `markdown`
+- [x] All settings available as environment variables for CI secret management
 
 ---
 
@@ -921,8 +947,8 @@ rules:
 | F-006 | Customizable Prompts | 2 | ✅ Complete (partial) | v2.1 |
 | F-007 | Agentic Multi-Step Reviews | 3 | 📋 Planned | — |
 | F-008 | Multi-File Contextual Analysis | 3 | 📋 Planned | — |
-| F-009 | RAG-Enhanced Reviews | 3 | 📋 Planned | — |
-| F-010 | CI/CD Integration | 4 | 📋 Planned | — |
+| F-009 | RAG-Enhanced Reviews | 3 | ✅ Complete | v5.0 |
+| F-010 | CI/CD Integration | 4 | ✅ Complete | v5.0 |
 | F-011 | Review History & Analytics | 4 | 📋 Planned | — |
 | F-012 | Team Knowledge Base | 4 | 📋 Planned | — |
 | F-013 | OpenAI-Compatible Provider | 5 | ✅ Complete | v3.5 |
