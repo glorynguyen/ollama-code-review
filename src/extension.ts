@@ -85,6 +85,20 @@ import {
 	formatKnowledgeForPrompt,
 	matchKnowledge,
 } from './knowledge';
+import {
+	promptAndFetchMR,
+	postMRComment,
+	MRReference,
+	isGitLabRemote,
+} from './gitlab/mrReview';
+import { getGitLabAuth } from './gitlab/auth';
+import {
+	promptAndFetchBitbucketPR,
+	postBitbucketPRComment,
+	BitbucketPRReference,
+	isBitbucketRemote,
+} from './bitbucket/prReview';
+import { getBitbucketAuth } from './bitbucket/auth';
 
 const CLAUDE_API_ENDPOINT = 'https://api.anthropic.com/v1/messages';
 const GLM_API_ENDPOINT = 'https://api.z.ai/api/paas/v4/chat/completions';
@@ -2502,6 +2516,244 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
+	// F-015: Review GitLab MR command
+	const reviewGitLabMRCommand = vscode.commands.registerCommand('ollama-code-review.reviewGitLabMR', async () => {
+		try {
+			const gitAPI = getGitAPI();
+			let repoPath = '';
+
+			// Try to get repo path for context detection
+			if (gitAPI) {
+				const repo = await selectRepository(gitAPI);
+				if (repo) {
+					repoPath = repo.rootUri.fsPath;
+				}
+			}
+
+			await vscode.window.withProgress({
+				location: vscode.ProgressLocation.Notification,
+				title: 'Ollama Code Review',
+				cancellable: true
+			}, async (progress, token) => {
+				progress.report({ message: 'Authenticating with GitLab...' });
+
+				const result = await promptAndFetchMR(repoPath, runGitCommand);
+				if (!result || token.isCancellationRequested) { return; }
+
+				const { diff, ref, info, auth } = result;
+
+				outputChannel.appendLine(`\n--- Reviewing GitLab MR !${ref.mrNumber} ---`);
+				outputChannel.appendLine(`Title: ${info.title}`);
+				outputChannel.appendLine(`Author: ${info.author}`);
+				outputChannel.appendLine(`Branch: ${info.sourceBranch} → ${info.targetBranch}`);
+				outputChannel.appendLine(`Changed files: ${info.changedFiles} (+${info.additions}/-${info.deletions})`);
+				outputChannel.appendLine('---------------------------------------');
+
+				progress.report({ message: `Reviewing MR !${ref.mrNumber}: ${info.title}...` });
+
+				// Store MR context for later "Post to MR" action
+				context.globalState.update('activeGitLabMRContext', {
+					projectPath: ref.projectPath,
+					mrNumber: ref.mrNumber,
+					title: info.title,
+					webUrl: info.webUrl
+				});
+
+				// Use the existing runReview workflow
+				await runReview(diff, context, 'pr');
+			});
+		} catch (error) {
+			handleError(error, 'Failed to review GitLab MR.');
+		}
+	});
+
+	// F-015: Post Review to GitLab MR command
+	const postReviewToMRCommand = vscode.commands.registerCommand('ollama-code-review.postReviewToMR', async () => {
+		try {
+			const mrContext = context.globalState.get<{
+				projectPath: string;
+				mrNumber: number;
+				title: string;
+				webUrl: string;
+			}>('activeGitLabMRContext');
+
+			if (!mrContext) {
+				vscode.window.showErrorMessage(
+					'No active MR context. Please run "Review GitLab MR" first.'
+				);
+				return;
+			}
+
+			const panel = OllamaReviewPanel.currentPanel;
+			if (!panel) {
+				vscode.window.showErrorMessage('No review panel open. Please run a review first.');
+				return;
+			}
+
+			const reviewContent = panel.getReviewContent();
+			if (!reviewContent) {
+				vscode.window.showErrorMessage('No review content available.');
+				return;
+			}
+
+			const auth = await getGitLabAuth(true);
+			if (!auth) {
+				return;
+			}
+
+			const config = vscode.workspace.getConfiguration('ollama-code-review');
+			const model = getOllamaModel(config);
+
+			const ref: MRReference = {
+				projectPath: mrContext.projectPath,
+				mrNumber: mrContext.mrNumber
+			};
+
+			await vscode.window.withProgress({
+				location: vscode.ProgressLocation.Notification,
+				title: 'Posting review to GitLab MR...',
+				cancellable: false
+			}, async (progress) => {
+				progress.report({ message: 'Posting comment...' });
+				const commentUrl = await postMRComment(ref, auth, reviewContent, model);
+
+				const action = await vscode.window.showInformationMessage(
+					`Review posted to MR !${mrContext.mrNumber}!`,
+					'Open in Browser',
+					'Copy URL'
+				);
+
+				if (action === 'Open in Browser') {
+					vscode.env.openExternal(vscode.Uri.parse(commentUrl));
+				} else if (action === 'Copy URL') {
+					await vscode.env.clipboard.writeText(commentUrl);
+				}
+			});
+		} catch (error) {
+			handleError(error, 'Failed to post review to GitLab MR.');
+		}
+	});
+
+	// F-015: Review Bitbucket PR command
+	const reviewBitbucketPRCommand = vscode.commands.registerCommand('ollama-code-review.reviewBitbucketPR', async () => {
+		try {
+			const gitAPI = getGitAPI();
+			let repoPath = '';
+
+			// Try to get repo path for context detection
+			if (gitAPI) {
+				const repo = await selectRepository(gitAPI);
+				if (repo) {
+					repoPath = repo.rootUri.fsPath;
+				}
+			}
+
+			await vscode.window.withProgress({
+				location: vscode.ProgressLocation.Notification,
+				title: 'Ollama Code Review',
+				cancellable: true
+			}, async (progress, token) => {
+				progress.report({ message: 'Authenticating with Bitbucket...' });
+
+				const result = await promptAndFetchBitbucketPR(repoPath, runGitCommand);
+				if (!result || token.isCancellationRequested) { return; }
+
+				const { diff, ref, info, auth } = result;
+
+				outputChannel.appendLine(`\n--- Reviewing Bitbucket PR #${ref.prId} ---`);
+				outputChannel.appendLine(`Title: ${info.title}`);
+				outputChannel.appendLine(`Author: ${info.author}`);
+				outputChannel.appendLine(`Branch: ${info.sourceBranch} → ${info.destinationBranch}`);
+				outputChannel.appendLine('---------------------------------------');
+
+				progress.report({ message: `Reviewing PR #${ref.prId}: ${info.title}...` });
+
+				// Store PR context for later "Post to PR" action
+				context.globalState.update('activeBitbucketPRContext', {
+					workspace: ref.workspace,
+					repoSlug: ref.repoSlug,
+					prId: ref.prId,
+					title: info.title,
+					webUrl: info.webUrl
+				});
+
+				// Use the existing runReview workflow
+				await runReview(diff, context, 'pr');
+			});
+		} catch (error) {
+			handleError(error, 'Failed to review Bitbucket PR.');
+		}
+	});
+
+	// F-015: Post Review to Bitbucket PR command
+	const postReviewToBitbucketPRCommand = vscode.commands.registerCommand('ollama-code-review.postReviewToBitbucketPR', async () => {
+		try {
+			const bbContext = context.globalState.get<{
+				workspace: string;
+				repoSlug: string;
+				prId: number;
+				title: string;
+				webUrl: string;
+			}>('activeBitbucketPRContext');
+
+			if (!bbContext) {
+				vscode.window.showErrorMessage(
+					'No active PR context. Please run "Review Bitbucket PR" first.'
+				);
+				return;
+			}
+
+			const panel = OllamaReviewPanel.currentPanel;
+			if (!panel) {
+				vscode.window.showErrorMessage('No review panel open. Please run a review first.');
+				return;
+			}
+
+			const reviewContent = panel.getReviewContent();
+			if (!reviewContent) {
+				vscode.window.showErrorMessage('No review content available.');
+				return;
+			}
+
+			const auth = await getBitbucketAuth(true);
+			if (!auth) {
+				return;
+			}
+
+			const config = vscode.workspace.getConfiguration('ollama-code-review');
+			const model = getOllamaModel(config);
+
+			const ref: BitbucketPRReference = {
+				workspace: bbContext.workspace,
+				repoSlug: bbContext.repoSlug,
+				prId: bbContext.prId
+			};
+
+			await vscode.window.withProgress({
+				location: vscode.ProgressLocation.Notification,
+				title: 'Posting review to Bitbucket PR...',
+				cancellable: false
+			}, async (progress) => {
+				progress.report({ message: 'Posting comment...' });
+				const commentUrl = await postBitbucketPRComment(ref, auth, reviewContent, model);
+
+				const action = await vscode.window.showInformationMessage(
+					`Review posted to PR #${bbContext.prId}!`,
+					'Open in Browser',
+					'Copy URL'
+				);
+
+				if (action === 'Open in Browser') {
+					vscode.env.openExternal(vscode.Uri.parse(commentUrl));
+				} else if (action === 'Copy URL') {
+					await vscode.env.clipboard.writeText(commentUrl);
+				}
+			});
+		} catch (error) {
+			handleError(error, 'Failed to post review to Bitbucket PR.');
+		}
+	});
+
 	// F-006 (remainder): Reload project config command
 	const reloadProjectConfigCommand = vscode.commands.registerCommand(
 		'ollama-code-review.reloadProjectConfig',
@@ -3115,6 +3367,10 @@ export async function activate(context: vscode.ExtensionContext) {
 		reviewCommitCommand,
 		reviewGitHubPRCommand,
 		postReviewToPRCommand,
+		reviewGitLabMRCommand,
+		postReviewToMRCommand,
+		reviewBitbucketPRCommand,
+		postReviewToBitbucketPRCommand,
 		reloadProjectConfigCommand,
 		yamlConfigWatcher,
 		togglePreCommitGuardCommand,

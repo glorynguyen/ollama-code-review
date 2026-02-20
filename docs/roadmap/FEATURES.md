@@ -927,7 +927,7 @@ rules:
 | F-012 | Team Knowledge Base | 4 | 📋 Planned | — |
 | F-013 | OpenAI-Compatible Provider | 5 | ✅ Complete | v3.5 |
 | F-014 | Pre-Commit Guard | 5 | 📋 Planned | — |
-| F-015 | GitLab & Bitbucket Integration | 5 | 📋 Planned | — |
+| F-015 | GitLab & Bitbucket Integration | 5 | ✅ Complete | v4.5 |
 | F-016 | Review Quality Scoring & Trends | 5 | ✅ Complete | v4.1 |
 | F-017 | Compliance Review Profiles | 5 | ✅ Complete | v4.0 |
 | F-018 | Notification Integrations | 5 | ✅ Complete | v4.1 |
@@ -1075,17 +1075,23 @@ Issues caught after a commit require an additional fix commit. Catching them at 
 
 ### F-015: GitLab & Bitbucket PR Integration
 
-**Status:** 📋 Planned
+**Status:** ✅ Complete
+**Shipped:** v4.5.0 (Feb 2026)
 **Priority:** 🟡 P2 — High Impact, High Effort
 **Effort:** High (5–8 days)
 
 #### Overview
 
-Extend the GitHub PR Integration (F-004) to support GitLab Merge Requests and Bitbucket Pull Requests. Users on GitLab/Bitbucket can fetch PR diffs, run AI reviews, and post results as MR/PR comments.
+Extends the GitHub PR Integration (F-004) to support GitLab Merge Requests and Bitbucket Pull Requests. Users on GitLab/Bitbucket can fetch MR/PR diffs, run AI reviews, and post results as comments.
 
-#### User Problem
+#### Implementation
 
-A large portion of teams use GitLab or Bitbucket. The GitHub-only F-004 leaves them unable to use the PR review workflow.
+- `src/gitlab/auth.ts` — Multi-strategy auth: `glab` CLI → stored token; supports self-hosted via `gitlab.baseUrl`
+- `src/gitlab/mrReview.ts` — MR fetching, diff retrieval via GitLab REST API v4, comment posting, open MR listing
+- `src/bitbucket/auth.ts` — App Password auth with HTTP Basic Auth
+- `src/bitbucket/prReview.ts` — PR fetching, diff retrieval via Bitbucket Cloud API 2.0, comment posting, open PR listing
+- Platform auto-detection from `remote.origin.url` (checks for "gitlab" or "bitbucket" patterns)
+- Uses existing Axios dependency for all API calls (no new packages required)
 
 #### Configuration
 
@@ -1093,11 +1099,10 @@ A large portion of teams use GitLab or Bitbucket. The GitHub-only F-004 leaves t
 "ollama-code-review.gitlab.token": "",
 "ollama-code-review.gitlab.baseUrl": "https://gitlab.com",
 "ollama-code-review.bitbucket.username": "",
-"ollama-code-review.bitbucket.appPassword": "",
-"ollama-code-review.bitbucket.workspace": ""
+"ollama-code-review.bitbucket.appPassword": ""
 ```
 
-#### New Commands
+#### Commands
 
 | Command | Description |
 |---------|-------------|
@@ -1106,20 +1111,13 @@ A large portion of teams use GitLab or Bitbucket. The GitHub-only F-004 leaves t
 | `ollama-code-review.reviewBitbucketPR` | Fetch and review a Bitbucket PR by URL |
 | `ollama-code-review.postReviewToBitbucketPR` | Post review as a Bitbucket PR comment |
 
-#### Architecture
-
-- Add `src/gitlab/` and `src/bitbucket/` modules mirroring `src/github/` structure
-- `auth.ts`, `prReview.ts`, `commentMapper.ts` for each platform
-- Shared `PRReference` interface extended with `platform: 'github' | 'gitlab' | 'bitbucket'`
-- Auto-detect platform from remote URL (`git@gitlab.com`, `bitbucket.org`)
-
 #### Acceptance Criteria
 
-- [ ] `git remote` URL auto-detects GitLab / Bitbucket
-- [ ] GitLab MR diff fetched and reviewed correctly
-- [ ] Bitbucket PR diff fetched and reviewed correctly
-- [ ] Review posted as comment with correct formatting for each platform
-- [ ] Auth errors surface clear guidance for obtaining tokens
+- [x] `git remote` URL auto-detects GitLab / Bitbucket
+- [x] GitLab MR diff fetched and reviewed correctly
+- [x] Bitbucket PR diff fetched and reviewed correctly
+- [x] Review posted as comment with correct formatting for each platform
+- [x] Auth errors surface clear guidance for obtaining tokens
 
 ---
 

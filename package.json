@@ -184,6 +184,30 @@
         "title": "Reload Team Knowledge Base (.ollama-review-knowledge.yaml)",
         "category": "Ollama Code Review",
         "icon": "$(book)"
+      },
+      {
+        "command": "ollama-code-review.reviewGitLabMR",
+        "title": "Review GitLab MR",
+        "category": "Ollama Code Review",
+        "icon": "$(git-merge)"
+      },
+      {
+        "command": "ollama-code-review.postReviewToMR",
+        "title": "Post Review to GitLab MR",
+        "category": "Ollama Code Review",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "ollama-code-review.reviewBitbucketPR",
+        "title": "Review Bitbucket PR",
+        "category": "Ollama Code Review",
+        "icon": "$(git-pull-request)"
+      },
+      {
+        "command": "ollama-code-review.postReviewToBitbucketPR",
+        "title": "Post Review to Bitbucket PR",
+        "category": "Ollama Code Review",
+        "icon": "$(comment-discussion)"
       }
     ],
     "menus": {
@@ -680,6 +704,26 @@
               "description": "Maximum number of knowledge entries to inject per review"
             }
           }
+        },
+        "ollama-code-review.gitlab.token": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "**F-015** — GitLab Personal Access Token with `api` scope for reviewing MRs and posting comments. Get one at your GitLab instance under **Settings > Access Tokens**."
+        },
+        "ollama-code-review.gitlab.baseUrl": {
+          "type": "string",
+          "default": "https://gitlab.com",
+          "markdownDescription": "**F-015** — Base URL of your GitLab instance (e.g. `https://gitlab.com` or `https://gitlab.mycompany.com`). Used for self-hosted GitLab installations."
+        },
+        "ollama-code-review.bitbucket.username": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "**F-015** — Your Bitbucket username for API authentication."
+        },
+        "ollama-code-review.bitbucket.appPassword": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "**F-015** — Bitbucket App Password with `Pullrequests: Read` and `Pullrequests: Write` scopes. Create one at **Bitbucket > Personal settings > App passwords**."
         }
       }
     }
