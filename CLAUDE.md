@@ -3,7 +3,7 @@
 ## Project Overview
 
 - **Name:** Ollama Code Review VS Code Extension
-- **Version:** 4.2.0
+- **Version:** 4.3.0
 - **Purpose:** AI-powered code reviews and commit message generation using local Ollama or cloud models
 - **Author:** Vinh Nguyen (vincent)
 - **License:** MIT
@@ -32,6 +32,10 @@ src/
 ├── preCommitGuard.ts     # Pre-commit guard: hook management & severity assessment (F-014)
 ├── profiles.ts           # Review profiles & presets (F-001)
 ├── utils.ts              # Config helper functions
+├── analytics/            # Review history & analytics (F-011)
+│   ├── index.ts          # Barrel exports
+│   ├── tracker.ts        # Category extraction, aggregation, CSV/JSON export
+│   └── dashboard.ts      # Rich analytics dashboard webview
 ├── config/               # Project-level config file support (F-006)
 │   └── promptLoader.ts   # .ollama-review.yaml loader, config hierarchy, caching
 ├── github/               # GitHub integration module (F-004)
@@ -112,6 +116,9 @@ out/                      # Compiled JavaScript output
 | `src/agent/steps/deepReview.ts` | ~90 | Step 4: Comprehensive AI code review (F-007) |
 | `src/agent/steps/synthesis.ts` | ~75 | Step 5: Self-critique and findings refinement (F-007) |
 | `src/diagramGenerator.ts` | ~120 | Mermaid.js diagram generation from code/diffs (F-020) |
+| `src/analytics/index.ts` | ~15 | Barrel exports for analytics module (F-011) |
+| `src/analytics/tracker.ts` | ~250 | Category extraction, aggregation, weekly trends, CSV/JSON export (F-011) |
+| `src/analytics/dashboard.ts` | ~320 | Rich analytics dashboard webview with Chart.js (F-011) |
 
 ## Commands
 
@@ -144,6 +151,7 @@ out/                      # Compiled JavaScript output
 | `ollama-code-review.showReviewHistory` | Open the Review Quality History panel with score trends (F-016) |
 | `ollama-code-review.agentReview` | Run the 5-step agentic multi-step review pipeline on staged changes (F-007) |
 | `ollama-code-review.generateDiagram` | Generate a Mermaid architecture diagram from the current review or staged diff (F-020) |
+| `ollama-code-review.showAnalyticsDashboard` | Open the Review Analytics Dashboard with comprehensive metrics, charts, and export (F-011) |
 
 ## Configuration Settings
 
@@ -1044,6 +1052,59 @@ interface DiagramResult {
 - Copy Source button extracts raw Mermaid from `data-mermaid-source` attribute
 - Invalid Mermaid syntax shows error message with raw source as fallback
 
+## Review History & Analytics (F-011)
+
+The `src/analytics/` module provides comprehensive review analytics by extending the F-016 scoring system with richer metadata tracking, category-level issue analysis, and a multi-chart dashboard.
+
+### How It Works
+
+1. Each review now captures additional metadata: duration, review type, files reviewed, and issue categories
+2. Issue categories are extracted by scanning review text for domain-specific keywords (security, performance, bugs, style, etc.)
+3. The analytics dashboard aggregates all stored review scores into summary cards, charts, and tables
+4. Data can be exported as CSV or JSON for external analysis
+
+### Enhanced ReviewScore Fields (F-011 additions)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `durationMs` | `number?` | Review wall-clock duration in milliseconds |
+| `reviewType` | `ReviewType?` | One of: `staged`, `commit`, `commit-range`, `branch-compare`, `pr`, `file`, `folder`, `selection`, `agent` |
+| `filesReviewed` | `string[]?` | File paths extracted from the diff |
+| `categories` | `Record<IssueCategory, number>?` | Issue category counts: `security`, `performance`, `style`, `bugs`, `maintainability`, `accessibility`, `documentation`, `other` |
+
+### Analytics Dashboard
+
+Opened via `ollama-code-review.showAnalyticsDashboard` command. Features:
+
+| Component | Type | Description |
+|-----------|------|-------------|
+| Summary cards | Grid | Total reviews, avg score, best score, total issues, this week, this month |
+| Score trend | Line chart | Score over all reviews (Chart.js) |
+| Severity distribution | Doughnut chart | Critical / High / Medium / Low / Info breakdown |
+| Category distribution | Horizontal bar | Issues grouped by category (security, performance, bugs, etc.) |
+| Review types | Doughnut chart | Breakdown by review type (staged, commit, PR, file, etc.) |
+| Model usage | Horizontal bar | Reviews per AI model |
+| Most reviewed files | Table | Top 15 most-reviewed files |
+| Profile usage | Table | Review count and percentage per profile |
+| Weekly activity | Table | Reviews and avg score per week (last 12 weeks) |
+| Export | Buttons | Export all data as CSV or JSON |
+
+### Exported Functions (`src/analytics/tracker.ts`)
+
+- `parseIssueCategories(reviewText)` — Extract issue category counts from AI review Markdown
+- `extractFilesFromDiff(diff)` — Extract file paths from unified diff `+++ b/...` headers
+- `computeAnalytics(scores)` — Compute comprehensive `AnalyticsSummary` from full score history
+- `exportAsCSV(scores)` — Serialize review scores to CSV string
+- `exportAsJSON(scores)` — Serialize review scores to JSON string
+
+### Exported Class (`src/analytics/dashboard.ts`)
+
+- `AnalyticsDashboardPanel.createOrShow(scores)` — Open or focus the analytics dashboard webview
+
+### Storage
+
+Analytics data is stored alongside F-016 scores in `{globalStorage}/review-scores.json`. The store limit has been increased from 200 to 500 entries. No new database dependency is required.
+
 ## Related Projects
 
 ### MCP Server for Claude Desktop
@@ -1207,10 +1268,11 @@ See [docs/roadmap/](./docs/roadmap/) for comprehensive planning documents:
 | Batch / Legacy Code Review (reviewFile, reviewFolder, reviewSelection) | F-019 | v4.1 |
 | Agentic Multi-Step Reviews (5-step pipeline, self-critique) | F-007 | v4.2 |
 | Architecture Diagram Generation (Mermaid.js, review panel integration) | F-020 | v4.2 |
+| Review History & Analytics (dashboard, categories, export, duration tracking) | F-011 | v4.3 |
 
 ### Remaining Planned Features
 
 | Phase | Features | Target |
 |-------|----------|--------|
-| v5.0 | RAG (F-009), CI/CD (F-010), Analytics (F-011), Knowledge Base (F-012) | Q4 2026 |
+| v5.0 | RAG (F-009), CI/CD (F-010), Knowledge Base (F-012) | Q4 2026 |
 | v6.0 | GitLab & Bitbucket Integration (F-015) | Q1–Q2 2027 |

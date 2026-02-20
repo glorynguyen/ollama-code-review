@@ -13,6 +13,10 @@ import type { FindingCounts } from './notifications';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
+export type ReviewType = 'staged' | 'commit' | 'commit-range' | 'branch-compare' | 'pr' | 'file' | 'folder' | 'selection' | 'agent';
+
+export type IssueCategory = 'security' | 'performance' | 'style' | 'bugs' | 'maintainability' | 'accessibility' | 'documentation' | 'other';
+
 export interface ReviewScore {
 	id: string;
 	timestamp: string;
@@ -28,6 +32,14 @@ export interface ReviewScore {
 	findingCounts: FindingCounts;
 	/** Display label — file path, folder, or branch */
 	label?: string;
+	/** F-011: Review duration in milliseconds */
+	durationMs?: number;
+	/** F-011: Type of review performed */
+	reviewType?: ReviewType;
+	/** F-011: Files that were reviewed */
+	filesReviewed?: string[];
+	/** F-011: Issue categories detected in the review */
+	categories?: Partial<Record<IssueCategory, number>>;
 }
 
 // ─── Score computation ───────────────────────────────────────────────────────
@@ -129,8 +141,12 @@ export class ReviewScoreStore {
 
 	addScore(score: ReviewScore): void {
 		this._scores.unshift(score);
-		if (this._scores.length > 200) { this._scores = this._scores.slice(0, 200); }
+		if (this._scores.length > 500) { this._scores = this._scores.slice(0, 500); }
 		this._save();
+	}
+
+	getAllScores(): ReviewScore[] {
+		return this._scores;
 	}
 
 	getScores(limit = 30): ReviewScore[] {

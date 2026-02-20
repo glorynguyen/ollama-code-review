@@ -2,7 +2,7 @@
   "name": "ollama-code-review",
   "displayName": "Ollama Code Review",
   "description": "Get AI code reviews and generate commit messages from a local Ollama instance before you commit.",
-  "version": "3.10.0",
+  "version": "4.3.0",
   "author": "Vinh Nguyen (vincent)",
   "publisher": "VinhNguyen-Vincent",
   "icon": "images/icon.png",
@@ -172,6 +172,12 @@
         "title": "Generate Architecture Diagram (Mermaid)",
         "category": "Ollama Code Review",
         "icon": "$(type-hierarchy)"
+      },
+      {
+        "command": "ollama-code-review.showAnalyticsDashboard",
+        "title": "Show Review Analytics Dashboard",
+        "category": "Ollama Code Review",
+        "icon": "$(dashboard)"
       }
     ],
     "menus": {

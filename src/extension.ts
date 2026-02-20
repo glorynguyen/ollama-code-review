@@ -77,6 +77,7 @@ import {
 } from './reviewScore';
 import { runAgentReview, getAgentModeConfig } from './agent';
 import { generateMermaidDiagram } from './diagramGenerator';
+import { parseIssueCategories, extractFilesFromDiff, AnalyticsDashboardPanel } from './analytics';
 
 const CLAUDE_API_ENDPOINT = 'https://api.anthropic.com/v1/messages';
 const GLM_API_ENDPOINT = 'https://api.z.ai/api/paas/v4/chat/completions';
@@ -1979,7 +1980,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			}
 			const repoPath = repo.rootUri.fsPath;
 			const diffResult = await runGitCommand(repoPath, ['diff', '--staged']);
-			await runReview(diffResult, context);
+			await runReview(diffResult, context, 'staged');
 		} catch (error) {
 			handleError(error, "Failed to review staged changes.");
 		}
@@ -2100,7 +2101,7 @@ export async function activate(context: vscode.ExtensionContext) {
 				outputChannel.appendLine('---------------------------------------');
 
 				progress.report({ message: 'Running review...' });
-				await runReview(diffResult, context);
+				await runReview(diffResult, context, 'commit');
 			});
 
 		} catch (error) {
@@ -2176,7 +2177,7 @@ export async function activate(context: vscode.ExtensionContext) {
 				filesArray.forEach(f => outputChannel.appendLine(f));
 				outputChannel.appendLine('---------------------------------------');
 
-				await runReview(diffResult, context);
+				await runReview(diffResult, context, 'commit-range');
 			});
 
 		} catch (error) {
@@ -2225,7 +2226,7 @@ export async function activate(context: vscode.ExtensionContext) {
 				filesArray.forEach(f => outputChannel.appendLine(f));
 				outputChannel.appendLine('---------------------------------------');
 
-				await runReview(diffResult, context);
+				await runReview(diffResult, context, 'branch-compare');
 			});
 		} catch (error) {
 			handleError(error, 'Failed to review changes between branches.');
@@ -2398,7 +2399,7 @@ export async function activate(context: vscode.ExtensionContext) {
 				});
 
 				// Use the existing runReview workflow
-				await runReview(diff, context);
+				await runReview(diff, context, 'pr');
 			});
 		} catch (error) {
 			handleError(error, 'Failed to review GitHub PR.');
@@ -2597,6 +2598,16 @@ export async function activate(context: vscode.ExtensionContext) {
 	);
 	context.subscriptions.push(showReviewHistoryCommand, scoreStatusBarItem);
 
+	// F-011: Analytics Dashboard command
+	const showAnalyticsDashboardCommand = vscode.commands.registerCommand(
+		'ollama-code-review.showAnalyticsDashboard',
+		() => {
+			const store = ReviewScoreStore.getInstance(context.globalStorageUri.fsPath);
+			AnalyticsDashboardPanel.createOrShow(store.getAllScores());
+		}
+	);
+	context.subscriptions.push(showAnalyticsDashboardCommand);
+
 	// F-019: Batch / Legacy Code Review — Review File command
 	const reviewFileCommand = vscode.commands.registerCommand(
 		'ollama-code-review.reviewFile',
@@ -2669,7 +2680,7 @@ export async function activate(context: vscode.ExtensionContext) {
 					return;
 				}
 
-				await runFileReview(combined.trim(), `[Folder Review: ${relativeFolderPath} — ${files.length} file(s)]`, context);
+				await runFileReview(combined.trim(), `[Folder Review: ${relativeFolderPath} — ${files.length} file(s)]`, context, 'folder');
 			} catch (error) {
 				handleError(error, 'Failed to review folder.');
 			}
@@ -2693,7 +2704,8 @@ export async function activate(context: vscode.ExtensionContext) {
 			await runFileReview(
 				selectedText,
 				`[Selection Review: ${relativePath} lines ${startLine}–${endLine}]`,
-				context
+				context,
+				'selection'
 			);
 		}
 	);
@@ -2962,6 +2974,11 @@ export async function activate(context: vscode.ExtensionContext) {
 							label: `[Agent] ${result.stepsCompleted}/5 steps, ${result.durationMs}ms`,
 							...scoreResult,
 							findingCounts,
+							// F-011: Analytics fields
+							durationMs: result.durationMs,
+							reviewType: 'agent',
+							filesReviewed: extractFilesFromDiff(filteredDiff),
+							categories: parseIssueCategories(result.review),
 						};
 						store.addScore(scoreEntry);
 					}
@@ -3085,11 +3102,13 @@ function getGitAPI() {
 	return gitExtension.getAPI(1);
 }
 
-async function runReview(diff: string, context: vscode.ExtensionContext) {
+async function runReview(diff: string, context: vscode.ExtensionContext, reviewType: import('./reviewScore').ReviewType = 'staged') {
 	if (!diff || !diff.trim()) {
 		vscode.window.showInformationMessage('No code changes found to review in the selected range.');
 		return;
 	}
+
+	const reviewStartTime = Date.now();
 
 	// Apply diff filtering (config hierarchy: defaults → settings → .ollama-review.yaml)
 	const filterConfig = await getDiffFilterConfigWithYaml(outputChannel);
@@ -3168,6 +3187,11 @@ async function runReview(diff: string, context: vscode.ExtensionContext) {
 				profile: getActiveProfileName(context) ?? 'general',
 				...scoreResult,
 				findingCounts,
+				// F-011: Analytics fields
+				durationMs: Date.now() - reviewStartTime,
+				reviewType,
+				filesReviewed: extractFilesFromDiff(filteredDiff),
+				categories: parseIssueCategories(review),
 			};
 			store.addScore(scoreEntry);
 			outputChannel.appendLine(`[Score] Quality score: ${scoreResult.score}/100 (${findingCounts.critical}C ${findingCounts.high}H ${findingCounts.medium}M ${findingCounts.low}L)`);
@@ -3212,11 +3236,13 @@ async function runReview(diff: string, context: vscode.ExtensionContext) {
  * Bypasses diff filtering and uses a simpler file-review prompt so the model
  * knows there is no diff context. Integrates with F-016 scoring and F-018 notifications.
  */
-async function runFileReview(content: string, label: string, context: vscode.ExtensionContext) {
+async function runFileReview(content: string, label: string, context: vscode.ExtensionContext, reviewType: import('./reviewScore').ReviewType = 'file') {
 	if (!content || !content.trim()) {
 		vscode.window.showInformationMessage('No content to review.');
 		return;
 	}
+
+	const reviewStartTime = Date.now();
 
 	await vscode.window.withProgress({
 		location: vscode.ProgressLocation.Notification,
@@ -3243,6 +3269,10 @@ async function runFileReview(content: string, label: string, context: vscode.Ext
 				label,
 				...scoreResult,
 				findingCounts,
+				// F-011: Analytics fields
+				durationMs: Date.now() - reviewStartTime,
+				reviewType,
+				categories: parseIssueCategories(review),
 			};
 			store.addScore(scoreEntry);
 		}
