@@ -1,3 +1,10 @@
+# [3.11.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.10.0...v3.11.0) (2026-02-20)
+
+
+### Features
+
+* implement F-011 Review History & Analytics dashboard ([c7d9460](https://github.com/glorynguyen/ollama-code-review/commit/c7d9460379b1383f7bfe217213679631065dd3fa))
+
 # [3.10.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.9.0...v3.10.0) (2026-02-19)
 
 
