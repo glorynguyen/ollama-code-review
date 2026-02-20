@@ -3,7 +3,7 @@
 ## Project Overview
 
 - **Name:** Ollama Code Review VS Code Extension
-- **Version:** 4.5.0
+- **Version:** 5.0.0
 - **Purpose:** AI-powered code reviews and commit message generation using local Ollama or cloud models
 - **Author:** Vinh Nguyen (vincent)
 - **License:** MIT
@@ -138,6 +138,20 @@ out/                      # Compiled JavaScript output
 | `src/analytics/index.ts` | ~15 | Barrel exports for analytics module (F-011) |
 | `src/analytics/tracker.ts` | ~250 | Category extraction, aggregation, weekly trends, CSV/JSON export (F-011) |
 | `src/analytics/dashboard.ts` | ~320 | Rich analytics dashboard webview with Chart.js (F-011) |
+| `src/rag/index.ts` | ~20 | Barrel exports for RAG module (F-009) |
+| `src/rag/types.ts` | ~80 | RagConfig, CodeChunk, VectorStore, RetrievalResult interfaces (F-009) |
+| `src/rag/config.ts` | ~20 | `getRagConfig()` VS Code settings reader (F-009) |
+| `src/rag/embeddings.ts` | ~90 | Ollama embedding generation, TF-IDF fallback, cosine similarity (F-009) |
+| `src/rag/vectorStore.ts` | ~110 | `JsonVectorStore` — JSON-based persistence, no native deps (F-009) |
+| `src/rag/indexer.ts` | ~120 | `indexWorkspace()`, `indexFile()`, `chunkText()` (F-009) |
+| `src/rag/retriever.ts` | ~90 | `getRagContext()`, `buildRagContextSection()`, similarity search (F-009) |
+| `packages/cli/src/index.ts` | ~160 | CLI entry point, Commander.js argument parsing (F-010) |
+| `packages/cli/src/config.ts` | ~100 | Config builder from args + env vars, profile prompts (F-010) |
+| `packages/cli/src/review.ts` | ~180 | `buildPrompt()`, `callAIProvider()` for all 7 providers (F-010) |
+| `packages/cli/src/output.ts` | ~90 | Severity parsing, failure logic, output formatters (F-010) |
+| `packages/cli/src/github.ts` | ~80 | GitHub PR comment posting, env-based PR context (F-010) |
+| `ci-templates/github-actions.yml` | — | Production-ready GitHub Actions workflow template (F-010) |
+| `ci-templates/gitlab-ci.yml` | — | GitLab CI YAML template (F-010) |
 
 ## Commands
 
@@ -176,6 +190,8 @@ out/                      # Compiled JavaScript output
 | `ollama-code-review.postReviewToMR` | Post AI review as a comment to a GitLab MR (F-015) |
 | `ollama-code-review.reviewBitbucketPR` | Review a Bitbucket Pull Request by URL or number (F-015) |
 | `ollama-code-review.postReviewToBitbucketPR` | Post AI review as a comment to a Bitbucket PR (F-015) |
+| `ollama-code-review.indexCodebase` | Index workspace files into the RAG vector store for semantic retrieval (F-009) |
+| `ollama-code-review.clearRagIndex` | Clear the RAG codebase index from global storage (F-009) |
 
 ## Configuration Settings
 
@@ -223,6 +239,23 @@ out/                      # Compiled JavaScript output
 | `ollama-code-review.gitlab.baseUrl` | `"https://gitlab.com"` | Base URL for self-hosted GitLab instances (F-015) |
 | `ollama-code-review.bitbucket.username` | `""` | Bitbucket username for API authentication (F-015) |
 | `ollama-code-review.bitbucket.appPassword` | `""` | Bitbucket App Password (Pullrequests Read/Write scope) (F-015) |
+| `ollama-code-review.rag` | `{}` | RAG-Enhanced Reviews configuration (F-009) |
+
+### RAG Settings (F-009)
+
+The `rag` setting is an object with these properties:
+
+| Property | Default | Description |
+|----------|---------|-------------|
+| `enabled` | `false` | Enable RAG context injection during reviews |
+| `indexOnStartup` | `false` | Re-index workspace on extension startup (background) |
+| `embeddingModel` | `"nomic-embed-text"` | Ollama embedding model; TF-IDF used as fallback |
+| `maxResults` | `5` | Max similar code snippets to inject per review (1–20) |
+| `similarityThreshold` | `0.65` | Minimum cosine similarity score for inclusion (0–1) |
+| `includeGlob` | `**/*.{ts,js,...}` | Glob pattern for files to index |
+| `excludeGlob` | `**/node_modules/**,...` | Comma-separated patterns to exclude from indexing |
+| `chunkSize` | `1500` | Max characters per code chunk (200–8000) |
+| `chunkOverlap` | `150` | Character overlap between chunks (0–1000) |
 
 ### Diff Filter Settings
 
@@ -1552,9 +1585,9 @@ See [docs/roadmap/](./docs/roadmap/) for comprehensive planning documents:
 | Review History & Analytics (dashboard, categories, export, duration tracking) | F-011 | v4.3 |
 | Team Knowledge Base (decisions, patterns, rules YAML, keyword matching, prompt injection) | F-012 | v4.4 |
 | GitLab & Bitbucket Integration (review MRs/PRs, post comments, platform auto-detection) | F-015 | v4.5 |
+| RAG-Enhanced Reviews (semantic codebase indexing, cosine similarity retrieval, TF-IDF fallback) | F-009 | v5.0 |
+| CI/CD Integration (headless CLI, GitHub Actions template, GitLab CI template) | F-010 | v5.0 |
 
 ### Remaining Planned Features
 
-| Phase | Features | Target |
-|-------|----------|--------|
-| v5.0 | RAG (F-009), CI/CD (F-010) | Q4 2026 |
+All planned features from F-001 through F-020 have now shipped. The project is feature-complete as of v5.0.0.

@@ -99,6 +99,15 @@ import {
 	isBitbucketRemote,
 } from './bitbucket/prReview';
 import { getBitbucketAuth } from './bitbucket/auth';
+import {
+	JsonVectorStore,
+	getRagConfig,
+	indexWorkspace,
+	getRagContext,
+	buildRagContextSection,
+	isEmbeddingModelAvailable,
+	DEFAULT_RAG_CONFIG,
+} from './rag';
 
 const CLAUDE_API_ENDPOINT = 'https://api.anthropic.com/v1/messages';
 const GLM_API_ENDPOINT = 'https://api.z.ai/api/paas/v4/chat/completions';
@@ -939,6 +948,11 @@ let outputChannel: vscode.OutputChannel;
 let scoreStatusBarItem: vscode.StatusBarItem | undefined;
 // Extension context reference for score store (set in activate())
 let extensionGlobalStoragePath: string | undefined;
+
+// F-009: RAG vector store (initialised lazily in activate())
+let ragVectorStore: JsonVectorStore | undefined;
+// Whether the Ollama embedding model is reachable (checked lazily)
+let ragUseOllamaEmbeddings: boolean | undefined;
 
 interface GitCommitDetails {
 	hash: string;
@@ -2804,6 +2818,58 @@ export async function activate(context: vscode.ExtensionContext) {
 		outputChannel.appendLine('[Ollama Code Review] .ollama-review-knowledge.yaml deleted — knowledge cache invalidated.');
 	});
 
+	// F-009: RAG-Enhanced Reviews — initialise vector store
+	ragVectorStore = new JsonVectorStore(context.globalStorageUri.fsPath);
+	outputChannel.appendLine(`[RAG] Vector store loaded: ${ragVectorStore.chunkCount} chunks`);
+
+	// F-009: Index Codebase command
+	const indexCodebaseCommand = vscode.commands.registerCommand(
+		'ollama-code-review.indexCodebase',
+		async () => {
+			const ragConfig = getRagConfig();
+			if (!ragConfig.enabled) {
+				const enable = await vscode.window.showInformationMessage(
+					'RAG is disabled. Enable it to index your codebase for enhanced reviews.',
+					'Enable RAG',
+				);
+				if (enable !== 'Enable RAG') { return; }
+				await vscode.workspace.getConfiguration('ollama-code-review').update('rag.enabled', true, vscode.ConfigurationTarget.Global);
+			}
+			if (!ragVectorStore) {
+				ragVectorStore = new JsonVectorStore(context.globalStorageUri.fsPath);
+			}
+			const config = getRagConfig();
+			const vscodeConfig = vscode.workspace.getConfiguration('ollama-code-review');
+			const endpoint = vscodeConfig.get<string>('endpoint', 'http://localhost:11434/api/generate');
+			// Check embedding model availability once
+			if (ragUseOllamaEmbeddings === undefined) {
+				ragUseOllamaEmbeddings = await isEmbeddingModelAvailable(config.embeddingModel, endpoint);
+				outputChannel.appendLine(`[RAG] Ollama embedding model "${config.embeddingModel}": ${ragUseOllamaEmbeddings ? 'available' : 'not available — using fallback TF-IDF embeddings'}`);
+			}
+			await vscode.window.withProgress(
+				{ location: vscode.ProgressLocation.Notification, title: 'Ollama Code Review: Indexing codebase…', cancellable: true },
+				async (_progress, token) => {
+					const stats = await indexWorkspace(ragVectorStore!, config, endpoint, ragUseOllamaEmbeddings!, outputChannel, token);
+					vscode.window.showInformationMessage(
+						`Codebase indexed: ${stats.filesIndexed} files, ${stats.chunksCreated} chunks (${(stats.durationMs / 1000).toFixed(1)}s)`
+					);
+				},
+			);
+		}
+	);
+
+	// F-009: Clear RAG Index command
+	const clearRagIndexCommand = vscode.commands.registerCommand(
+		'ollama-code-review.clearRagIndex',
+		() => {
+			if (ragVectorStore) {
+				ragVectorStore.clear();
+				outputChannel.appendLine('[RAG] Index cleared.');
+			}
+			vscode.window.showInformationMessage('Ollama Code Review: RAG codebase index cleared.');
+		}
+	);
+
 	// F-014: Pre-Commit Guard — status bar item
 	const guardStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 98);
 	guardStatusBarItem.command = 'ollama-code-review.togglePreCommitGuard';
@@ -3379,7 +3445,9 @@ export async function activate(context: vscode.ExtensionContext) {
 		agentReviewCommand,
 		generateDiagramCommand,
 		reloadKnowledgeBaseCommand,
-		knowledgeWatcher
+		knowledgeWatcher,
+		indexCodebaseCommand,
+		clearRagIndexCommand,
 	);
 }
 
@@ -3744,6 +3812,38 @@ async function getOllamaReview(diff: string, context?: vscode.ExtensionContext, 
 		} catch (err) {
 			// Non-fatal — continue review without knowledge base
 			outputChannel.appendLine(`[Knowledge Base] Error: ${err}`);
+		}
+	}
+
+	// F-009: Append RAG context (similar code from the codebase index) if enabled
+	const ragConfig = getRagConfig();
+	if (ragConfig.enabled && ragVectorStore && ragVectorStore.chunkCount > 0) {
+		try {
+			// Lazily determine whether Ollama embeddings are available
+			if (ragUseOllamaEmbeddings === undefined) {
+				ragUseOllamaEmbeddings = await isEmbeddingModelAvailable(ragConfig.embeddingModel, endpoint);
+			}
+			// Extract changed file paths from the diff to avoid returning the files already in view
+			const changedFiles: string[] = [];
+			for (const line of diff.split('\n')) {
+				const m = line.match(/^\+\+\+ b\/(.+)$/);
+				if (m) { changedFiles.push(m[1]); }
+			}
+			const ragCtx = await getRagContext(
+				diff,
+				changedFiles,
+				ragVectorStore,
+				ragConfig,
+				endpoint,
+				ragUseOllamaEmbeddings!,
+			);
+			if (ragCtx.results.length > 0) {
+				prompt += buildRagContextSection(ragCtx.results);
+				outputChannel.appendLine(`[RAG] ${ragCtx.summary}`);
+			}
+		} catch (err) {
+			// Non-fatal — continue review without RAG context
+			outputChannel.appendLine(`[RAG] Error: ${err}`);
 		}
 	}
 

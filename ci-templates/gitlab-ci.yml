@@ -1,0 +1,88 @@
+# Ollama Code Review — GitLab CI Template
+# Copy and adapt this file into your .gitlab-ci.yml, or include it via:
+#   include:
+#     - remote: 'https://raw.githubusercontent.com/glorynguyen/ollama-code-review/main/ci-templates/gitlab-ci.yml'
+#
+# Required CI/CD variables (set in Project → Settings → CI/CD → Variables):
+#   ANTHROPIC_API_KEY  — if using Claude models
+#   GEMINI_API_KEY     — if using Gemini models
+#   MISTRAL_API_KEY    — if using Mistral models
+#
+# Documentation: https://github.com/glorynguyen/ollama-code-review
+
+stages:
+  - review
+
+.ai-code-review-base:
+  stage: review
+  image: node:20-alpine
+  before_script:
+    - npm install -g @ollama-code-review/cli
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+
+# ── Claude (recommended for cloud CI) ─────────────────────────────────────────
+ai-code-review-claude:
+  extends: .ai-code-review-base
+  variables:
+    OCR_PROVIDER: claude
+    OCR_MODEL: claude-sonnet-4-20250514
+    OCR_PROFILE: general
+    OCR_FAIL_ON_SEVERITY: high
+    OCR_OUTPUT_FORMAT: markdown
+  script:
+    - git fetch origin $CI_MERGE_REQUEST_TARGET_BRANCH_NAME
+    - git diff origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME...HEAD > /tmp/mr.diff
+    - ollama-review
+        --provider $OCR_PROVIDER
+        --model $OCR_MODEL
+        --profile $OCR_PROFILE
+        --fail-on-severity $OCR_FAIL_ON_SEVERITY
+        --output-format $OCR_OUTPUT_FORMAT
+        --diff-file /tmp/mr.diff
+        | tee /tmp/review-output.md
+  artifacts:
+    paths:
+      - /tmp/review-output.md
+    expire_in: 1 week
+    when: always
+
+# ── Gemini (free tier available) ──────────────────────────────────────────────
+# ai-code-review-gemini:
+#   extends: .ai-code-review-base
+#   variables:
+#     OCR_PROVIDER: gemini
+#     OCR_MODEL: gemini-2.5-flash
+#     OCR_PROFILE: security
+#     OCR_FAIL_ON_SEVERITY: critical
+#   script:
+#     - git diff origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME...HEAD > /tmp/mr.diff
+#     - ollama-review --provider gemini --model gemini-2.5-flash --diff-file /tmp/mr.diff
+
+# ── Local Ollama (self-hosted runner with GPU) ─────────────────────────────────
+# ai-code-review-ollama:
+#   extends: .ai-code-review-base
+#   tags:
+#     - gpu-runner   # your self-hosted runner tag with Ollama installed
+#   variables:
+#     OCR_PROVIDER: ollama
+#     OCR_MODEL: qwen2.5-coder:14b-instruct-q4_0
+#     OCR_OLLAMA_ENDPOINT: http://localhost:11434/api/generate
+#     OCR_PROFILE: general
+#   script:
+#     - ollama pull $OCR_MODEL
+#     - git diff origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME...HEAD | ollama-review
+
+# ── Security-focused MR review ────────────────────────────────────────────────
+# ai-security-review:
+#   extends: .ai-code-review-base
+#   rules:
+#     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+#       changes:
+#         - src/auth/**/*
+#         - src/api/**/*
+#         - "**/*secret*"
+#         - "**/*password*"
+#   script:
+#     - git diff origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME...HEAD > /tmp/mr.diff
+#     - ollama-review --provider claude --profile owasp-top10 --fail-on-severity critical --diff-file /tmp/mr.diff

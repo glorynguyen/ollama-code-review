@@ -661,6 +661,136 @@ rules:
 
 > The knowledge base file is Git-friendly (YAML format) — all decisions are versioned with the repository. The extension auto-reloads on file changes.
 
+### 37. RAG-Enhanced Reviews (Retrieval-Augmented Generation)
+
+Boost review quality by automatically retrieving the most semantically similar code from your indexed codebase and injecting it as additional context. The AI gains a broader picture of how changed code relates to the rest of the project — enabling deeper, more accurate findings.
+
+- **Command**: `Ollama Code Review: Index Codebase for RAG-Enhanced Reviews` — build or rebuild the codebase index (run this once, or after major refactors).
+- **Command**: `Ollama Code Review: Clear RAG Codebase Index` — delete the local index to free space.
+
+**How it works:**
+1. Run **Index Codebase** to chunk and embed your workspace files (uses Ollama's `nomic-embed-text` model by default, with a TF-IDF fallback if the model isn't available)
+2. Enable RAG in settings: `ollama-code-review.rag.enabled = true`
+3. Every subsequent review automatically retrieves the top-N most similar snippets and appends them to the prompt
+4. The AI cites these snippets when it finds related patterns, inconsistencies, or conventions
+
+**Configuration** (under `ollama-code-review.rag`):
+
+| Property | Default | Description |
+|----------|---------|-------------|
+| `enabled` | `false` | Enable RAG-enhanced reviews |
+| `indexOnStartup` | `false` | Re-index workspace on extension startup |
+| `embeddingModel` | `nomic-embed-text` | Ollama embedding model (TF-IDF fallback if unavailable) |
+| `maxResults` | `5` | Max similar snippets to inject per review |
+| `similarityThreshold` | `0.65` | Minimum cosine similarity score (0–1) for inclusion |
+| `includeGlob` | `**/*.{ts,js,tsx,...}` | File types to index |
+| `excludeGlob` | `**/node_modules/**,...` | Paths to exclude from indexing |
+| `chunkSize` | `1500` | Max characters per code chunk |
+| `chunkOverlap` | `150` | Character overlap between chunks |
+
+**Index storage:** The codebase index is persisted in VS Code's global storage as a JSON file — no external database required. The index survives restarts and only needs to be rebuilt when your codebase changes significantly.
+
+> RAG retrieval is non-fatal — if the index is empty or retrieval fails, the review proceeds normally.
+
+---
+
+### 38. CI/CD Integration
+
+Run AI-powered code reviews headlessly in your CI/CD pipelines using the standalone `@ollama-code-review/cli` package. Post review results to GitHub PRs automatically, fail pipelines based on severity thresholds, and integrate with any AI provider.
+
+**Install the CLI:**
+```bash
+npm install -g @ollama-code-review/cli
+```
+
+**Basic usage:**
+```bash
+# Review staged changes (local Ollama)
+ollama-review --provider ollama --model qwen2.5-coder:14b-instruct-q4_0
+
+# Review a PR diff with Claude, fail on high+ findings
+ANTHROPIC_API_KEY=sk-... ollama-review \
+  --provider claude \
+  --model claude-sonnet-4-20250514 \
+  --profile security \
+  --fail-on-severity high \
+  --output-format markdown
+
+# Pipe from git diff
+git diff origin/main...HEAD | ollama-review --provider gemini
+
+# Post to GitHub PR automatically
+ollama-review --provider claude --post-to-github --diff-base origin/main
+```
+
+**Supported providers in CI:** `ollama`, `claude`, `gemini`, `mistral`, `glm`, `minimax`, `openai-compatible`
+
+**Output formats:** `text` (default), `markdown`, `json`
+
+**GitHub Actions — quick setup:**
+
+```yaml
+# .github/workflows/code-review.yml
+name: AI Code Review
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+permissions:
+  pull-requests: write
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - run: npm install -g @ollama-code-review/cli
+      - name: AI Code Review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git diff origin/${{ github.base_ref }}...HEAD > /tmp/pr.diff
+          ollama-review \
+            --provider claude \
+            --profile security \
+            --fail-on-severity high \
+            --post-to-github \
+            --diff-file /tmp/pr.diff
+```
+
+**GitLab CI — quick setup:**
+
+```yaml
+ai-code-review:
+  stage: review
+  image: node:20-alpine
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+  before_script:
+    - npm install -g @ollama-code-review/cli
+  script:
+    - git diff origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME...HEAD > /tmp/mr.diff
+    - ollama-review --provider claude --profile general --diff-file /tmp/mr.diff
+```
+
+See `ci-templates/` for complete, production-ready workflow files with advanced configuration examples.
+
+**Environment variables** (alternative to CLI flags):
+
+| Variable | Description |
+|----------|-------------|
+| `OCR_PROVIDER` | AI provider |
+| `OCR_MODEL` | Model name |
+| `OCR_PROFILE` | Review profile |
+| `OCR_FAIL_ON_SEVERITY` | Failure threshold |
+| `OCR_OUTPUT_FORMAT` | Output format (`text`/`json`/`markdown`) |
+| `ANTHROPIC_API_KEY` | Claude API key |
+| `GEMINI_API_KEY` | Gemini API key |
+| `MISTRAL_API_KEY` | Mistral API key |
+| `GITHUB_TOKEN` | GitHub token for PR comments |
+
 ---
 
 ## Requirements
@@ -800,6 +930,16 @@ This extension contributes the following settings to your VS Code `settings.json
     * **Default**: `""`
 * `ollama-code-review.bitbucket.appPassword`: Bitbucket App Password with `Pullrequests: Read` and `Pullrequests: Write` scopes.
     * **Default**: `""`
+* `ollama-code-review.rag`: Configure RAG-Enhanced Reviews (F-009). Index your codebase for semantic code retrieval during reviews.
+    * `enabled`: Enable RAG context injection during reviews (default: `false`)
+    * `indexOnStartup`: Re-index workspace on startup (default: `false`)
+    * `embeddingModel`: Ollama embedding model for indexing (default: `"nomic-embed-text"`)
+    * `maxResults`: Max similar code snippets to inject per review (default: `5`, range: 1–20)
+    * `similarityThreshold`: Minimum cosine similarity score for inclusion (default: `0.65`, range: 0–1)
+    * `includeGlob`: Glob pattern for files to index (default: common source file types)
+    * `excludeGlob`: Comma-separated patterns to exclude from indexing (default: `node_modules`, `dist`, etc.)
+    * `chunkSize`: Max characters per code chunk (default: `1500`)
+    * `chunkOverlap`: Character overlap between chunks (default: `150`)
 
 You can configure these by opening the Command Palette (`Ctrl+Shift+P`) and searching for `Preferences: Open User Settings (JSON)`.
 
