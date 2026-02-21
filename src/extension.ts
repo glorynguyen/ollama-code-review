@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
 import axios from 'axios';
+import * as https from 'https';
+import * as http from 'http';
 import { exec } from 'child_process';
 import * as path from 'path';
 import { OllamaReviewPanel } from './reviewProvider';
@@ -108,6 +110,7 @@ import {
 	isEmbeddingModelAvailable,
 	DEFAULT_RAG_CONFIG,
 } from './rag';
+import { loadRulesDirectory, clearRulesCache } from './rules/loader';
 
 const CLAUDE_API_ENDPOINT = 'https://api.anthropic.com/v1/messages';
 const GLM_API_ENDPOINT = 'https://api.z.ai/api/paas/v4/chat/completions';
@@ -941,6 +944,306 @@ async function callOpenAICompatibleAPI(prompt: string, config: vscode.WorkspaceC
 	}
 }
 
+
+// ---------------------------------------------------------------------------
+// F-022: Streaming helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Stream a review from the Ollama API using NDJSON chunked responses.
+ * Each JSON line contains a `response` token and optionally `done` with metrics.
+ */
+async function streamOllamaAPI(
+	prompt: string,
+	model: string,
+	endpoint: string,
+	temperature: number,
+	onChunk: (text: string) => void,
+): Promise<string> {
+	return new Promise<string>((resolve, reject) => {
+		let url: URL;
+		try {
+			url = new URL(endpoint);
+		} catch {
+			return reject(new Error(`Invalid Ollama endpoint URL: ${endpoint}`));
+		}
+
+		const isHttps = url.protocol === 'https:';
+		const lib = isHttps ? https : http;
+		const postData = JSON.stringify({ model, prompt, stream: true, options: { temperature } });
+
+		const options = {
+			hostname: url.hostname,
+			port: url.port ? parseInt(url.port) : (isHttps ? 443 : 80),
+			path: url.pathname + url.search,
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'Content-Length': Buffer.byteLength(postData),
+			},
+		};
+
+		let fullText = '';
+		let buffer = '';
+
+		const req = lib.request(options, (res) => {
+			res.on('data', (chunk: Buffer) => {
+				buffer += chunk.toString();
+				const lines = buffer.split('\n');
+				buffer = lines.pop() ?? '';
+
+				for (const line of lines) {
+					if (!line.trim()) { continue; }
+					try {
+						const data = JSON.parse(line);
+						if (data.response) {
+							fullText += data.response;
+							onChunk(data.response);
+						}
+						if (data.done) {
+							const evalDuration = data.eval_duration ?? 0;
+							const evalCount = data.eval_count ?? 0;
+							lastPerformanceMetrics = {
+								provider: 'ollama',
+								model,
+								totalDuration: data.total_duration,
+								loadDuration: data.load_duration,
+								promptEvalCount: data.prompt_eval_count,
+								evalCount: data.eval_count,
+								evalDuration: data.eval_duration,
+								tokensPerSecond: evalDuration > 0 ? (evalCount / (evalDuration / 1e9)) : undefined,
+								totalDurationSeconds: data.total_duration ? data.total_duration / 1e9 : undefined,
+							};
+						}
+					} catch { /* ignore malformed JSON lines */ }
+				}
+			});
+
+			res.on('end', () => {
+				if (buffer.trim()) {
+					try {
+						const data = JSON.parse(buffer);
+						if (data.response) { fullText += data.response; onChunk(data.response); }
+					} catch { /* ignore */ }
+				}
+				resolve(fullText);
+			});
+
+			res.on('error', reject);
+		});
+
+		req.on('error', reject);
+		req.write(postData);
+		req.end();
+	});
+}
+
+/**
+ * Stream a review from the Anthropic Claude API using SSE.
+ */
+async function streamClaudeAPI(
+	prompt: string,
+	config: vscode.WorkspaceConfiguration,
+	onChunk: (text: string) => void,
+): Promise<string> {
+	const model = getOllamaModel(config);
+	const apiKey = config.get<string>('claudeApiKey', '');
+	const temperature = config.get<number>('temperature', 0);
+
+	if (!apiKey) {
+		throw new Error('Claude API key is not configured. Please set it in Settings > Ollama Code Review > Claude Api Key');
+	}
+
+	return new Promise<string>((resolve, reject) => {
+		const postData = JSON.stringify({
+			model,
+			max_tokens: 8192,
+			messages: [{ role: 'user', content: prompt }],
+			stream: true,
+			temperature,
+		});
+
+		const options = {
+			hostname: 'api.anthropic.com',
+			path: '/v1/messages',
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'x-api-key': apiKey,
+				'anthropic-version': '2023-06-01',
+				'Content-Length': Buffer.byteLength(postData),
+			},
+		};
+
+		let fullText = '';
+		let buffer = '';
+		let inputTokens = 0;
+		let outputTokens = 0;
+
+		const req = https.request(options, (res) => {
+			if (res.statusCode && res.statusCode >= 400) {
+				let body = '';
+				res.on('data', (c: Buffer) => { body += c.toString(); });
+				res.on('end', () => {
+					try {
+						const err = JSON.parse(body);
+						reject(new Error(`Claude API Error (${res.statusCode}): ${err?.error?.message ?? body}`));
+					} catch {
+						reject(new Error(`Claude API Error (${res.statusCode}): ${body}`));
+					}
+				});
+				return;
+			}
+
+			res.on('data', (chunk: Buffer) => {
+				buffer += chunk.toString();
+				const lines = buffer.split('\n');
+				buffer = lines.pop() ?? '';
+
+				for (const line of lines) {
+					if (!line.startsWith('data: ')) { continue; }
+					const jsonStr = line.slice(6).trim();
+					if (!jsonStr || jsonStr === '[DONE]') { continue; }
+					try {
+						const data = JSON.parse(jsonStr);
+						if (data.type === 'message_start' && data.message?.usage) {
+							inputTokens = data.message.usage.input_tokens ?? 0;
+						}
+						if (data.type === 'content_block_delta' && data.delta?.type === 'text_delta') {
+							const text = data.delta.text ?? '';
+							if (text) { fullText += text; onChunk(text); }
+						}
+						if (data.type === 'message_delta' && data.usage) {
+							outputTokens = data.usage.output_tokens ?? 0;
+						}
+					} catch { /* ignore malformed SSE lines */ }
+				}
+			});
+
+			res.on('end', () => {
+				lastPerformanceMetrics = {
+					provider: 'claude',
+					model,
+					claudeInputTokens: inputTokens,
+					claudeOutputTokens: outputTokens,
+					promptEvalCount: inputTokens,
+					evalCount: outputTokens,
+				};
+				resolve(fullText);
+			});
+
+			res.on('error', reject);
+		});
+
+		req.on('error', reject);
+		req.write(postData);
+		req.end();
+	});
+}
+
+/**
+ * Stream a review from any OpenAI-compatible endpoint using SSE.
+ */
+async function streamOpenAICompatibleAPI(
+	prompt: string,
+	config: vscode.WorkspaceConfiguration,
+	onChunk: (text: string) => void,
+): Promise<string> {
+	const endpoint = config.get<string>('openaiCompatible.endpoint', 'http://localhost:1234/v1');
+	const apiKey = config.get<string>('openaiCompatible.apiKey', '');
+	const model = config.get<string>('openaiCompatible.model', '');
+	const temperature = config.get<number>('temperature', 0);
+
+	if (!model) {
+		throw new Error(
+			'OpenAI-compatible model is not configured.\n' +
+			'Please set it in Settings > Ollama Code Review > OpenAI Compatible > Model'
+		);
+	}
+
+	let url: URL;
+	try {
+		url = new URL(`${endpoint.replace(/\/$/, '')}/chat/completions`);
+	} catch {
+		throw new Error(`Invalid OpenAI-compatible endpoint: ${endpoint}`);
+	}
+
+	return new Promise<string>((resolve, reject) => {
+		const postData = JSON.stringify({
+			model,
+			messages: [
+				{ role: 'system', content: 'You are an expert software engineer and code reviewer.' },
+				{ role: 'user', content: prompt },
+			],
+			stream: true,
+			temperature,
+			max_tokens: 8192,
+		});
+
+		const headers: Record<string, string | number> = {
+			'Content-Type': 'application/json',
+			'Content-Length': Buffer.byteLength(postData),
+		};
+		if (apiKey) { headers['Authorization'] = `Bearer ${apiKey}`; }
+
+		const isHttps = url.protocol === 'https:';
+		const lib = isHttps ? https : http;
+		const options = {
+			hostname: url.hostname,
+			port: url.port ? parseInt(url.port) : (isHttps ? 443 : 80),
+			path: url.pathname + url.search,
+			method: 'POST',
+			headers,
+		};
+
+		let fullText = '';
+		let buffer = '';
+
+		const req = lib.request(options, (res) => {
+			res.on('data', (chunk: Buffer) => {
+				buffer += chunk.toString();
+				const lines = buffer.split('\n');
+				buffer = lines.pop() ?? '';
+
+				for (const line of lines) {
+					if (!line.startsWith('data: ')) { continue; }
+					const jsonStr = line.slice(6).trim();
+					if (!jsonStr || jsonStr === '[DONE]') { continue; }
+					try {
+						const data = JSON.parse(jsonStr);
+						const delta = data.choices?.[0]?.delta?.content;
+						if (delta) { fullText += delta; onChunk(delta); }
+					} catch { /* ignore malformed SSE lines */ }
+				}
+			});
+
+			res.on('end', () => {
+				lastPerformanceMetrics = {
+					provider: 'openai-compatible',
+					model,
+				};
+				resolve(fullText);
+			});
+
+			res.on('error', reject);
+		});
+
+		req.on('error', (err) => {
+			if ((err as NodeJS.ErrnoException).code === 'ECONNREFUSED') {
+				reject(new Error(
+					`Could not connect to OpenAI-compatible endpoint at ${endpoint}.\n` +
+					'Make sure your server (LM Studio, vLLM, LocalAI, etc.) is running.'
+				));
+			} else {
+				reject(err);
+			}
+		});
+		req.write(postData);
+		req.end();
+	});
+}
+
+// ---------------------------------------------------------------------------
 
 let outputChannel: vscode.OutputChannel;
 
@@ -3424,6 +3727,31 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 	);
 
+	// F-026: Reload rules directory command
+	const reloadRulesCommand = vscode.commands.registerCommand(
+		'ollama-code-review.reloadRules',
+		() => {
+			clearRulesCache();
+			vscode.window.showInformationMessage('Ollama Code Review: Rules directory reloaded.');
+			outputChannel.appendLine('[Ollama Code Review] Rules cache cleared. Will re-read .ollama-review/rules/ on next review.');
+		}
+	);
+
+	// F-026: Watch .ollama-review/rules/ for changes and auto-invalidate the cache
+	const rulesWatcher = vscode.workspace.createFileSystemWatcher('.ollama-review/rules/*.md');
+	rulesWatcher.onDidChange(() => {
+		clearRulesCache();
+		outputChannel.appendLine('[Ollama Code Review] Rules file changed — rules cache invalidated.');
+	});
+	rulesWatcher.onDidCreate(() => {
+		clearRulesCache();
+		outputChannel.appendLine('[Ollama Code Review] Rules file created — rules cache invalidated.');
+	});
+	rulesWatcher.onDidDelete(() => {
+		clearRulesCache();
+		outputChannel.appendLine('[Ollama Code Review] Rules file deleted — rules cache invalidated.');
+	});
+
 	context.subscriptions.push(
 		reviewStagedChangesCommand,
 		reviewCommitRangeCommand,
@@ -3448,6 +3776,8 @@ export async function activate(context: vscode.ExtensionContext) {
 		knowledgeWatcher,
 		indexCodebaseCommand,
 		clearRagIndexCommand,
+		reloadRulesCommand,
+		rulesWatcher,
 	);
 }
 
@@ -3486,25 +3816,110 @@ async function runReview(diff: string, context: vscode.ExtensionContext, reviewT
 		outputChannel.appendLine(`Reviewing ${filterResult.stats.includedFiles} of ${filterResult.stats.totalFiles} files`);
 	}
 
+	// F-022: Determine whether streaming is enabled and supported for the active model
+	const streamingConfig = vscode.workspace.getConfiguration('ollama-code-review');
+	const streamingEnabled = streamingConfig.get<boolean>('streaming.enabled', true);
+	const activeModel = getOllamaModel(streamingConfig);
+	const supportsStreaming = streamingEnabled && (
+		!isGlmModel(activeModel) &&
+		!isHuggingFaceModel(activeModel) &&
+		!isGeminiModel(activeModel) &&
+		!isMistralModel(activeModel) &&
+		!isMiniMaxModel(activeModel)
+	);
+
+	// Gather context (always, regardless of streaming)
+	let contextBundle: ContextBundle | undefined;
+	const ctxConfig = getContextGatheringConfig();
+	if (ctxConfig.enabled) {
+		try {
+			contextBundle = await gatherContext(filteredDiff, ctxConfig, outputChannel);
+		} catch (err) {
+			outputChannel.appendLine(`[Context Gathering] Error: ${err}`);
+		}
+	}
+
+	if (supportsStreaming) {
+		// F-022: Streaming path — open panel first, stream chunks in real-time
+		const reviewPanel = OllamaReviewPanel.startStreaming(filteredDiff, context);
+
+		try {
+			const review = await getOllamaReview(filteredDiff, context, contextBundle, (chunk) => {
+				reviewPanel.pushChunk(chunk);
+			});
+
+			const metrics = getLastPerformanceMetrics();
+			const cfg = vscode.workspace.getConfiguration('ollama-code-review');
+			if (metrics && metrics.provider === 'ollama') {
+				const activeModelInfo = await checkActiveModels(cfg);
+				if (activeModelInfo) { metrics.activeModel = activeModelInfo; }
+			}
+			if (metrics) { metrics.activeProfile = getActiveProfileName(context); }
+
+			reviewPanel.finalizeStream(metrics);
+
+			// F-016: Score
+			const findingCounts = parseFindingCounts(review);
+			const scoreResult = computeScore(findingCounts);
+			if (extensionGlobalStoragePath) {
+				const store = ReviewScoreStore.getInstance(extensionGlobalStoragePath);
+				const gitAPI = getGitAPI();
+				const repo = gitAPI?.repositories?.[0];
+				const repoName = repo?.rootUri ? vscode.workspace.asRelativePath(repo.rootUri) : 'unknown';
+				let branch = 'unknown';
+				try { branch = repo?.state?.HEAD?.name ?? 'unknown'; } catch { /* ignore */ }
+				const scoreEntry: ReviewScore = {
+					id: Date.now().toString(),
+					timestamp: new Date().toISOString(),
+					repo: repoName,
+					branch,
+					model: metrics?.model ?? getOllamaModel(cfg),
+					profile: getActiveProfileName(context) ?? 'general',
+					...scoreResult,
+					findingCounts,
+					durationMs: Date.now() - reviewStartTime,
+					reviewType,
+					filesReviewed: extractFilesFromDiff(filteredDiff),
+					categories: parseIssueCategories(review),
+				};
+				store.addScore(scoreEntry);
+				outputChannel.appendLine(`[Score] Quality score: ${scoreResult.score}/100 (${findingCounts.critical}C ${findingCounts.high}H ${findingCounts.medium}M ${findingCounts.low}L)`);
+			}
+			if (scoreStatusBarItem) {
+				updateScoreStatusBar(scoreStatusBarItem, scoreResult.score);
+				scoreStatusBarItem.show();
+			}
+
+			// F-018: Notifications
+			{
+				const notifPayload: NotificationPayload = {
+					reviewText: review,
+					model: metrics?.model ?? getOllamaModel(cfg),
+					profile: getActiveProfileName(context) ?? 'general',
+					score: scoreResult.score,
+					findingCounts,
+				};
+				try {
+					const gitAPI = getGitAPI();
+					const repo = gitAPI?.repositories?.[0];
+					notifPayload.branch = repo?.state?.HEAD?.name ?? undefined;
+					notifPayload.repoName = repo?.rootUri ? vscode.workspace.asRelativePath(repo.rootUri) : undefined;
+				} catch { /* ignore */ }
+				sendNotifications(notifPayload, outputChannel).catch(() => { /* already logged */ });
+			}
+		} catch (error) {
+			reviewPanel.finalizeStream(null);
+			throw error;
+		}
+		return;
+	}
+
 	await vscode.window.withProgress({
 		location: vscode.ProgressLocation.Notification,
 		title: "Ollama Code Review",
 		cancellable: false
 	}, async (progress) => {
-		// F-008: Gather multi-file context (imports, tests, type definitions)
-		let contextBundle: ContextBundle | undefined;
-		const ctxConfig = getContextGatheringConfig();
-		if (ctxConfig.enabled) {
-			progress.report({ message: 'Gathering related file context…' });
-			try {
-				contextBundle = await gatherContext(filteredDiff, ctxConfig, outputChannel);
-			} catch (err) {
-				// Non-fatal — continue review without context
-				outputChannel.appendLine(`[Context Gathering] Error: ${err}`);
-			}
-		}
-
-		progress.report({ message: `Asking Ollama for a review (${filterResult.stats.includedFiles} files)...` });
+		progress.report({ message: `Asking AI for a review (${filterResult.stats.includedFiles} files)...` });
 		const review = await getOllamaReview(filteredDiff, context, contextBundle);
 
 		// Get performance metrics and check for active model
@@ -3699,8 +4114,16 @@ async function getOllamaFileReview(content: string, label: string, context?: vsc
 		}
 	}
 
+	// F-026: Inject rules from .ollama-review/rules/*.md (coexists with F-012)
+	let rulesContext = '';
+	try {
+		rulesContext = await loadRulesDirectory(outputChannel);
+	} catch {
+		// Non-fatal — continue without rules directory
+	}
+
 	const prompt = `You are an expert software engineer and code reviewer with deep knowledge of **${frameworksList}**.
-${skillContext}${profileContext}${knowledgeContext}
+${skillContext}${profileContext}${knowledgeContext}${rulesContext}
 Review the following code and provide constructive, actionable feedback. This is a direct file review (no git diff context).
 ${label}
 
@@ -3740,7 +4163,7 @@ ${content}
 	return response.data?.response ?? '';
 }
 
-async function getOllamaReview(diff: string, context?: vscode.ExtensionContext, contextBundle?: ContextBundle): Promise<string> {
+async function getOllamaReview(diff: string, context?: vscode.ExtensionContext, contextBundle?: ContextBundle, onChunk?: (text: string) => void): Promise<string> {
 	const config = vscode.workspace.getConfiguration('ollama-code-review');
 	const model = getOllamaModel(config);
 	const endpoint = config.get<string>('endpoint', 'http://localhost:11434/api/generate');
@@ -3815,6 +4238,17 @@ async function getOllamaReview(diff: string, context?: vscode.ExtensionContext, 
 		}
 	}
 
+	// F-026: Append rules from .ollama-review/rules/*.md (coexists with F-012)
+	try {
+		const rulesSection = await loadRulesDirectory(outputChannel);
+		if (rulesSection) {
+			prompt += rulesSection;
+		}
+	} catch (err) {
+		// Non-fatal — continue review without rules directory
+		outputChannel.appendLine(`[Rules] Error: ${err}`);
+	}
+
 	// F-009: Append RAG context (similar code from the codebase index) if enabled
 	const ragConfig = getRagConfig();
 	if (ragConfig.enabled && ragVectorStore && ragVectorStore.chunkCount > 0) {
@@ -3847,10 +4281,26 @@ async function getOllamaReview(diff: string, context?: vscode.ExtensionContext, 
 		}
 	}
 
-	try {
-		// Clear previous metrics
-		clearPerformanceMetrics();
+	// Clear previous metrics before the API call
+	clearPerformanceMetrics();
 
+	// F-022: Streaming path — for Ollama, Claude, and OpenAI-compatible when onChunk is provided
+	if (onChunk) {
+		if (isClaudeModel(model)) {
+			return await streamClaudeAPI(prompt, config, onChunk);
+		}
+		if (isOpenAICompatibleModel(model)) {
+			return await streamOpenAICompatibleAPI(prompt, config, onChunk);
+		}
+		if (!isGlmModel(model) && !isHuggingFaceModel(model) && !isGeminiModel(model) &&
+		    !isMistralModel(model) && !isMiniMaxModel(model)) {
+			// Default: stream from Ollama
+			return await streamOllamaAPI(prompt, model, endpoint, temperature, onChunk);
+		}
+		// Fall through to non-streaming for providers that don't support it yet
+	}
+
+	try {
 		// Use Claude API if a Claude model is selected
 		if (isClaudeModel(model)) {
 			return await callClaudeAPI(prompt, config, true);

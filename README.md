@@ -791,6 +791,63 @@ See `ci-templates/` for complete, production-ready workflow files with advanced 
 | `MISTRAL_API_KEY` | Mistral API key |
 | `GITHUB_TOKEN` | GitHub token for PR comments |
 
+### 39. Streaming Responses
+
+Get real-time, token-by-token output as the AI generates your review — no more waiting for the full response before seeing any feedback.
+
+- **Supported providers**: Ollama, Claude (Anthropic), and any OpenAI-compatible server (LM Studio, vLLM, LocalAI, Groq, OpenRouter, etc.)
+- **How it works**: The review panel opens immediately and text appears incrementally as tokens arrive, exactly like a chat interface.
+- **Fallback**: Providers that don't support streaming (GLM, Hugging Face, Gemini, Mistral, MiniMax) continue to use the standard non-streaming path automatically.
+
+**Configuration:**
+
+```json
+"ollama-code-review.streaming.enabled": true
+```
+
+Set to `false` to disable streaming and revert to the classic "wait for full response" behavior for all providers.
+
+### 40. Rules Directory (.ollama-review/rules/)
+
+Define plain-text review rules using Markdown files in a `.ollama-review/rules/` directory at your workspace root. No schema required — just write your rules and they are injected into every review.
+
+This is a lightweight companion to the [Team Knowledge Base](#36-team-knowledge-base) — use rules for universal team conventions, and the knowledge base for structured Architecture Decision Records and patterns.
+
+**Example structure:**
+
+```
+.ollama-review/
+└── rules/
+    ├── 01-typescript.md
+    ├── 02-react.md
+    └── 03-security.md
+```
+
+**Example `.ollama-review/rules/01-typescript.md`:**
+
+```markdown
+## TypeScript Rules
+
+- Always use TypeScript strict mode (`"strict": true` in tsconfig.json)
+- Never use the `any` type — use `unknown` and narrow with type guards
+- Prefer named exports over default exports
+- Use `const` assertions for literal types where possible
+- All public API functions must have explicit return type annotations
+```
+
+**How it works:**
+1. On extension activation, all `.md` files in `.ollama-review/rules/` are discovered and sorted by filename
+2. Their contents are concatenated into a **Team Rules** section injected into every review prompt
+3. A file watcher auto-reloads on any create, change, or delete event — no restart needed
+4. Use the **"Reload Rules Directory"** command to manually flush the cache
+5. Coexists with the Team Knowledge Base — both are injected if both are configured
+
+**Settings:**
+
+- **Command**: `Ollama Code Review: Reload Rules Directory (.ollama-review/rules/)` — manually flush the rules cache
+
+> Rules are plain Markdown, so they're easy to write, review, and version-control alongside your code. Use numbered filenames (e.g., `01-typescript.md`, `02-react.md`) to control injection order.
+
 ---
 
 ## Requirements
@@ -940,6 +997,9 @@ This extension contributes the following settings to your VS Code `settings.json
     * `excludeGlob`: Comma-separated patterns to exclude from indexing (default: `node_modules`, `dist`, etc.)
     * `chunkSize`: Max characters per code chunk (default: `1500`)
     * `chunkOverlap`: Character overlap between chunks (default: `150`)
+* `ollama-code-review.streaming.enabled`: Enable streaming responses for supported providers (Ollama, Claude, OpenAI-compatible). Review text appears token-by-token in the review panel as it is generated. Providers that don't support streaming automatically fall back to non-streaming mode.
+    * **Type**: `boolean`
+    * **Default**: `true`
 
 You can configure these by opening the Command Palette (`Ctrl+Shift+P`) and searching for `Preferences: Open User Settings (JSON)`.
 

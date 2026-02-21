@@ -96,6 +96,52 @@ export class OllamaReviewPanel {
   }
 
   /**
+   * F-022: Open (or reveal) the review panel in streaming mode.
+   * The panel starts with empty content; call pushChunk() to feed tokens
+   * and finalizeStream() when done.
+   */
+  public static startStreaming(diff: string, context: vscode.ExtensionContext): OllamaReviewPanel {
+    const column = vscode.window.activeTextEditor ? vscode.window.activeTextEditor.viewColumn : undefined;
+
+    if (OllamaReviewPanel.currentPanel) {
+      OllamaReviewPanel.currentPanel._panel.reveal(column);
+      OllamaReviewPanel.currentPanel._conversationHistory = [];
+      OllamaReviewPanel.currentPanel._originalDiff = diff;
+      OllamaReviewPanel.currentPanel._reviewContent = '';
+      OllamaReviewPanel.currentPanel._metrics = null;
+      OllamaReviewPanel.currentPanel._panel.webview.html = OllamaReviewPanel.currentPanel._getHtmlForWebview();
+      OllamaReviewPanel.currentPanel._panel.webview.postMessage({ command: 'streamStart' });
+      return OllamaReviewPanel.currentPanel;
+    }
+
+    const vscodePanel = vscode.window.createWebviewPanel(
+      'ollamaReview', 'Ollama Code Review', column || vscode.ViewColumn.One,
+      { enableScripts: true, retainContextWhenHidden: true }
+    );
+    OllamaReviewPanel.currentPanel = new OllamaReviewPanel(vscodePanel, '', diff, context, null);
+    OllamaReviewPanel.currentPanel._panel.webview.postMessage({ command: 'streamStart' });
+    return OllamaReviewPanel.currentPanel;
+  }
+
+  /**
+   * F-022: Append a token chunk from the streaming API response.
+   */
+  public pushChunk(chunk: string): void {
+    this._reviewContent += chunk;
+    this._panel.webview.postMessage({ command: 'streamChunk', chunk });
+  }
+
+  /**
+   * F-022: Finalize the stream — update the stored history, attach metrics,
+   * and tell the webview to do a final render and show the system info panel.
+   */
+  public finalizeStream(metrics: PerformanceMetrics | null): void {
+    this._conversationHistory = [{ role: 'assistant', content: this._reviewContent }];
+    this._metrics = metrics;
+    this._panel.webview.postMessage({ command: 'streamEnd', metrics });
+  }
+
+  /**
    * Get the raw review content for posting to GitHub PR.
    */
   public getReviewContent(): string {
@@ -661,6 +707,10 @@ export class OllamaReviewPanel {
             }
         });
 
+        // F-022: Streaming state
+        let streamingContent = '';
+        let streamRenderTimer = null;
+
         // 5. This listener is now correctly wired to the extension's _syncMessages()
         window.addEventListener('message', event => {
             const msg = event.data;
@@ -677,6 +727,38 @@ export class OllamaReviewPanel {
                     document.getElementById('loading').style.display = 'none';
                     document.getElementById('in').disabled = false;
                     document.getElementById('in').focus();
+                    break;
+                // F-022: Streaming messages
+                case 'streamStart':
+                    streamingContent = '';
+                    chatHistory = [{ role: 'assistant', content: '' }];
+                    render();
+                    document.getElementById('loading').style.display = 'block';
+                    document.getElementById('loading').textContent = 'Streaming review…';
+                    break;
+                case 'streamChunk':
+                    streamingContent += msg.chunk;
+                    chatHistory[chatHistory.length > 0 ? chatHistory.length - 1 : 0] = { role: 'assistant', content: streamingContent };
+                    // Debounce renders to ~100ms to avoid thrashing
+                    clearTimeout(streamRenderTimer);
+                    streamRenderTimer = setTimeout(() => {
+                        render();
+                        streamRenderTimer = null;
+                    }, 100);
+                    break;
+                case 'streamEnd':
+                    clearTimeout(streamRenderTimer);
+                    streamRenderTimer = null;
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('loading').textContent = 'Thinking...';
+                    if (msg.metrics !== undefined && msg.metrics !== null) {
+                        metrics = msg.metrics;
+                    }
+                    render();
+                    renderMermaidDiagrams();
+                    renderMetrics();
+                    // Re-enable chat input
+                    document.getElementById('in').disabled = false;
                     break;
             }
         });

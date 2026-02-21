@@ -3,7 +3,7 @@
 ## Project Overview
 
 - **Name:** Ollama Code Review VS Code Extension
-- **Version:** 5.0.0
+- **Version:** 6.0.0
 - **Purpose:** AI-powered code reviews and commit message generation using local Ollama or cloud models
 - **Author:** Vinh Nguyen (vincent)
 - **License:** MIT
@@ -1587,15 +1587,17 @@ See [docs/roadmap/](./docs/roadmap/) for comprehensive planning documents:
 | GitLab & Bitbucket Integration (review MRs/PRs, post comments, platform auto-detection) | F-015 | v4.5 |
 | RAG-Enhanced Reviews (semantic codebase indexing, cosine similarity retrieval, TF-IDF fallback) | F-009 | v5.0 |
 | CI/CD Integration (headless CLI, GitHub Actions template, GitLab CI template) | F-010 | v5.0 |
+| Streaming Responses (Ollama, Claude, OpenAI-compatible; token-by-token review panel; `streaming.enabled` setting) | F-022 | v6.0 |
+| Rules Directory (`.ollama-review/rules/*.md`; plain-Markdown team rules; file watcher; coexists with F-012) | F-026 | v6.0 |
 
-### Phase 6: AI Assistant Evolution (Planned — v6.0)
+### Phase 6: AI Assistant Evolution (In Progress — v6.0)
 
-| Feature | ID | Priority | Effort | Description |
-|---------|----|----------|--------|-------------|
-| extension.ts Decomposition | F-027 | P0 | Medium (3-5 days) | Split ~4,400-line monolith into `commands/`, `providers/`, `workflows/`, `models/` modules |
-| Provider Abstraction Layer | F-025 | P0 | Medium (3-4 days) | Unified `ModelProvider` interface + `ProviderRegistry` for all 8 providers |
-| Streaming Responses | F-022 | P1 | Medium (3-5 days) | SSE/streaming for all providers; `AsyncGenerator<string>` interface; incremental markdown rendering |
-| Sidebar Chat Panel | F-021 | P1 | High (7-10 days) | Persistent `WebviewViewProvider` sidebar chat with conversation history and model switching |
-| @-Context Mentions in Chat | F-023 | P2 | Medium (4-5 days) | `@file`, `@diff`, `@review`, `@codebase`, `@selection`, `@knowledge` context providers in chat |
-| Inline Edit Mode | F-024 | P2 | High (5-7 days) | Highlight code, describe change, AI applies edit with streaming inline diff preview |
-| Rules Directory | F-026 | P3 | Low (1-2 days) | `.ollama-review/rules/*.md` files always injected into review prompts |
+| Feature | ID | Priority | Effort | Status | Description |
+|---------|----|----------|--------|--------|-------------|
+| Streaming Responses | F-022 | P1 | Medium (3-5 days) | ✅ Complete | SSE/NDJSON streaming for Ollama, Claude, OpenAI-compatible; incremental review panel rendering |
+| Rules Directory | F-026 | P3 | Low (1-2 days) | ✅ Complete | `.ollama-review/rules/*.md` files always injected into review prompts |
+| extension.ts Decomposition | F-027 | P0 | Medium (3-5 days) | 📋 Planned | Split ~4,400-line monolith into `commands/`, `providers/`, `workflows/`, `models/` modules |
+| Provider Abstraction Layer | F-025 | P0 | Medium (3-4 days) | 📋 Planned | Unified `ModelProvider` interface + `ProviderRegistry` for all 8 providers |
+| Sidebar Chat Panel | F-021 | P1 | High (7-10 days) | 📋 Planned | Persistent `WebviewViewProvider` sidebar chat with conversation history and model switching |
+| @-Context Mentions in Chat | F-023 | P2 | Medium (4-5 days) | 📋 Planned | `@file`, `@diff`, `@review`, `@codebase`, `@selection`, `@knowledge` context providers in chat |
+| Inline Edit Mode | F-024 | P2 | High (5-7 days) | 📋 Planned | Highlight code, describe change, AI applies edit with streaming inline diff preview |
