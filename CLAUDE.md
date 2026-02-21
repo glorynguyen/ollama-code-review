@@ -1552,7 +1552,7 @@ See [docs/roadmap/](./docs/roadmap/) for comprehensive planning documents:
 | Document | Purpose |
 |----------|---------|
 | [README.md](./docs/roadmap/README.md) | Roadmap overview, phases, priorities |
-| [FEATURES.md](./docs/roadmap/FEATURES.md) | Detailed feature specifications (F-001 to F-012, S-001 to S-005) |
+| [FEATURES.md](./docs/roadmap/FEATURES.md) | Detailed feature specifications (F-001 to F-027, S-001 to S-005) |
 | [ARCHITECTURE.md](./docs/roadmap/ARCHITECTURE.md) | Technical architecture decisions (ADRs) |
 
 ### Shipped Features
@@ -1588,6 +1588,14 @@ See [docs/roadmap/](./docs/roadmap/) for comprehensive planning documents:
 | RAG-Enhanced Reviews (semantic codebase indexing, cosine similarity retrieval, TF-IDF fallback) | F-009 | v5.0 |
 | CI/CD Integration (headless CLI, GitHub Actions template, GitLab CI template) | F-010 | v5.0 |
 
-### Remaining Planned Features
+### Phase 6: AI Assistant Evolution (Planned — v6.0)
 
-All planned features from F-001 through F-020 have now shipped. The project is feature-complete as of v5.0.0.
+| Feature | ID | Priority | Effort | Description |
+|---------|----|----------|--------|-------------|
+| extension.ts Decomposition | F-027 | P0 | Medium (3-5 days) | Split ~4,400-line monolith into `commands/`, `providers/`, `workflows/`, `models/` modules |
+| Provider Abstraction Layer | F-025 | P0 | Medium (3-4 days) | Unified `ModelProvider` interface + `ProviderRegistry` for all 8 providers |
+| Streaming Responses | F-022 | P1 | Medium (3-5 days) | SSE/streaming for all providers; `AsyncGenerator<string>` interface; incremental markdown rendering |
+| Sidebar Chat Panel | F-021 | P1 | High (7-10 days) | Persistent `WebviewViewProvider` sidebar chat with conversation history and model switching |
+| @-Context Mentions in Chat | F-023 | P2 | Medium (4-5 days) | `@file`, `@diff`, `@review`, `@codebase`, `@selection`, `@knowledge` context providers in chat |
+| Inline Edit Mode | F-024 | P2 | High (5-7 days) | Highlight code, describe change, AI applies edit with streaming inline diff preview |
+| Rules Directory | F-026 | P3 | Low (1-2 days) | `.ollama-review/rules/*.md` files always injected into review prompts |

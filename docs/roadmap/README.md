@@ -1,7 +1,7 @@
 # Ollama Code Review - Product Roadmap
 
-> **Document Version:** 4.0.0
-> **Last Updated:** 2026-02-20
+> **Document Version:** 5.0.0
+> **Last Updated:** 2026-02-21
 > **Status:** Active Development
 > **Owner:** Vinh Nguyen
 
@@ -19,13 +19,13 @@ This roadmap outlines future enhancements for the Ollama Code Review VS Code ext
 
 ## What's Been Shipped
 
-All original roadmap phases through v4.5.0 have shipped:
+All original roadmap features (F-001 through F-020, S-001 through S-005) have shipped as of v5.0.0:
 
 ```
 ✅ Shipped ─────── Smart Diff Filtering (F-002)
                    Inline Code Actions (F-005) — Explain, Tests, Fix, Docs
                    Customizable Prompts (F-006) — settings + .ollama-review.yaml
-                   Multi-Provider Cloud Support (7 providers, S-001)
+                   Multi-Provider Cloud Support (8 providers, S-001)
                    Agent Skills System, multi-repo + multi-skill (S-002)
                    Performance Metrics, per-provider (S-003)
                    Interactive Chat, multi-turn follow-ups (S-004)
@@ -46,27 +46,51 @@ All original roadmap phases through v4.5.0 have shipped:
                    Review History & Analytics (F-011) — dashboard + export
                    Team Knowledge Base (F-012) — decisions/patterns/rules YAML
                    GitLab & Bitbucket Integration (F-015) — MR/PR reviews
+                   RAG-Enhanced Reviews (F-009) — semantic codebase indexing
+                   CI/CD Integration (F-010) — headless CLI + CI templates
 ```
 
-## Remaining Roadmap
+## Remaining Roadmap — Phase 6: AI Assistant Evolution
 
 ```
-v5.0 (Q4 2026) ── RAG-Enhanced Reviews (F-009)
-                   CI/CD Integration (F-010)
+v6.0 (2026) ───── extension.ts Decomposition (F-027) — refactor into modules
+                   Provider Abstraction Layer (F-025) — unified ModelProvider interface
+                   Streaming Responses (F-022) — SSE streaming for all providers
+                   Sidebar Chat Panel (F-021) — persistent WebviewViewProvider chat
+                   @-Context Mentions in Chat (F-023) — @file, @diff, @review, @codebase
+                   Inline Edit Mode (F-024) — highlight code, describe change, AI applies
+                   Rules Directory (F-026) — .ollama-review/rules/*.md team standards
 ```
 
-## Priority Matrix (Remaining Features)
+## Priority Matrix (Phase 6 Features)
 
 | Priority | Impact | Effort | Features |
 |----------|--------|--------|----------|
-| 🟡 P2 | High | High | F-009: RAG-Enhanced Reviews |
-| 🟢 P3 | Medium | High | F-010: CI/CD Integration |
+| 🔴 P0 | Critical | Medium | F-027: extension.ts Decomposition (unblocks all Phase 6 work) |
+| 🔴 P0 | High | Medium | F-025: Provider Abstraction Layer (prerequisite for streaming) |
+| 🟠 P1 | High | Medium | F-022: Streaming Responses (UX improvement, prerequisite for chat) |
+| 🟠 P1 | Very High | High | F-021: Sidebar Chat Panel (flagship feature) |
+| 🟡 P2 | High | Medium | F-023: @-Context Mentions in Chat |
+| 🟡 P2 | High | High | F-024: Inline Edit Mode |
+| 🟢 P3 | Medium | Low | F-026: Rules Directory |
+
+## Recommended Implementation Order
+
+```
+1. F-027  extension.ts Decomposition     ← Do first: unblocks everything
+2. F-025  Provider Abstraction Layer      ← Unified interface for streaming
+3. F-022  Streaming Responses             ← Immediate UX win
+4. F-021  Sidebar Chat Panel              ← Flagship: transforms extension identity
+5. F-023  @-Context Mentions              ← Makes chat workspace-aware
+6. F-024  Inline Edit Mode                ← Natural evolution after chat + streaming
+7. F-026  Rules Directory                 ← Low effort, do anytime
+```
 
 ## Current Status
 
-- **Current Version:** 4.5.0
-- **Next Milestone:** v5.0.0 (RAG-Enhanced Reviews + CI/CD Integration)
-- **Target Release:** Q4 2026
+- **Current Version:** 5.0.0
+- **Next Milestone:** v6.0.0 (AI Assistant Evolution)
+- **Theme:** Evolve from review tool to AI coding assistant while preserving review specialization
 
 ---
 
@@ -78,10 +102,11 @@ v5.0 (Q4 2026) ── RAG-Enhanced Reviews (F-009)
 3. Update status in feature files as progress is made
 
 ### For Contributors
-1. F-009 (RAG-Enhanced Reviews) — uses existing embeddings infrastructure, high impact
-2. F-010 (CI/CD Integration) — clear scope, CLI extraction + GitHub Action
-3. Open issues to discuss implementation approaches
-4. PRs should reference the feature ID (e.g., `F-009`)
+1. F-027 (extension.ts Decomposition) — prerequisite refactor, well-scoped
+2. F-025 (Provider Abstraction) — clear interface design, refactor existing code
+3. F-022 (Streaming) — independent per-provider work, parallelizable
+4. Open issues to discuss implementation approaches
+5. PRs should reference the feature ID (e.g., `F-021`)
 
 ### Status Legend
 - `📋 Planned` - Specified, not started
