@@ -24,7 +24,12 @@
 
 ```
 src/
-├── extension.ts          # Main entry point (commands, Git integration, model selection)
+├── extension.ts          # Thin entry wrapper (lazy-loads command module)
+├── commands/             # Extracted command/runtime module set (F-027)
+│   ├── index.ts          # Main activation logic and command registration
+│   ├── providerClients.ts # Provider detection, API clients, streaming, metrics
+│   ├── aiActions.ts      # Explain/tests/fix/docs/suggestion AI helpers
+│   └── uiHelpers.ts      # Status bar, QuickPick, and UI utilities
 ├── reviewProvider.ts     # Webview panel for review results & interactive chat
 ├── skillsService.ts      # Agent skills download/caching from GitHub
 ├── skillsBrowserPanel.ts # Skills browser UI webview
@@ -92,7 +97,11 @@ out/                      # Compiled JavaScript output
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `src/extension.ts` | ~2,690 | Main extension logic, all commands, Git operations |
+| `src/extension.ts` | ~60 | Thin wrapper that lazy-loads `src/commands` |
+| `src/commands/index.ts` | ~3,000 | Main extension logic, command registration, review workflows |
+| `src/commands/providerClients.ts` | ~1,100 | Provider routing, API clients, streaming support, performance metrics |
+| `src/commands/aiActions.ts` | ~290 | Shared AI code-action helper functions |
+| `src/commands/uiHelpers.ts` | ~380 | Shared VS Code UI helpers and pickers |
 | `src/reviewProvider.ts` | ~599 | Webview for displaying reviews with chat interface + export toolbar |
 | `src/skillsService.ts` | ~593 | Fetches/caches agent skills from GitHub repos |
 | `src/skillsBrowserPanel.ts` | ~516 | UI for browsing and downloading skills |
@@ -333,8 +342,8 @@ Any model available in your local Ollama instance will be auto-discovered. The p
 
 ### Extension Activation
 1. Activates on: JS/TS/JSX/TSX/PHP files or SCM view
-2. Entry: `activate()` in `extension.ts`
-3. Registers all commands and status bar items
+2. Entry: `activate()` in `src/extension.ts` (thin wrapper)
+3. Command registration and status bar setup happen in `src/commands/index.ts`
 
 ### API Endpoints Used
 
@@ -367,9 +376,10 @@ Any model available in your local Ollama instance will be auto-discovered. The p
 - **Fix Preview Panel:** Shows proposed fixes in diff view
 - **Documentation Panel:** Previews JSDoc/TSDoc before insertion
 
-## Key Functions in extension.ts
+## Key Functions in Commands Modules
 
 ### Model Detection
+Located in `src/commands/providerClients.ts`:
 - `isClaudeModel()` - Check if model is a Claude model
 - `isGlmModel()` - Check if model is a GLM model
 - `isHuggingFaceModel()` - Check if model is Hugging Face
@@ -379,6 +389,7 @@ Any model available in your local Ollama instance will be auto-discovered. The p
 - `isOpenAICompatibleModel()` - Check if model is OpenAI-compatible (returns `model === 'openai-compatible'`)
 
 ### API Callers
+Located in `src/commands/providerClients.ts`:
 - `callClaudeAPI()` - Call Anthropic Claude API
 - `callGlmAPI()` - Call Z.AI GLM API
 - `callHuggingFaceAPI()` - Call Hugging Face Inference API
@@ -389,29 +400,30 @@ Any model available in your local Ollama instance will be auto-discovered. The p
 - `showOpenAICompatiblePicker()` - Show server preset picker + model name input for initial configuration
 
 ### Core Workflow
-- `activate()` - Extension entry, command registration, YAML file watcher setup
-- `runReview()` - Execute code review workflow
-- `getOllamaReview()` - Call Ollama API for review
-- `getOllamaCommitMessage()` - Generate commit message
-- `getOllamaSuggestion()` - Get code suggestions
-- `selectRepository()` - Handle multi-repo workspaces
-- `runGitCommand()` - Execute git operations
+- `activate()` (`src/commands/index.ts`) - command registration, status bars, file watchers
+- `runReview()` (`src/commands/index.ts`) - execute review workflow
+- `getOllamaReview()` (`src/commands/index.ts`) - call selected provider for review
+- `getOllamaCommitMessage()` (`src/commands/index.ts`) - generate commit message
+- `getOllamaSuggestion()` (`src/commands/aiActions.ts`) - get code suggestions
+- `selectRepository()` (`src/commands/uiHelpers.ts`) - handle multi-repo workspaces
+- `runGitCommand()` (`src/commands/uiHelpers.ts`) - execute git operations
 - `reloadProjectConfig` command handler - Calls `clearProjectConfigCache()` and notifies user
 
 ### Code Action Handlers
+Located in `src/commands/aiActions.ts`:
 - `getExplanation()` - Get AI explanation for selected code
 - `generateTests()` - Generate unit tests for selected code
 - `generateFix()` - Generate fix for diagnostics or selected code
 - `generateDocumentation()` - Generate JSDoc/TSDoc for functions/classes
 
 ### Performance & Model Management
+Located in `src/commands/providerClients.ts` unless noted:
 - `getLastPerformanceMetrics()` - Retrieve captured metrics from last API call
 - `clearPerformanceMetrics()` - Reset metrics state
 - `checkActiveModels()` - Query Ollama's `/api/ps` for active model info (VRAM usage)
-- `showHfModelPicker()` - Display HF model selection submenu with recent/popular/custom options
-- `getRecentHfModels()` - Get recently used HF models from globalState
-- `addRecentHfModel()` - Add a model to recent HF models list
-- `updateModelStatusBar()` - Update status bar with current model name
+- `showHfModelPicker()` - Display HF model selection submenu with recent/popular/custom options (`src/commands/uiHelpers.ts`)
+- `addRecentHfModel()` - Add a model to recent HF models list (`src/commands/uiHelpers.ts`)
+- `updateModelStatusBar()` - Update status bar with current model name (`src/commands/uiHelpers.ts`)
 
 ### Error Handling
 - `handleError()` - Centralized error handler with user-friendly messages
@@ -746,7 +758,7 @@ class FixTracker {
 
 The extension captures and displays performance metrics from API responses in the review panel.
 
-### PerformanceMetrics Interface (src/extension.ts)
+### PerformanceMetrics Interface (src/commands/providerClients.ts)
 
 ```typescript
 interface PerformanceMetrics {
@@ -939,7 +951,7 @@ The extension can review arbitrary files, folders, or selected text without requ
 - `reviewFile` reads the file via `vscode.workspace.fs.readFile`, truncates to `maxFileSizeKb`, and passes content to `runFileReview()`.
 - `reviewFolder` uses `vscode.workspace.findFiles()` with the configured globs, concatenates files with `--- filename ---` separators up to a token budget, and calls `runFileReview()`.
 - `reviewSelection` reads `editor.document.getText(editor.selection)` and calls `runFileReview()`.
-- `runFileReview()` in `src/extension.ts` bypasses diff filtering and uses `getOllamaFileReview()` with a file-review–flavoured prompt that doesn't reference git diff format.
+- `runFileReview()` in `src/commands/index.ts` bypasses diff filtering and uses `getOllamaFileReview()` with a file-review–flavoured prompt that doesn't reference git diff format.
 - Score (F-016) and notifications (F-018) integrate automatically.
 
 ## Notification Integrations (F-018)
@@ -1596,7 +1608,7 @@ See [docs/roadmap/](./docs/roadmap/) for comprehensive planning documents:
 |---------|----|----------|--------|--------|-------------|
 | Streaming Responses | F-022 | P1 | Medium (3-5 days) | ✅ Complete | SSE/NDJSON streaming for Ollama, Claude, OpenAI-compatible; incremental review panel rendering |
 | Rules Directory | F-026 | P3 | Low (1-2 days) | ✅ Complete | `.ollama-review/rules/*.md` files always injected into review prompts |
-| extension.ts Decomposition | F-027 | P0 | Medium (3-5 days) | 📋 Planned | Split ~4,400-line monolith into `commands/`, `providers/`, `workflows/`, `models/` modules |
+| extension.ts Decomposition | F-027 | P0 | Medium (3-5 days) | ✅ Complete | Split monolithic `extension.ts` into `commands/index.ts`, `commands/providerClients.ts`, `commands/aiActions.ts`, `commands/uiHelpers.ts` with `extension.ts` as thin loader |
 | Provider Abstraction Layer | F-025 | P0 | Medium (3-4 days) | 📋 Planned | Unified `ModelProvider` interface + `ProviderRegistry` for all 8 providers |
 | Sidebar Chat Panel | F-021 | P1 | High (7-10 days) | 📋 Planned | Persistent `WebviewViewProvider` sidebar chat with conversation history and model switching |
 | @-Context Mentions in Chat | F-023 | P2 | Medium (4-5 days) | 📋 Planned | `@file`, `@diff`, `@review`, `@codebase`, `@selection`, `@knowledge` context providers in chat |
