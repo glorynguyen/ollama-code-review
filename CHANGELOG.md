@@ -1,3 +1,10 @@
+# [3.15.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.14.0...v3.15.0) (2026-02-21)
+
+
+### Features
+
+* implement F-022 Streaming Responses and F-026 Rules Directory (v6.0.0) ([dd276f1](https://github.com/glorynguyen/ollama-code-review/commit/dd276f161ea57cbce74ccb296ecb5dfa0a64bf44))
+
 # [3.14.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.13.0...v3.14.0) (2026-02-20)
 
 
