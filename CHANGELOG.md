@@ -1,3 +1,17 @@
+# [3.16.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.15.0...v3.16.0) (2026-02-21)
+
+
+### Bug Fixes
+
+* **ci:** switch to immutable install ([6960d5c](https://github.com/glorynguyen/ollama-code-review/commit/6960d5c4674cedaf9151fdf0daf2e4cc46504f0a))
+* **dependency:** update yarn lock ([34a82f0](https://github.com/glorynguyen/ollama-code-review/commit/34a82f0d16820401901d51af7b638057484c4926))
+* update ko-fi button image ([100b9ef](https://github.com/glorynguyen/ollama-code-review/commit/100b9efcfc3b50a122e5ae3ec931f4562391a7b0))
+
+
+### Features
+
+* **chat:** add persistent AI review chat sidebar ([c95d812](https://github.com/glorynguyen/ollama-code-review/commit/c95d8127aba544b21afe62499e9c70dd06569267))
+
 # [3.15.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.14.0...v3.15.0) (2026-02-21)
 
 
