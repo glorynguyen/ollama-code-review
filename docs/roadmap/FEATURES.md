@@ -1,7 +1,7 @@
 # Feature Specifications
 
-> **Document Version:** 3.0.0
-> **Last Updated:** 2026-02-18
+> **Document Version:** 4.0.0
+> **Last Updated:** 2026-02-21
 
 This document contains detailed specifications for each planned feature. Each feature has a unique ID for tracking and reference.
 
@@ -230,10 +230,10 @@ Automatically filter out noise from diffs before sending to AI. Reduces token us
 
 #### Acceptance Criteria
 
-- [ ] Lock files automatically excluded
-- [ ] User can configure ignore patterns
-- [ ] Summary shows "X files filtered"
-- [ ] User can force-include filtered files
+- [x] Lock files automatically excluded
+- [x] User can configure ignore patterns
+- [x] Summary shows "X files filtered"
+- [x] User can force-include filtered files
 
 ---
 
@@ -301,86 +301,30 @@ Add export button to review webview panel with dropdown:
 | **ID** | F-004 |
 | **Priority** | 🟠 P1 |
 | **Effort** | High (5-7 days) |
-| **Status** | 📋 Planned |
+| **Status** | ✅ Complete |
+| **Shipped** | v3.3.0 (Feb 2026) |
 | **Dependencies** | F-001 (for profile selection in PR context) |
 
 #### Description
 
 Integrate directly with GitHub Pull Requests to post review comments, suggest changes, and track review status.
 
-#### Features
+#### Implementation
 
-1. **Fetch PR Diff** - Review PRs by URL or number
-2. **Post Comments** - Add review comments to PR
-3. **Inline Suggestions** - GitHub suggestion blocks for fixes
-4. **Review Summary** - Post summary comment with findings
-5. **Status Check** - Optional GitHub check integration
-
-#### User Flow
-
-```
-1. User runs "Review GitHub PR"
-2. Enter PR URL or select from list
-3. Extension fetches PR diff
-4. AI generates review
-5. User reviews findings
-6. Click "Post to GitHub" → Comments added to PR
-```
-
-#### Configuration Schema
-
-```json
-{
-  "ollama-code-review.github": {
-    "type": "object",
-    "properties": {
-      "token": {
-        "type": "string",
-        "description": "GitHub Personal Access Token"
-      },
-      "autoPost": {
-        "type": "boolean",
-        "default": false,
-        "description": "Automatically post reviews to PR"
-      },
-      "commentStyle": {
-        "type": "string",
-        "enum": ["inline", "summary", "both"],
-        "default": "both"
-      }
-    }
-  }
-}
-```
-
-#### API Endpoints Required
-
-- `GET /repos/{owner}/{repo}/pulls/{pull_number}` - PR metadata
-- `GET /repos/{owner}/{repo}/pulls/{pull_number}/files` - PR diff
-- `POST /repos/{owner}/{repo}/pulls/{pull_number}/reviews` - Post review
-- `POST /repos/{owner}/{repo}/pulls/{pull_number}/comments` - Inline comments
-
-#### Implementation Notes
-
-1. Leverage existing `@octokit/rest` dependency
-2. Add authentication flow (token or GitHub CLI)
-3. Parse AI review output into structured comments
-4. Map comments to specific file lines
-
-#### Files to Modify
-
-- `src/extension.ts` - Add PR review command
-- New: `src/github/prReview.ts` - PR fetching and posting
-- New: `src/github/commentMapper.ts` - Map review to line numbers
-- `package.json` - Add commands and settings
+- **Module:** `src/github/` — `auth.ts`, `prReview.ts`, `commentMapper.ts`
+- **Auth:** Multi-strategy: `gh` CLI → VS Code session → stored `github.token` setting
+- **Comment styles:** `summary` (single PR comment), `inline` (per-line review comments), `both`
+- **PR input formats:** Full URL, `#123`, `owner/repo#123`
+- **Commands:** `reviewGitHubPR`, `postReviewToPR`
+- **Settings:** `github.token`, `github.commentStyle`, `github.gistToken`
 
 #### Acceptance Criteria
 
-- [ ] Can fetch PR by URL
-- [ ] Review displays PR context
-- [ ] Can post summary comment to PR
-- [ ] Can post inline comments
-- [ ] Handles authentication gracefully
+- [x] Can fetch PR by URL
+- [x] Review displays PR context
+- [x] Can post summary comment to PR
+- [x] Can post inline comments
+- [x] Handles authentication gracefully
 
 ---
 
@@ -429,8 +373,8 @@ Each action has a dedicated webview preview panel. Fix tracking via `FixTracker`
 | **ID** | F-006 |
 | **Priority** | 🟠 P1 |
 | **Effort** | Low (1-2 days) |
-| **Status** | ✅ Complete (partial — settings only, no `.yaml` file support) |
-| **Shipped** | v2.1.0 (Feb 2026) |
+| **Status** | ✅ Complete |
+| **Shipped** | v2.1.0 (settings), v3.4.0 (.yaml config + file watcher) |
 | **Dependencies** | None |
 
 #### Description
@@ -447,19 +391,19 @@ Users can customize the system prompts used for reviews and commit messages via 
 
 **Implementation:** `resolvePrompt(template, variables)` in `src/utils.ts` replaces `${variable}` placeholders. Agent skills are always appended if `${skills}` placeholder is missing from the template.
 
-#### What Was NOT Implemented (remaining scope)
+#### Remaining Scope (Shipped in v3.4.0)
 
-- `.ollama-review.yaml` config file loading (team sharing via repo)
-- Config hierarchy: defaults → user → workspace → file
-- Schema validation for config files
-- `src/config/promptLoader.ts` module
+- `.ollama-review.yaml` config file loading implemented in `src/config/promptLoader.ts`
+- Three-tier config hierarchy: built-in defaults → VS Code settings → `.ollama-review.yaml`
+- Workspace-aware caching with file watcher for auto-reload
+- `reloadProjectConfig` command for manual cache invalidation
 
 #### Acceptance Criteria
 
 - [x] User can override prompts in settings
-- [ ] `.ollama-review.yaml` loaded if present *(not implemented)*
+- [x] `.ollama-review.yaml` loaded if present
 - [x] Variables interpolated correctly
-- [ ] Invalid config shows helpful errors *(not applicable yet)*
+- [x] Config hierarchy merges defaults → settings → YAML correctly
 
 ---
 
@@ -472,92 +416,29 @@ Users can customize the system prompts used for reviews and commit messages via 
 | **ID** | F-007 |
 | **Priority** | 🟡 P2 |
 | **Effort** | High (7-10 days) |
-| **Status** | 📋 Planned |
-| **Dependencies** | F-006 (customizable prompts) |
+| **Status** | ✅ Complete |
+| **Shipped** | v4.2.0 (Feb 2026) |
+| **Dependencies** | F-006 (customizable prompts), F-008 (context gathering) |
 
 #### Description
 
 Transform the single-pass review into a multi-step agentic workflow that gathers context, analyzes patterns, and produces more insightful reviews.
 
-#### Agent Workflow
+#### Implementation
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    AGENTIC REVIEW FLOW                       │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│  Step 1: ANALYZE DIFF                                        │
-│  ├── Parse changed files                                     │
-│  ├── Identify change types (new, modified, deleted)          │
-│  └── Extract key changes                                     │
-│           │                                                  │
-│           ▼                                                  │
-│  Step 2: GATHER CONTEXT                                      │
-│  ├── Read imported files                                     │
-│  ├── Find related tests                                      │
-│  ├── Check type definitions                                  │
-│  └── Load project conventions                                │
-│           │                                                  │
-│           ▼                                                  │
-│  Step 3: PATTERN ANALYSIS                                    │
-│  ├── Compare with codebase patterns                          │
-│  ├── Check naming conventions                                │
-│  └── Verify architectural consistency                        │
-│           │                                                  │
-│           ▼                                                  │
-│  Step 4: DEEP REVIEW                                         │
-│  ├── Security analysis                                       │
-│  ├── Performance implications                                │
-│  ├── Bug detection                                           │
-│  └── Best practices                                          │
-│           │                                                  │
-│           ▼                                                  │
-│  Step 5: SYNTHESIS                                           │
-│  ├── Prioritize findings                                     │
-│  ├── Generate actionable suggestions                         │
-│  └── Self-critique and refine                                │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
-```
-
-#### Configuration
-
-```json
-{
-  "ollama-code-review.agentMode": {
-    "enabled": true,
-    "maxContextFiles": 10,
-    "includeTests": true,
-    "includeTypes": true,
-    "selfCritique": true
-  }
-}
-```
-
-#### Implementation Notes
-
-1. Create agent orchestrator in `src/agent/`
-2. Each step is a separate function with clear I/O
-3. Show progress in UI for each step
-4. Allow cancellation between steps
-5. Cache gathered context for follow-up questions
-
-#### Files to Create
-
-- `src/agent/orchestrator.ts` - Main agent loop
-- `src/agent/steps/analyzeDiff.ts`
-- `src/agent/steps/gatherContext.ts`
-- `src/agent/steps/patternAnalysis.ts`
-- `src/agent/steps/deepReview.ts`
-- `src/agent/steps/synthesis.ts`
+- **Module:** `src/agent/` — `orchestrator.ts`, `types.ts`, `index.ts`, `steps/` directory
+- **5-step pipeline:** analyzeDiff (local) → gatherContext (local+I/O) → patternAnalysis (AI) → deepReview (AI) → synthesis (AI)
+- **Graceful degradation:** Steps 1-3 non-fatal, Step 4 critical, Step 5 falls back to raw deep review
+- **Configuration:** `agentMode.enabled`, `maxContextFiles`, `includeTests`, `includeTypes`, `selfCritique`
+- **Command:** `ollama-code-review.agentReview`
 
 #### Acceptance Criteria
 
-- [ ] Agent completes all steps for simple diffs
-- [ ] Progress shown for each step
-- [ ] Context gathering improves review quality
-- [ ] Can be cancelled mid-process
-- [ ] Fallback to simple review if agent fails
+- [x] Agent completes all steps for simple diffs
+- [x] Progress shown for each step
+- [x] Context gathering improves review quality
+- [x] Can be cancelled mid-process
+- [x] Fallback to simple review if agent fails
 
 ---
 
@@ -568,42 +449,30 @@ Transform the single-pass review into a multi-step agentic workflow that gathers
 | **ID** | F-008 |
 | **Priority** | 🟡 P2 |
 | **Effort** | Medium (4-5 days) |
-| **Status** | 📋 Planned |
-| **Dependencies** | F-007 (uses context in agent flow) |
+| **Status** | ✅ Complete |
+| **Shipped** | v4.0.0 (Feb 2026) |
+| **Dependencies** | None |
 
 #### Description
 
 Analyze related files beyond the diff to understand the full impact of changes. Identify imports, dependencies, and affected code paths.
 
-#### Context Sources
+#### Implementation
 
-| Source | Method | Priority |
-|--------|--------|----------|
-| Direct imports | Parse import statements | High |
-| Type definitions | Find `.d.ts` or interface files | High |
-| Related tests | Match `*.test.*`, `*.spec.*` | Medium |
-| Parent classes | Trace inheritance | Medium |
-| Consumers | Find files importing changed module | Low |
-
-#### Implementation Notes
-
-1. Build dependency graph from changed files
-2. Use TypeScript compiler API for accurate parsing
-3. Limit context to avoid token limits
-4. Prioritize most relevant files
-
-#### Files to Modify
-
-- New: `src/context/dependencyGraph.ts`
-- New: `src/context/fileResolver.ts`
-- `src/agent/steps/gatherContext.ts` - Use new context system
+- **Module:** `src/context/` — `contextGatherer.ts`, `importParser.ts`, `fileResolver.ts`, `testDiscovery.ts`, `types.ts`, `index.ts`
+- **Import parsing:** ES6 static/dynamic, CommonJS require, re-exports
+- **File resolution:** TypeScript-style (appended extensions, directory index files)
+- **Test discovery:** Co-located, mirror dirs, root-level by naming conventions
+- **Token budget:** 8,000 chars per file, 32,000 chars total
+- **Configuration:** `contextGathering.enabled`, `maxFiles`, `includeTests`, `includeTypeDefinitions`
+- **Integration:** Auto-gathered during `runReview()` and Review & Commit workflow; non-fatal on failure
 
 #### Acceptance Criteria
 
-- [ ] Imports resolved for changed files
-- [ ] Type definitions included in context
-- [ ] Related tests identified
-- [ ] Context size respects token limits
+- [x] Imports resolved for changed files
+- [x] Type definitions included in context
+- [x] Related tests identified
+- [x] Context size respects token limits
 
 ---
 
@@ -774,75 +643,30 @@ jobs:
 | **ID** | F-011 |
 | **Priority** | 🟢 P3 |
 | **Effort** | Medium (4-5 days) |
-| **Status** | 📋 Planned |
-| **Dependencies** | None |
+| **Status** | ✅ Complete |
+| **Shipped** | v4.3.0 (Feb 2026) |
+| **Dependencies** | F-016 (scoring system) |
 
 #### Description
 
 Track review history over time to identify trends, recurring issues, and improvement opportunities.
 
-#### Tracked Metrics
+#### Implementation
 
-| Metric | Description |
-|--------|-------------|
-| Reviews count | Total reviews performed |
-| Issues by severity | Critical/High/Medium/Low distribution |
-| Issues by category | Security, Performance, Style, etc. |
-| Resolution rate | Issues fixed after review |
-| Time to review | Average review duration |
-| Files reviewed | Most frequently reviewed files |
-
-#### Data Storage
-
-Store analytics locally in SQLite:
-
-```sql
-CREATE TABLE reviews (
-  id TEXT PRIMARY KEY,
-  timestamp INTEGER,
-  model TEXT,
-  profile TEXT,
-  files_count INTEGER,
-  issues_count INTEGER,
-  duration_ms INTEGER
-);
-
-CREATE TABLE issues (
-  id TEXT PRIMARY KEY,
-  review_id TEXT,
-  severity TEXT,
-  category TEXT,
-  file_path TEXT,
-  resolved BOOLEAN
-);
-```
-
-#### UI Components
-
-1. **Dashboard View** - Webview with charts
-2. **Status Bar** - Quick stats badge
-3. **Weekly Digest** - Notification summary
-
-#### Implementation Notes
-
-1. Use `better-sqlite3` for local storage
-2. Charts with Chart.js or similar
-3. Export data as CSV/JSON
-4. Privacy: all data local by default
-
-#### Files to Create
-
-- `src/analytics/store.ts` - SQLite wrapper
-- `src/analytics/tracker.ts` - Event tracking
-- `src/analytics/dashboard.ts` - Webview panel
-- New: `webview-ui/dashboard/` - Dashboard frontend
+- **Module:** `src/analytics/` — `tracker.ts`, `dashboard.ts`, `index.ts`
+- **Storage:** JSON file at `{globalStorage}/review-scores.json` (up to 500 entries, no native deps)
+- **Category extraction:** Keyword scanning for security, performance, bugs, style, maintainability, accessibility, documentation
+- **Dashboard:** Chart.js CDN — score trend line chart, severity doughnut, category bar chart, review type breakdown, model usage, most reviewed files, weekly activity table
+- **Export:** CSV and JSON export buttons
+- **Enhanced fields:** `durationMs`, `reviewType`, `filesReviewed`, `categories`
+- **Command:** `ollama-code-review.showAnalyticsDashboard`
 
 #### Acceptance Criteria
 
-- [ ] Reviews tracked automatically
-- [ ] Dashboard shows key metrics
-- [ ] Data exportable
-- [ ] No data sent externally
+- [x] Reviews tracked automatically
+- [x] Dashboard shows key metrics
+- [x] Data exportable (CSV and JSON)
+- [x] No data sent externally
 
 ---
 
@@ -853,78 +677,31 @@ CREATE TABLE issues (
 | **ID** | F-012 |
 | **Priority** | 🟢 P3 |
 | **Effort** | High (7-10 days) |
-| **Status** | 📋 Planned |
-| **Dependencies** | F-009 (RAG system), F-011 (analytics) |
+| **Status** | ✅ Complete |
+| **Shipped** | v4.4.0 (Feb 2026) |
+| **Dependencies** | None |
 
 #### Description
 
 Build a shared knowledge base of team decisions, patterns, and conventions that the AI can reference during reviews.
 
-#### Knowledge Types
+#### Implementation
 
-| Type | Example | Storage |
-|------|---------|---------|
-| Architecture Decisions | "Use Redux for global state" | ADR files |
-| Code Patterns | "Authentication middleware pattern" | Code snippets |
-| Review Precedents | "We allow X because Y" | Past reviews |
-| Team Rules | "Always use named exports" | Config file |
-
-#### Integration Points
-
-1. **Learning** - Mark review findings as "team decision"
-2. **Reference** - AI cites knowledge base in reviews
-3. **Sharing** - Sync via Git or shared storage
-4. **Editing** - UI to manage knowledge entries
-
-#### Configuration
-
-```yaml
-# .ollama-review-knowledge.yaml
-decisions:
-  - id: ADR-001
-    title: Use Redux for state management
-    context: Need consistent state across app
-    decision: All global state in Redux
-    date: 2024-01-15
-
-patterns:
-  - id: PAT-001
-    name: API error handling
-    description: Standard try/catch with toast notification
-    example: |
-      try {
-        const data = await api.fetch();
-      } catch (error) {
-        toast.error(error.message);
-        logger.error(error);
-      }
-
-rules:
-  - Always use TypeScript strict mode
-  - Prefer functional components
-  - Tests required for business logic
-```
-
-#### Implementation Notes
-
-1. Parse knowledge files on startup
-2. Include relevant entries in review context
-3. Allow marking review findings as new knowledge
-4. Version knowledge with Git
-
-#### Files to Create
-
-- `src/knowledge/loader.ts` - Parse knowledge files
-- `src/knowledge/matcher.ts` - Find relevant entries
-- `src/knowledge/editor.ts` - UI for editing
-- New: `webview-ui/knowledge/` - Knowledge manager UI
+- **Module:** `src/knowledge/` — `loader.ts`, `matcher.ts`, `types.ts`, `index.ts`
+- **Config file:** `.ollama-review-knowledge.yaml` at workspace root (checked into Git)
+- **Entry types:** Decisions (ADRs with id/title/decision/tags), Patterns (with examples), Rules (plain strings always injected)
+- **Matching:** Keyword-based relevance scoring against diff content
+- **Configuration:** `knowledgeBase.enabled`, `knowledgeBase.maxEntries` (1-50)
+- **File watcher:** Auto-reloads on create/change/delete
+- **Command:** `ollama-code-review.reloadKnowledgeBase`
+- **Integration:** Injected into `getOllamaReview()` and `getOllamaFileReview()` prompts; non-fatal on failure
 
 #### Acceptance Criteria
 
-- [ ] Knowledge file parsed and loaded
-- [ ] AI references relevant knowledge
-- [ ] Can add new entries from reviews
-- [ ] Knowledge shared via Git
+- [x] Knowledge file parsed and loaded
+- [x] AI references relevant knowledge
+- [x] Knowledge shared via Git (YAML file checked into repo)
+- [x] File watcher auto-reloads on changes
 
 ---
 
@@ -942,23 +719,30 @@ rules:
 | F-001 | Review Profiles | 1 | ✅ Complete | v3.1 |
 | F-002 | Smart Diff Filtering | 1 | ✅ Complete | v1.x |
 | F-003 | Export Options | 1 | ✅ Complete | v3.1 |
-| F-004 | GitHub PR Integration | 2 | 📋 Planned | — |
+| F-004 | GitHub PR Integration | 2 | ✅ Complete | v3.3 |
 | F-005 | Inline Code Actions | 2 | ✅ Complete | v1.18 |
-| F-006 | Customizable Prompts | 2 | ✅ Complete (partial) | v2.1 |
-| F-007 | Agentic Multi-Step Reviews | 3 | 📋 Planned | — |
-| F-008 | Multi-File Contextual Analysis | 3 | 📋 Planned | — |
+| F-006 | Customizable Prompts | 2 | ✅ Complete | v2.1–v3.4 |
+| F-007 | Agentic Multi-Step Reviews | 3 | ✅ Complete | v4.2 |
+| F-008 | Multi-File Contextual Analysis | 3 | ✅ Complete | v4.0 |
 | F-009 | RAG-Enhanced Reviews | 3 | ✅ Complete | v5.0 |
 | F-010 | CI/CD Integration | 4 | ✅ Complete | v5.0 |
-| F-011 | Review History & Analytics | 4 | 📋 Planned | — |
-| F-012 | Team Knowledge Base | 4 | 📋 Planned | — |
+| F-011 | Review History & Analytics | 4 | ✅ Complete | v4.3 |
+| F-012 | Team Knowledge Base | 4 | ✅ Complete | v4.4 |
 | F-013 | OpenAI-Compatible Provider | 5 | ✅ Complete | v3.5 |
-| F-014 | Pre-Commit Guard | 5 | 📋 Planned | — |
+| F-014 | Pre-Commit Guard | 5 | ✅ Complete | v3.6 |
 | F-015 | GitLab & Bitbucket Integration | 5 | ✅ Complete | v4.5 |
 | F-016 | Review Quality Scoring & Trends | 5 | ✅ Complete | v4.1 |
 | F-017 | Compliance Review Profiles | 5 | ✅ Complete | v4.0 |
 | F-018 | Notification Integrations | 5 | ✅ Complete | v4.1 |
 | F-019 | Batch / Legacy Code Review | 5 | ✅ Complete | v4.1 |
-| F-020 | Architecture Diagram Generation | 5 | 📋 Planned | — |
+| F-020 | Architecture Diagram Generation | 5 | ✅ Complete | v4.2 |
+| F-021 | Sidebar Chat Panel | 6 | 📋 Planned | — |
+| F-022 | Streaming Responses | 6 | 📋 Planned | — |
+| F-023 | @-Context Mentions in Chat | 6 | 📋 Planned | — |
+| F-024 | Inline Edit Mode | 6 | 📋 Planned | — |
+| F-025 | Provider Abstraction Layer | 6 | 📋 Planned | — |
+| F-026 | Rules Directory | 6 | 📋 Planned | — |
+| F-027 | extension.ts Decomposition | 6 | 📋 Planned | — |
 
 ### Effort Estimation Guide
 
@@ -986,10 +770,10 @@ rules:
 | Version | Features | Target |
 |---------|----------|--------|
 | v3.1.0 | F-001 (Review Profiles), F-003 (Export Options) | Q1 2026 ✅ |
-| v3.5.0 | F-004 (GitHub PR Integration), F-006 remainder (.yaml config) | Q2 2026 |
-| v4.0.0 | F-007 (Agentic Reviews), F-008 (Multi-File Analysis) | Q3 2026 |
-| v5.0.0 | F-009 (RAG), F-010 (CI/CD), F-011 (Analytics), F-012 (Knowledge Base) | Q4 2026 |
-| v6.0.0 | F-013–F-020 (Developer Experience & Ecosystem) | Q1–Q2 2027 |
+| v3.3–3.6 | F-004 (GitHub PR), F-006 (.yaml config), F-013 (OpenAI-compat), F-014 (Pre-Commit Guard) | Q1 2026 ✅ |
+| v4.0–4.5 | F-007 (Agentic), F-008 (Context), F-011 (Analytics), F-012 (Knowledge), F-015 (GitLab/BB), F-016–F-020 | Q1 2026 ✅ |
+| v5.0.0 | F-009 (RAG), F-010 (CI/CD) | Q1 2026 ✅ |
+| v6.0.0 | F-021–F-027 (AI Assistant Evolution) | 2026 |
 
 ---
 
@@ -1052,7 +836,8 @@ Users running LM Studio or vLLM for local inference, or using aggregators like O
 
 ### F-014: Pre-Commit Guard
 
-**Status:** 📋 Planned
+**Status:** ✅ Complete
+**Shipped:** v3.6.0 (Feb 2026)
 **Priority:** 🟠 P1 — High Impact, Medium Effort
 **Effort:** Medium (3–4 days)
 
@@ -1060,42 +845,23 @@ Users running LM Studio or vLLM for local inference, or using aggregators like O
 
 Run a fast AI review automatically when the user triggers `git commit` from VS Code's Source Control panel. If the review finds issues above a configurable severity threshold, block the commit and show findings inline.
 
-#### User Problem
+#### Implementation
 
-Issues caught after a commit require an additional fix commit. Catching them at commit time keeps history cleaner and builds good habits without leaving VS Code.
-
-#### Configuration
-
-```json
-"ollama-code-review.preCommitGuard.enabled": false,
-"ollama-code-review.preCommitGuard.blockOnSeverity": "high",
-"ollama-code-review.preCommitGuard.timeoutSeconds": 60
-```
-
-`blockOnSeverity` values: `"critical"` | `"high"` | `"medium"` | `"low"` | `"off"`
-
-#### Workflow
-
-1. User runs `git commit` from Source Control or the command palette
-2. Extension intercepts via `onWillSaveTextDocument` or a pre-commit shell hook written to `.git/hooks/pre-commit` (user opt-in)
-3. Runs a condensed review prompt on staged diff
-4. If no finding meets/exceeds threshold → commit proceeds
-5. If findings found → modal shows findings, user can **Commit Anyway** or **Cancel**
-
-#### Implementation Notes
-
-- Hook file written by extension on first enable; removed on disable
-- Hook calls `code --command ollama-code-review.runPreCommitCheck` and reads exit code
-- Timeout prevents blocking commits when model is slow or unreachable
-- Use the active review profile for the pre-commit prompt
+- **Module:** `src/preCommitGuard.ts`
+- **Hook management:** Install/uninstall `.git/hooks/pre-commit` (refuses to overwrite non-Ollama hooks)
+- **Bypass mechanism:** Temporary `.git/.ollama-review-bypass` file for post-review commits
+- **Severity assessment:** Uses `commentMapper.ts` to parse findings against threshold
+- **Commands:** `togglePreCommitGuard` (status bar shield icon), `reviewAndCommit`
+- **Settings:** `preCommitGuard.severityThreshold` (critical/high/medium/low), `preCommitGuard.timeout` (10-300s)
+- **Status bar:** Shield icon shows `Guard ON` / `Guard OFF`, click to toggle
 
 #### Acceptance Criteria
 
-- [ ] Opt-in only — disabled by default
-- [ ] Hook written/removed cleanly on setting toggle
-- [ ] Findings shown in a modal with severity badges
-- [ ] Timeout respected; commit proceeds if model unreachable
-- [ ] Works across all supported providers
+- [x] Opt-in only — disabled by default
+- [x] Hook written/removed cleanly on setting toggle
+- [x] Findings shown with severity badges; user can Commit Anyway, View Review, or Cancel
+- [x] Timeout respected; commit proceeds if model unreachable
+- [x] Works across all supported providers
 
 ---
 
@@ -1207,11 +973,11 @@ CREATE TABLE reviews (
 
 #### Acceptance Criteria
 
-- [ ] Score extracted from AI response or computed by heuristic
-- [ ] Score stored locally per review
-- [ ] Status bar updated after every review
-- [ ] Trend chart renders correctly for ≥ 2 reviews
-- [ ] Scores survive VS Code restart
+- [x] Score extracted from AI response or computed by heuristic
+- [x] Score stored locally per review
+- [x] Status bar updated after every review
+- [x] Trend chart renders correctly for ≥ 2 reviews
+- [x] Scores survive VS Code restart
 
 ---
 
@@ -1314,11 +1080,11 @@ Post review summaries to Slack, Microsoft Teams, or Discord via incoming webhook
 
 #### Acceptance Criteria
 
-- [ ] Slack message delivered when webhook URL configured
-- [ ] Teams card delivered when webhook URL configured
-- [ ] Discord message delivered when webhook URL configured
-- [ ] `triggerOn` filter respected — no spurious notifications for clean reviews
-- [ ] Notification failures logged but do not interrupt review flow
+- [x] Slack message delivered when webhook URL configured
+- [x] Teams card delivered when webhook URL configured
+- [x] Discord message delivered when webhook URL configured
+- [x] `triggerOn` filter respected — no spurious notifications for clean reviews
+- [x] Notification failures logged but do not interrupt review flow
 
 ---
 
@@ -1363,17 +1129,18 @@ All existing review commands require Git-tracked staged changes or commits. Deve
 
 #### Acceptance Criteria
 
-- [ ] Single file reviewed end-to-end without Git
-- [ ] Folder review respects include/exclude globs
-- [ ] Selection review works from right-click context menu
-- [ ] Token budget respected — large folders chunked across multiple calls with results merged
-- [ ] Review panel shows filename(s) reviewed in the header
+- [x] Single file reviewed end-to-end without Git
+- [x] Folder review respects include/exclude globs
+- [x] Selection review works from right-click context menu
+- [x] Token budget respected — large folders truncated to budget
+- [x] Review panel shows filename(s) reviewed in the header
 
 ---
 
 ### F-020: Architecture Diagram Generation (Mermaid)
 
-**Status:** 📋 Planned
+**Status:** ✅ Complete
+**Shipped:** v4.2.0 (Feb 2026)
 **Priority:** 🟢 P3 — Medium Impact, High Effort
 **Effort:** High (5–7 days)
 
@@ -1381,36 +1148,441 @@ All existing review commands require Git-tracked staged changes or commits. Deve
 
 Generate a Mermaid.js diagram from a code diff or set of files, showing how changed components relate to one another. The diagram is embedded in the review output or can be copied independently.
 
-#### User Problem
+#### Implementation
 
-Text-based reviews describe *what* changed but rarely show *how* the changes affect the system's structure. A Mermaid diagram makes architectural impact immediately visible in PRs and documentation.
-
-#### Diagram Types
-
-| Mode | Trigger | Output |
-|------|---------|--------|
-| **Class Diagram** | Classes / interfaces detected in diff | UML-style class relationships |
-| **Flowchart** | Functions / call chains detected | Control flow between functions |
-| **Sequence Diagram** | API calls / async patterns detected | Request/response sequences |
-| **Component Diagram** | Import graph from changed files | Module dependency graph |
-
-#### New Command
-
-`ollama-code-review.generateDiagram` — available from the review panel toolbar and the command palette.
-
-#### Implementation Notes
-
-- A second AI call (same model) generates the Mermaid block: `"Output a valid Mermaid diagram that visualizes the structure of the following diff. Choose the most appropriate diagram type."`
-- Mermaid rendered in the review panel via the Mermaid.js CDN (added alongside highlight.js)
-- "Copy Diagram" button copies raw Mermaid source for pasting into GitHub Markdown, Notion, etc.
-- "Export as SVG" button renders via `mermaid.render()` and downloads the SVG file
+- **Module:** `src/diagramGenerator.ts`
+- **Diagram types:** classDiagram, flowchart TD, sequenceDiagram, graph TD (AI selects best type)
+- **Rendering:** Mermaid.js v10 CDN in review panel alongside highlight.js and marked.js
+- **UI:** "Copy Source" button extracts raw Mermaid from `data-mermaid-source` attribute
+- **Validation:** Basic syntax validation; invalid syntax shows error with raw source fallback
+- **Command:** `ollama-code-review.generateDiagram`
 
 #### Acceptance Criteria
 
-- [ ] Diagram generated for a TypeScript class diff without manual type selection
-- [ ] Mermaid renders correctly in the review panel
-- [ ] Copy and SVG export buttons functional
-- [ ] Graceful fallback message if model output is not valid Mermaid syntax
-- [ ] Diagram generation is a separate optional call — does not slow down the main review
+- [x] Diagram generated for a TypeScript class diff without manual type selection
+- [x] Mermaid renders correctly in the review panel
+- [x] Copy Source button functional
+- [x] Graceful fallback message if model output is not valid Mermaid syntax
+- [x] Diagram generation is a separate optional call — does not slow down the main review
+
+---
+
+## Phase 6: AI Assistant Evolution (v6.0)
+
+> **Target:** 2026
+> **Theme:** Evolve from review tool to AI coding assistant while preserving deep review specialization. Inspired by Continue.dev's interaction model but focused on code quality.
+
+---
+
+### F-021: Sidebar Chat Panel
+
+| Attribute | Value |
+|-----------|-------|
+| **ID** | F-021 |
+| **Priority** | 🟠 P1 |
+| **Effort** | High (7-10 days) |
+| **Status** | 📋 Planned |
+| **Dependencies** | F-025 (provider abstraction), F-022 (streaming) |
+
+#### Overview
+
+Move the interactive chat from the review webview panel to a persistent sidebar `WebviewViewProvider`. This transforms the extension from a tool-you-invoke into a persistent AI assistant that's always available. The sidebar chat maintains conversation history, supports model switching, and renders streaming markdown.
+
+#### User Problem
+
+The current chat is embedded in the review panel — it's only available after running a review, and closing the panel loses the conversation. Users want a persistent AI assistant for ad-hoc questions about their codebase, not just post-review follow-ups.
+
+#### Architecture
+
+```
+┌──────────────────────────────────┐
+│         VS Code Sidebar          │
+├──────────────────────────────────┤
+│  Model Selector (dropdown)       │
+│  ─────────────────────────────── │
+│  Conversation History            │
+│  ┌─────────────────────────┐    │
+│  │ User: Explain auth flow │    │
+│  │ AI: The auth flow...    │    │
+│  │ User: @file src/auth.ts │    │
+│  │ AI: Looking at auth.ts..│    │
+│  └─────────────────────────┘    │
+│  ─────────────────────────────── │
+│  [ Message input with @-mention ]│
+│  [Send] [New Chat] [Clear]      │
+└──────────────────────────────────┘
+```
+
+#### Implementation Notes
+
+1. Register a `WebviewViewProvider` for the sidebar (not `WebviewPanel`)
+2. React or vanilla HTML/JS for the chat UI (start with vanilla to avoid build complexity)
+3. Conversation history persisted in `globalState`
+4. Model selector mirrors the existing status bar model picker
+5. Integrate with existing `_getFollowUpResponse()` logic from `reviewProvider.ts`
+6. Support injecting review context: "Discuss this review" button in review panel opens sidebar with context
+
+#### Files to Create
+
+- `src/chat/sidebarProvider.ts` — `WebviewViewProvider` implementation
+- `src/chat/conversationManager.ts` — Conversation history management and persistence
+- `src/chat/types.ts` — Chat-specific types
+
+#### Files to Modify
+
+- `package.json` — Register `viewsContainers`, `views`, sidebar contribution
+- `src/extension.ts` — Register sidebar provider in `activate()`
+
+#### Acceptance Criteria
+
+- [ ] Sidebar panel visible in VS Code activity bar
+- [ ] Multi-turn conversation with streaming responses
+- [ ] Model switching within sidebar
+- [ ] Conversation history persists across VS Code restarts
+- [ ] "Discuss this review" integration with review panel
+
+---
+
+### F-022: Streaming Responses
+
+| Attribute | Value |
+|-----------|-------|
+| **ID** | F-022 |
+| **Priority** | 🟠 P1 |
+| **Effort** | Medium (3-5 days) |
+| **Status** | 📋 Planned |
+| **Dependencies** | F-025 (provider abstraction) |
+
+#### Overview
+
+Add Server-Sent Events (SSE) / streaming support to all 8 AI provider callers. Tokens are streamed to the UI incrementally instead of waiting for the full response. This dramatically improves perceived responsiveness and enables mid-generation cancellation.
+
+#### User Problem
+
+Current reviews show a loading spinner for 10-60 seconds before any content appears. Streaming makes the AI feel responsive from the first token and lets users cancel early if the output is going in the wrong direction.
+
+#### Provider Streaming Support
+
+| Provider | Streaming Mechanism | Implementation |
+|----------|-------------------|----------------|
+| Ollama | Native `stream: true` in `/api/generate` | Newline-delimited JSON |
+| Claude | `stream: true` in Messages API | SSE (`event: content_block_delta`) |
+| GLM | `stream: true` (OpenAI-compatible) | SSE (`data: {...}`) |
+| Hugging Face | `stream: true` (OpenAI-compatible) | SSE |
+| Gemini | `streamGenerateContent` endpoint | SSE |
+| Mistral | `stream: true` (OpenAI-compatible) | SSE |
+| MiniMax | `stream: true` | SSE |
+| OpenAI-Compatible | `stream: true` | SSE (`data: {...}`) |
+
+#### Implementation Notes
+
+1. Each provider's `callXxxAPI()` returns an `AsyncGenerator<string>` when streaming is requested
+2. A `StreamRenderer` class in the webview incrementally parses markdown and updates the DOM
+3. Cancellation via `AbortController` — abort the HTTP request mid-stream
+4. Performance metrics captured from the final SSE message or accumulated during streaming
+5. Non-streaming mode preserved as fallback for providers that fail streaming
+
+#### Files to Create
+
+- `src/streaming/streamParser.ts` — Parse SSE streams from different providers
+- `src/streaming/types.ts` — `StreamChunk`, `StreamOptions` interfaces
+
+#### Files to Modify
+
+- `src/extension.ts` — Update all `callXxxAPI()` functions to support `stream: true`
+- `src/reviewProvider.ts` — Add `StreamRenderer` for incremental DOM updates
+- `src/chat/sidebarProvider.ts` — Stream into sidebar chat
+
+#### Acceptance Criteria
+
+- [ ] First token visible within 500ms of request start (for fast providers)
+- [ ] Full response identical to non-streaming mode
+- [ ] Cancel button stops generation and HTTP request
+- [ ] Performance metrics still captured accurately
+- [ ] Graceful fallback to non-streaming if SSE parsing fails
+
+---
+
+### F-023: @-Context Mentions in Chat
+
+| Attribute | Value |
+|-----------|-------|
+| **ID** | F-023 |
+| **Priority** | 🟡 P2 |
+| **Effort** | Medium (4-5 days) |
+| **Status** | 📋 Planned |
+| **Dependencies** | F-021 (sidebar chat), F-008 (context gathering), F-009 (RAG) |
+
+#### Overview
+
+Add `@`-mention context providers to the sidebar chat. Users type `@` to see a dropdown of available context sources — `@file`, `@diff`, `@review`, `@codebase` — and the referenced content is injected into the AI prompt.
+
+#### Context Providers
+
+| Provider | Trigger | Description | Builds On |
+|----------|---------|-------------|-----------|
+| `@file` | `@file path/to/file.ts` | Include full file content in context | `vscode.workspace.fs` |
+| `@diff` | `@diff` or `@diff staged` | Include current staged diff | Existing `runGitCommand()` |
+| `@review` | `@review` | Include the most recent review output | `OllamaReviewPanel` |
+| `@codebase` | `@codebase query terms` | Semantic search via RAG index | F-009 RAG retriever |
+| `@selection` | `@selection` | Include current editor selection | `vscode.window.activeTextEditor` |
+| `@knowledge` | `@knowledge` | Include relevant team knowledge entries | F-012 knowledge matcher |
+
+#### Implementation Notes
+
+1. `@`-keystroke in chat input triggers a QuickPick-style dropdown filtered by typing
+2. Each provider implements a `ContextProvider` interface: `resolve(args: string): Promise<string>`
+3. Resolved context is prepended to the user message in the system prompt
+4. Context shown as a collapsible preview in the chat UI above the AI response
+5. Token budget enforced: each `@` context limited to 8,000 chars
+
+#### Files to Create
+
+- `src/chat/contextProviders.ts` — Provider registry and resolution
+- `src/chat/contextTypes.ts` — `ContextProvider` interface
+
+#### Acceptance Criteria
+
+- [ ] `@file` resolves workspace files with autocomplete
+- [ ] `@diff` injects current staged changes
+- [ ] `@codebase` returns semantically similar code chunks
+- [ ] Context preview shown in chat UI
+- [ ] Token budget respected — large contexts truncated
+
+---
+
+### F-024: Inline Edit Mode
+
+| Attribute | Value |
+|-----------|-------|
+| **ID** | F-024 |
+| **Priority** | 🟡 P2 |
+| **Effort** | High (5-7 days) |
+| **Status** | 📋 Planned |
+| **Dependencies** | F-022 (streaming), F-025 (provider abstraction) |
+
+#### Overview
+
+Highlight code in the editor, describe the desired change in natural language, and the AI applies the edit with a streaming inline diff preview. Extends the existing Fix action (F-005) into a general-purpose inline editor.
+
+#### User Problem
+
+The current Fix action requires a diagnostic or specific issue. Users want to say "refactor this to use async/await" or "add error handling here" and have the AI apply the change in-place, not in a separate preview panel.
+
+#### User Flow
+
+```
+1. User selects code in editor
+2. Presses Ctrl+K (or via command palette / context menu)
+3. Input box appears inline: "Describe the change..."
+4. User types: "Convert to async/await with try-catch"
+5. AI streams the replacement with diff highlighting
+6. User accepts (Enter) or rejects (Escape)
+```
+
+#### Implementation Notes
+
+1. Use `vscode.window.showInputBox` or inline input widget for change description
+2. AI generates replacement code using the selected code + description as prompt
+3. Streaming diff shown via `vscode.TextEditor.setDecorations()` with green/red highlighting
+4. Accept applies the edit; reject restores original
+5. Undo support via `vscode.workspace.applyEdit()` which integrates with VS Code's undo stack
+
+#### Files to Create
+
+- `src/inlineEdit/inlineEditProvider.ts` — Inline edit orchestration
+- `src/inlineEdit/diffDecorator.ts` — Streaming diff decorations in editor
+
+#### Files to Modify
+
+- `src/extension.ts` — Register inline edit command
+- `package.json` — Add command and keybinding
+
+#### Acceptance Criteria
+
+- [ ] Inline input box appears on Ctrl+K with selection
+- [ ] AI-generated replacement streams with diff highlighting
+- [ ] Accept applies changes to file
+- [ ] Reject restores original code
+- [ ] Works with all 8 AI providers
+
+---
+
+### F-025: Provider Abstraction Layer
+
+| Attribute | Value |
+|-----------|-------|
+| **ID** | F-025 |
+| **Priority** | 🔴 P0 |
+| **Effort** | Medium (3-4 days) |
+| **Status** | 📋 Planned |
+| **Dependencies** | None |
+
+#### Overview
+
+Refactor the 8 provider pairs (`isXxxModel()` + `callXxxAPI()`) in `extension.ts` into a unified `ModelProvider` interface with a `ProviderRegistry`. This is the architectural prerequisite for streaming (F-022), sidebar chat (F-021), and inline edit (F-024).
+
+#### User Problem
+
+No direct user-facing change, but unblocks all Phase 6 features by providing a consistent interface for generate, chat, stream, and embed operations across all providers.
+
+#### Architecture
+
+```typescript
+// src/providers/types.ts
+interface ModelProvider {
+  name: string;
+  isMatch(model: string): boolean;
+  isAvailable(): Promise<boolean>;
+  generate(prompt: string, options: GenerateOptions): Promise<string>;
+  stream(prompt: string, options: GenerateOptions): AsyncGenerator<string>;
+  chat(messages: ChatMessage[], options: ChatOptions): AsyncGenerator<string>;
+  embed?(text: string): Promise<number[]>;
+  getMetrics(): PerformanceMetrics;
+}
+
+// src/providers/registry.ts
+class ProviderRegistry {
+  register(provider: ModelProvider): void;
+  resolve(model: string): ModelProvider;
+  listAvailable(): Promise<ModelProvider[]>;
+}
+```
+
+#### Implementation Notes
+
+1. Extract each `callXxxAPI()` + `isXxxModel()` into a class implementing `ModelProvider`
+2. Create `src/providers/` directory with one file per provider
+3. `ProviderRegistry` resolves model string to the correct provider
+4. Existing `getOllamaReview()` routing logic replaced by `registry.resolve(model).generate()`
+5. Streaming added as `stream()` method on each provider (see F-022)
+6. Backward-compatible: all existing commands continue to work
+
+#### Files to Create
+
+- `src/providers/types.ts` — `ModelProvider`, `GenerateOptions`, `ChatOptions` interfaces
+- `src/providers/registry.ts` — `ProviderRegistry` class
+- `src/providers/ollama.ts` — Ollama provider
+- `src/providers/claude.ts` — Claude/Anthropic provider
+- `src/providers/glm.ts` — GLM/Z.AI provider
+- `src/providers/huggingface.ts` — Hugging Face provider
+- `src/providers/gemini.ts` — Gemini provider
+- `src/providers/mistral.ts` — Mistral provider
+- `src/providers/minimax.ts` — MiniMax provider
+- `src/providers/openaiCompatible.ts` — OpenAI-compatible provider
+- `src/providers/index.ts` — Barrel exports
+
+#### Files to Modify
+
+- `src/extension.ts` — Replace inline provider logic with `ProviderRegistry` calls
+
+#### Acceptance Criteria
+
+- [ ] All 8 providers implemented as `ModelProvider` classes
+- [ ] `ProviderRegistry.resolve()` correctly routes all model strings
+- [ ] All existing commands work identically after refactor
+- [ ] `generate()` and `stream()` methods available on each provider
+- [ ] Performance metrics captured per-provider as before
+
+---
+
+### F-026: Rules Directory
+
+| Attribute | Value |
+|-----------|-------|
+| **ID** | F-026 |
+| **Priority** | 🟢 P3 |
+| **Effort** | Low (1-2 days) |
+| **Status** | 📋 Planned |
+| **Dependencies** | F-012 (team knowledge base) |
+
+#### Overview
+
+Support a `.ollama-review/rules/` directory at the workspace root containing Markdown files that are always injected into review prompts. Simpler than the F-012 YAML knowledge base — just drop `.md` files into a folder and they're applied to every review.
+
+#### User Problem
+
+The F-012 knowledge base requires learning the YAML schema. Some teams just want to write plain-text rules ("Always use TypeScript strict mode", "Never use `any` type") without structured fields. A rules directory mirrors Continue.dev's `.continue/rules/` pattern.
+
+#### Implementation Notes
+
+1. On extension activation, glob `.ollama-review/rules/*.md` in workspace root
+2. Concatenate all rule files into a single "Team Rules" section
+3. Inject into review prompt after profile context, before the diff
+4. File watcher auto-reloads on changes (mirrors F-006 watcher pattern)
+5. Coexists with F-012 knowledge base — both are injected if both exist
+
+#### Files to Create
+
+- `src/rules/loader.ts` — Glob, read, concatenate, cache rules directory
+
+#### Files to Modify
+
+- `src/extension.ts` — Inject rules into review prompt, add file watcher
+
+#### Acceptance Criteria
+
+- [ ] `.ollama-review/rules/*.md` files auto-loaded on activation
+- [ ] Rules injected into every review prompt
+- [ ] File watcher reloads on create/change/delete
+- [ ] Coexists with F-012 knowledge base without conflicts
+
+---
+
+### F-027: extension.ts Decomposition
+
+| Attribute | Value |
+|-----------|-------|
+| **ID** | F-027 |
+| **Priority** | 🔴 P0 |
+| **Effort** | Medium (3-5 days) |
+| **Status** | 📋 Planned |
+| **Dependencies** | None |
+
+#### Overview
+
+Split the ~4,400-line `extension.ts` into focused modules. No new features — this is a structural refactor that unblocks all Phase 6 work by making the codebase manageable.
+
+#### User Problem
+
+No direct user-facing change, but the monolithic `extension.ts` makes it difficult to add sidebar chat, streaming, inline edit, and provider abstraction without creating merge conflicts and cognitive overload.
+
+#### Proposed Module Structure
+
+```
+src/
+├── extension.ts              # ~200 lines: activate(), deactivate(), command wiring
+├── commands/
+│   ├── review.ts             # reviewChanges, reviewCommit, reviewCommitRange, reviewBranches
+│   ├── commitMessage.ts      # generateCommitMessage
+│   ├── suggestion.ts         # suggestRefactoring, OllamaSuggestionProvider
+│   ├── batchReview.ts        # reviewFile, reviewFolder, reviewSelection
+│   └── platformReview.ts     # reviewGitHubPR, reviewGitLabMR, reviewBitbucketPR
+├── workflows/
+│   ├── runReview.ts           # runReview() orchestration (diff → filter → context → AI → score → notify)
+│   ├── runFileReview.ts       # runFileReview() for batch/legacy reviews
+│   └── reviewAndCommit.ts     # Review & Commit workflow with pre-commit guard
+├── providers/                 # (see F-025)
+├── models/
+│   ├── performanceMetrics.ts  # PerformanceMetrics interface and helpers
+│   └── modelSelection.ts     # Model picker, HF model picker, OpenAI-compatible picker
+└── statusBar.ts               # Status bar items (model, profile, score, guard)
+```
+
+#### Implementation Notes
+
+1. Extract functions grouped by responsibility — commands, workflows, providers, UI
+2. `extension.ts` becomes a thin shell: `activate()` registers commands by importing handlers
+3. Shared state (current model, performance metrics) moved to a singleton or passed explicitly
+4. No behavioral changes — all commands and features remain identical
+5. Incremental extraction: one module at a time, tested after each extraction
+
+#### Acceptance Criteria
+
+- [ ] `extension.ts` reduced to < 300 lines
+- [ ] All 40+ commands still work identically
+- [ ] No regression in review quality or feature behavior
+- [ ] Each extracted module has clear single responsibility
+- [ ] Build succeeds with no new warnings
 
 ---

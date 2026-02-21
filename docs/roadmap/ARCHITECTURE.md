@@ -1,7 +1,7 @@
 # Architecture Decision Records
 
-> **Document Version:** 2.0.0
-> **Last Updated:** 2026-02-17
+> **Document Version:** 3.0.0
+> **Last Updated:** 2026-02-21
 
 This document captures architectural decisions for future features. Each decision follows the ADR format for clarity and traceability.
 
@@ -14,6 +14,9 @@ This document captures architectural decisions for future features. Each decisio
 - [ADR-003: Data Storage Strategy](#adr-003-data-storage-strategy)
 - [ADR-004: GitHub Integration Approach](#adr-004-github-integration-approach)
 - [ADR-005: RAG Implementation](#adr-005-rag-implementation)
+- [ADR-006: Provider Abstraction Layer](#adr-006-provider-abstraction-layer)
+- [ADR-007: Streaming Architecture](#adr-007-streaming-architecture)
+- [ADR-008: Sidebar Chat Architecture](#adr-008-sidebar-chat-architecture)
 
 ---
 
@@ -21,7 +24,7 @@ This document captures architectural decisions for future features. Each decisio
 
 | Attribute | Value |
 |-----------|-------|
-| **Status** | Proposed |
+| **Status** | Accepted (implemented in v4.2.0) |
 | **Date** | 2025-01-29 |
 | **Related Features** | F-007, F-008 |
 
@@ -179,8 +182,9 @@ class ProviderManager {
 
 | Attribute | Value |
 |-----------|-------|
-| **Status** | Proposed |
+| **Status** | Accepted (implemented differently — JSON files, no SQLite) |
 | **Date** | 2025-01-29 |
+| **Updated** | 2026-02-21 |
 | **Related Features** | F-009, F-011, F-012 |
 
 ### Context
@@ -250,9 +254,9 @@ export function getDatabase(name: string): Database.Database {
 
 | Attribute | Value |
 |-----------|-------|
-| **Status** | Proposed |
+| **Status** | Accepted (implemented in v3.3.0) |
 | **Date** | 2025-01-29 |
-| **Related Features** | F-004, F-010 |
+| **Related Features** | F-004, F-010, F-015 |
 
 ### Context
 
@@ -340,8 +344,9 @@ function toGitHubComment(finding: ReviewFinding): ReviewComment {
 
 | Attribute | Value |
 |-----------|-------|
-| **Status** | Proposed |
+| **Status** | Accepted (implemented in v5.0.0 — JSON vector store, not SQLite) |
 | **Date** | 2025-01-29 |
+| **Updated** | 2026-02-21 |
 | **Related Features** | F-009 |
 
 ### Context
@@ -457,15 +462,221 @@ For large codebases (>10k files), consider:
 
 ---
 
+## ADR-006: Provider Abstraction Layer
+
+| Attribute | Value |
+|-----------|-------|
+| **Status** | Proposed |
+| **Date** | 2026-02-21 |
+| **Related Features** | F-025, F-022, F-021, F-024 |
+
+### Context
+
+The extension has grown to 8 AI providers, each implemented as a pair of functions (`isXxxModel()` + `callXxxAPI()`) in the monolithic `extension.ts`. Adding streaming (F-022), sidebar chat (F-021), and inline edit (F-024) requires a consistent interface for generate, stream, chat, and embed operations. The current approach of adding `if/else` branches for each provider in every call site doesn't scale.
+
+### Decision
+
+Extract all providers into a **`ModelProvider` interface** with a **`ProviderRegistry`**:
+
+```typescript
+// src/providers/types.ts
+interface ModelProvider {
+  name: string;
+  isMatch(model: string): boolean;
+  isAvailable(): Promise<boolean>;
+  generate(prompt: string, options: GenerateOptions): Promise<string>;
+  stream(prompt: string, options: GenerateOptions): AsyncGenerator<string>;
+  chat(messages: ChatMessage[], options: ChatOptions): AsyncGenerator<string>;
+  embed?(text: string): Promise<number[]>;
+  getMetrics(): PerformanceMetrics;
+}
+
+// src/providers/registry.ts
+class ProviderRegistry {
+  register(provider: ModelProvider): void;
+  resolve(model: string): ModelProvider;  // throws if no match
+  listAvailable(): Promise<ModelProvider[]>;
+}
+```
+
+Each provider gets its own file (`src/providers/ollama.ts`, `src/providers/claude.ts`, etc.) implementing the full interface. The `generate()` method replaces today's `callXxxAPI()`. The `stream()` method is new for F-022. The `chat()` method unifies follow-up conversation support.
+
+### Alternatives Considered
+
+1. **Keep function pairs** — Rejected: Adding streaming requires duplicating every `callXxxAPI()` with a streaming variant, doubling the code
+2. **Single generic function with strategy pattern** — Rejected: Too abstract, loses type safety for provider-specific options
+3. **Use an existing LLM library (LangChain, Vercel AI SDK)** — Rejected: Adds heavy dependency, VS Code extension should stay lightweight
+
+### Consequences
+
+**Positive:**
+- Single call site for all AI operations: `registry.resolve(model).generate(prompt)`
+- Streaming, chat, and embedding become first-class operations on every provider
+- New providers added by implementing one class and registering it
+- Testable: each provider can be mocked independently
+
+**Negative:**
+- Initial refactor touches all command handlers
+- Provider-specific quirks (HF retry on 503, Gemini's custom format) must be handled within each class
+
+---
+
+## ADR-007: Streaming Architecture
+
+| Attribute | Value |
+|-----------|-------|
+| **Status** | Proposed |
+| **Date** | 2026-02-21 |
+| **Related Features** | F-022, F-021, F-024 |
+
+### Context
+
+All current API calls wait for the full response before displaying anything. Streaming is needed for sidebar chat (F-021) and inline edit (F-024) to feel responsive. All 8 providers support streaming via SSE or newline-delimited JSON.
+
+### Decision
+
+Implement streaming using **`AsyncGenerator<string>`** as the universal interface:
+
+```typescript
+// Provider implementation (example: OpenAI-compatible SSE)
+async *stream(prompt: string, options: GenerateOptions): AsyncGenerator<string> {
+  const response = await axios.post(url, body, {
+    responseType: 'stream',
+    signal: options.abortSignal,
+  });
+
+  for await (const chunk of parseSSE(response.data)) {
+    yield chunk.choices[0].delta.content ?? '';
+  }
+}
+
+// Consumer (webview rendering)
+const generator = provider.stream(prompt, { abortSignal: controller.signal });
+for await (const token of generator) {
+  webview.postMessage({ type: 'stream-chunk', content: token });
+}
+webview.postMessage({ type: 'stream-done' });
+```
+
+The webview side uses a `StreamRenderer` that incrementally parses markdown using `marked.js` with a growing buffer and updates the DOM after each chunk (debounced to 50ms for performance).
+
+### SSE Parsing
+
+A shared `parseSSE()` function handles the common `data: {...}\n\n` format used by most providers. Provider-specific formats (Ollama's NDJSON, Gemini's endpoint) are handled in their respective provider classes.
+
+### Cancellation
+
+`AbortController` is passed to the HTTP request. When the user clicks "Stop" in the UI, `controller.abort()` cancels both the HTTP connection and the generator.
+
+### Alternatives Considered
+
+1. **Web Streams API (ReadableStream)** — Rejected: `AsyncGenerator` is simpler and more idiomatic in Node.js
+2. **EventEmitter** — Rejected: Generators compose better and support backpressure
+3. **Callback-based** — Rejected: Harder to compose, no cancellation story
+
+### Consequences
+
+**Positive:**
+- First token visible within 500ms
+- Cancellation stops HTTP request immediately
+- Same interface works for sidebar chat, review panel, and inline edit
+
+**Negative:**
+- Markdown incremental rendering is tricky (partial code blocks, tables)
+- Testing streaming requires mock generators
+
+---
+
+## ADR-008: Sidebar Chat Architecture
+
+| Attribute | Value |
+|-----------|-------|
+| **Status** | Proposed |
+| **Date** | 2026-02-21 |
+| **Related Features** | F-021, F-023 |
+
+### Context
+
+The current chat is embedded in the review webview panel — it's only available after a review and disappears when the panel closes. Phase 6 requires a persistent sidebar chat that's always available, supports `@`-context mentions, and integrates with the review workflow.
+
+### Decision
+
+Implement the sidebar as a **`WebviewViewProvider`** (VS Code sidebar API), not a `WebviewPanel`:
+
+```typescript
+// src/chat/sidebarProvider.ts
+class ChatSidebarProvider implements vscode.WebviewViewProvider {
+  resolveWebviewView(view: vscode.WebviewView): void {
+    view.webview.html = this.getHtml();
+    view.webview.onDidReceiveMessage(msg => this.handleMessage(msg));
+  }
+}
+
+// package.json contribution
+{
+  "viewsContainers": {
+    "activitybar": [{
+      "id": "ollama-review",
+      "title": "Ollama Review",
+      "icon": "resources/icon.svg"
+    }]
+  },
+  "views": {
+    "ollama-review": [{
+      "type": "webview",
+      "id": "ollama-review.chatView",
+      "name": "Chat"
+    }]
+  }
+}
+```
+
+#### UI Technology
+
+Start with **vanilla HTML/CSS/JS** (not React) to avoid adding a build pipeline for the webview. The review panel already uses this approach successfully. If the sidebar complexity grows, React can be introduced later.
+
+#### State Management
+
+- Conversation history stored in `globalState` as `ChatConversation[]`
+- Each conversation has an ID, title, messages, and metadata
+- Multiple conversations supported with a conversation list/selector
+- Auto-title generated from first user message
+
+#### Integration with Review Panel
+
+The existing review panel gains a "Discuss in Chat" button that:
+1. Opens the sidebar
+2. Creates a new conversation with the review content as system context
+3. User can ask follow-up questions in the persistent sidebar
+
+### Alternatives Considered
+
+1. **React + Redux sidebar** — Rejected for now: adds build complexity (bundler, dev server) for marginal benefit at current scope. Can be adopted later.
+2. **Reuse review panel for chat** — Rejected: panel-based UI is transient, not persistent
+3. **VS Code Chat API (`vscode.chat`)** — Considered: official API for chat extensions. However, it's still evolving and may constrain customization. Worth revisiting.
+
+### Consequences
+
+**Positive:**
+- Persistent chat always accessible from activity bar
+- Conversation history survives across sessions
+- Clean separation from review panel
+- Low dependency footprint (no React/Redux)
+
+**Negative:**
+- Vanilla JS for complex UI is more verbose than React
+- Message passing between extension host and webview requires careful protocol design
+
+---
+
 ## Future ADRs (Placeholder)
 
 The following ADRs will be written as features are implemented:
 
-- **ADR-006**: CI/CD Architecture
-- **ADR-007**: Analytics Data Model
-- **ADR-008**: Knowledge Base Schema
-- **ADR-009**: Webview Communication Protocol
-- **ADR-010**: Testing Strategy
+- **ADR-009**: @-Context Provider Registry (F-023)
+- **ADR-010**: Inline Edit Diff Rendering (F-024)
+- **ADR-011**: extension.ts Decomposition Strategy (F-027)
+- **ADR-012**: Testing Strategy
 
 ---
 
