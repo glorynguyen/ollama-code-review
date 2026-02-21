@@ -23,11 +23,18 @@
     "onLanguage:javascriptreact",
     "onLanguage:typescript",
     "onLanguage:typescriptreact",
-    "onView:scm"
+    "onView:scm",
+    "onView:ai-review.chat-sidebar",
+    "onCommand:ai-review.focusChat"
   ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
+      {
+        "command": "ai-review.focusChat",
+        "title": "Focus AI Review Chat",
+        "category": "AI Review"
+      },
       {
         "command": "ollama-code-review.selectModel",
         "title": "Select Ollama Model",
@@ -231,6 +238,24 @@
         "icon": "$(trash)"
       }
     ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "ai-review",
+          "title": "AI Review",
+          "icon": "$(comment-discussion)"
+        }
+      ]
+    },
+    "views": {
+      "ai-review": [
+        {
+          "type": "webview",
+          "id": "ai-review.chat-sidebar",
+          "name": "Chat"
+        }
+      ]
+    },
     "menus": {
       "editor/context": [
         {

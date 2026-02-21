@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import axios from 'axios';
 import { getOllamaModel } from './utils';
 import { PerformanceMetrics } from './extension';
+import { ChatSidebarProvider } from './chat/sidebarProvider';
+import { toModelLimitChatMessage } from './chat/modelErrorUtils';
 
 const CLAUDE_API_ENDPOINT = 'https://api.anthropic.com/v1/messages';
 const MINIMAX_API_ENDPOINT = 'https://api.minimax.io/v1/text/chatcompletion_v2';
@@ -65,6 +67,9 @@ export class OllamaReviewPanel {
             break;
           case 'generateDiagram':
             await vscode.commands.executeCommand('ollama-code-review.generateDiagram');
+            break;
+          case 'discussReview':
+            await this._handleDiscussReview();
             break;
         }
       },
@@ -162,6 +167,17 @@ export class OllamaReviewPanel {
     });
   }
 
+  private async _handleDiscussReview(): Promise<void> {
+    const provider = ChatSidebarProvider.getInstance();
+    if (!provider) {
+      vscode.window.showErrorMessage('Chat sidebar is not available yet. Please reopen the extension.');
+      return;
+    }
+
+    const context = `Review:\n${this._reviewContent}\n\nDiff:\n${this._originalDiff}`;
+    await provider.handleDiscussReview(context);
+  }
+
   private async _handleUserMessage(userMessage: string) {
     this._conversationHistory.push({ role: 'user', content: userMessage });
     this._syncMessages();
@@ -173,9 +189,17 @@ export class OllamaReviewPanel {
       this._syncMessages();
       this._panel.webview.postMessage({ command: 'hideLoading' });
     } catch (error) {
+      const rawError = error instanceof Error ? error.message : 'Failed to get response';
+      const model = getOllamaModel(vscode.workspace.getConfiguration('ollama-code-review'));
+      const limitMessage = toModelLimitChatMessage(rawError, model);
+      if (limitMessage) {
+        this._conversationHistory.push({ role: 'assistant', content: limitMessage });
+        this._syncMessages();
+        this._panel.webview.postMessage({ command: 'hideLoading' });
+      }
       this._panel.webview.postMessage({
         command: 'showError',
-        error: error instanceof Error ? error.message : 'Failed to get response'
+        error: rawError
       });
     }
   }
@@ -535,6 +559,7 @@ export class OllamaReviewPanel {
         <button class="export-btn" onclick="exportReview('gist')" title="Create GitHub Gist">🔗 Gist</button>
         <button class="export-btn" onclick="generateDiagram()" title="Generate Mermaid architecture diagram from code">📊 Diagram</button>
         <button class="export-btn" onclick="postToPR()" title="Post review to GitHub PR" style="background: var(--vscode-button-background, #0e639c); color: var(--vscode-button-foreground, #fff); border-color: var(--vscode-button-background, #0e639c);">⬆ Post to PR</button>
+        <button class="export-btn" onclick="discussReview()" title="Discuss this review in persistent chat">💬 Discuss</button>
     </div>
     <div class="container" id="chat"></div>
     <div id="loading">Thinking...</div>
@@ -678,6 +703,10 @@ export class OllamaReviewPanel {
 
         window.generateDiagram = function() {
             vscode.postMessage({ command: 'generateDiagram' });
+        };
+
+        window.discussReview = function() {
+            vscode.postMessage({ command: 'discussReview' });
         };
 
         window.copyMermaidSource = function(id) {
