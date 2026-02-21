@@ -1250,8 +1250,9 @@ The current chat is embedded in the review panel — it's only available after r
 | **ID** | F-022 |
 | **Priority** | 🟠 P1 |
 | **Effort** | Medium (3-5 days) |
-| **Status** | 📋 Planned |
-| **Dependencies** | F-025 (provider abstraction) |
+| **Status** | ✅ Complete |
+| **Shipped** | v6.0.0 (Feb 2026) |
+| **Dependencies** | None (implemented without F-025 via dedicated streaming functions) |
 
 #### Overview
 
@@ -1295,11 +1296,11 @@ Current reviews show a loading spinner for 10-60 seconds before any content appe
 
 #### Acceptance Criteria
 
-- [ ] First token visible within 500ms of request start (for fast providers)
-- [ ] Full response identical to non-streaming mode
-- [ ] Cancel button stops generation and HTTP request
-- [ ] Performance metrics still captured accurately
-- [ ] Graceful fallback to non-streaming if SSE parsing fails
+- [x] First token visible within 500ms of request start (for fast providers)
+- [x] Full response identical to non-streaming mode
+- [ ] Cancel button stops generation and HTTP request (planned for F-024)
+- [x] Performance metrics still captured accurately
+- [x] Graceful fallback to non-streaming if SSE parsing fails
 
 ---
 
@@ -1493,7 +1494,8 @@ class ProviderRegistry {
 | **ID** | F-026 |
 | **Priority** | 🟢 P3 |
 | **Effort** | Low (1-2 days) |
-| **Status** | 📋 Planned |
+| **Status** | ✅ Complete |
+| **Shipped** | v6.0.0 (Feb 2026) |
 | **Dependencies** | F-012 (team knowledge base) |
 
 #### Overview
@@ -1522,10 +1524,10 @@ The F-012 knowledge base requires learning the YAML schema. Some teams just want
 
 #### Acceptance Criteria
 
-- [ ] `.ollama-review/rules/*.md` files auto-loaded on activation
-- [ ] Rules injected into every review prompt
-- [ ] File watcher reloads on create/change/delete
-- [ ] Coexists with F-012 knowledge base without conflicts
+- [x] `.ollama-review/rules/*.md` files auto-loaded on activation
+- [x] Rules injected into every review prompt
+- [x] File watcher reloads on create/change/delete
+- [x] Coexists with F-012 knowledge base without conflicts
 
 ---
 

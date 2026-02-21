@@ -186,6 +186,12 @@
         "icon": "$(book)"
       },
       {
+        "command": "ollama-code-review.reloadRules",
+        "title": "Reload Rules Directory (.ollama-review/rules/)",
+        "category": "Ollama Code Review",
+        "icon": "$(law)"
+      },
+      {
         "command": "ollama-code-review.reviewGitLabMR",
         "title": "Review GitLab MR",
         "category": "Ollama Code Review",
@@ -796,6 +802,11 @@
               "description": "Character overlap between consecutive chunks to preserve context across chunk boundaries."
             }
           }
+        },
+        "ollama-code-review.streaming.enabled": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "**F-022** — Enable streaming responses for supported providers (Ollama, Claude, OpenAI-compatible). When enabled, review text appears incrementally in the review panel as tokens are generated, providing a more responsive experience. Providers that do not support streaming (GLM, Hugging Face, Gemini, Mistral, MiniMax) always use the standard non-streaming path."
         }
       }
     }
