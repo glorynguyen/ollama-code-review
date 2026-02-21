@@ -68,6 +68,9 @@ export class OllamaReviewPanel {
           case 'generateDiagram':
             await vscode.commands.executeCommand('ollama-code-review.generateDiagram');
             break;
+          case 'generateCommitMessage':
+            await vscode.commands.executeCommand('ollama-code-review.generateCommitMessage');
+            break;
           case 'discussReview':
             await this._handleDiscussReview();
             break;
@@ -558,6 +561,7 @@ export class OllamaReviewPanel {
         <button class="export-btn" onclick="exportReview('prDescription')" title="Copy as PR description">📄 PR Desc</button>
         <button class="export-btn" onclick="exportReview('gist')" title="Create GitHub Gist">🔗 Gist</button>
         <button class="export-btn" onclick="generateDiagram()" title="Generate Mermaid architecture diagram from code">📊 Diagram</button>
+        <button class="export-btn" onclick="generateCommitMessage()" title="Generate commit message from staged changes">✨ Commit Msg</button>
         <button class="export-btn" onclick="postToPR()" title="Post review to GitHub PR" style="background: var(--vscode-button-background, #0e639c); color: var(--vscode-button-foreground, #fff); border-color: var(--vscode-button-background, #0e639c);">⬆ Post to PR</button>
         <button class="export-btn" onclick="discussReview()" title="Discuss this review in persistent chat">💬 Discuss</button>
     </div>
@@ -703,6 +707,10 @@ export class OllamaReviewPanel {
 
         window.generateDiagram = function() {
             vscode.postMessage({ command: 'generateDiagram' });
+        };
+
+        window.generateCommitMessage = function() {
+            vscode.postMessage({ command: 'generateCommitMessage' });
         };
 
         window.discussReview = function() {
