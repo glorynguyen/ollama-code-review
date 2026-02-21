@@ -1006,6 +1006,6 @@ You can configure these by opening the Command Palette (`Ctrl+Shift+P`) and sear
 ## Support the Project
 If you find this extension useful, please consider supporting its development!
 
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/nguyenbavinh)
+[![ko-fi](https://storage.ko-fi.com/cdn/kofi1.png)](https://ko-fi.com/nguyenbavinh)
 
 **Enjoy!**
