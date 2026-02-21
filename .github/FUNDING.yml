@@ -1,0 +1,11 @@
+# GitHub Sponsorship platform configuration
+# See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/displaying-a-sponsor-button-in-your-repository
+
+# GitHub Sponsors: Use your GitHub username
+github: [glorynguyen]
+
+# Ko-fi: Use your Ko-fi username
+ko_fi: nguyenbavinh
+
+# Custom: You can add an extra link if you have a personal site or other platform
+# custom: ['https://your-portfolio.com']

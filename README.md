@@ -1003,4 +1003,9 @@ This extension contributes the following settings to your VS Code `settings.json
 
 You can configure these by opening the Command Palette (`Ctrl+Shift+P`) and searching for `Preferences: Open User Settings (JSON)`.
 
+## Support the Project
+If you find this extension useful, please consider supporting its development!
+
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/nguyenbavinh)
+
 **Enjoy!**
