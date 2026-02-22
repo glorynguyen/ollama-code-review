@@ -1,3 +1,11 @@
+# [3.19.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.18.0...v3.19.0) (2026-02-22)
+
+
+### Features
+
+* **chat:** add [@codebase](https://github.com/codebase) context provider for RAG search ([6a4fb68](https://github.com/glorynguyen/ollama-code-review/commit/6a4fb68be1e6b458a66c95ac1e4c835720859f9b))
+* **chat:** Update ci/cd ([8127062](https://github.com/glorynguyen/ollama-code-review/commit/812706297a57c4b519b2987d701da6e34ff91fc6))
+
 # [3.18.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.17.0...v3.18.0) (2026-02-22)
 
 
