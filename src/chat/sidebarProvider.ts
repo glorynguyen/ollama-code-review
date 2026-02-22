@@ -46,6 +46,7 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 	constructor(
 		private readonly extensionUri: vscode.Uri,
 		private readonly conversationManager: ConversationManager,
+		private readonly globalStoragePath: string,
 	) {
 		ChatSidebarProvider.instance = this;
 	}
@@ -151,6 +152,7 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 					'- `@diff` — Include current staged git changes.',
 					'- `@selection` — Include the current editor selection.',
 					'- `@review` — Include the most recent AI review.',
+					'- `@codebase <query>` — Search indexed code snippets by semantic query.',
 					'- `@knowledge` — Include team knowledge base entries.',
 					'',
 					'*Example:* `@file src/auth.ts explain the token validation logic`',
@@ -167,6 +169,10 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 		const { cleanedMessage, contexts, unresolved } = await resolveAtMentions(
 			trimmedContent,
 			this.lastReviewText,
+			{
+				ragGlobalStoragePath: this.globalStoragePath,
+				config,
+			},
 		);
 
 		if (unresolved.length > 0) {

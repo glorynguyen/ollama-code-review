@@ -2,8 +2,16 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import {
+	JsonVectorStore,
+	buildRagContextSection,
+	getRagConfig,
+	isEmbeddingModelAvailable,
+	retrieveRelevantChunks,
+} from '../rag';
 
 const execFileAsync = promisify(execFile);
+const ragEmbeddingAvailability = new Map<string, boolean>();
 
 /** Maximum characters injected per @-mention to respect model token budgets. */
 const CONTEXT_MAX_CHARS = 8000;
@@ -27,8 +35,14 @@ export const CONTEXT_MENTION_DEFS: ContextMentionDef[] = [
 	{ trigger: '@diff', description: 'Include current staged git changes' },
 	{ trigger: '@selection', description: 'Include the current editor selection' },
 	{ trigger: '@review', description: 'Include the most recent AI review' },
+	{ trigger: '@codebase', description: 'Search indexed code snippets by semantic query' },
 	{ trigger: '@knowledge', description: 'Include team knowledge base entries' },
 ];
+
+export interface MentionResolutionOptions {
+	ragGlobalStoragePath?: string;
+	config?: vscode.WorkspaceConfiguration;
+}
 
 /**
  * Parse and resolve all @-mentions found in `rawMessage`.
@@ -44,9 +58,10 @@ export const CONTEXT_MENTION_DEFS: ContextMentionDef[] = [
 export async function resolveAtMentions(
 	rawMessage: string,
 	lastReviewText: string,
+	options?: MentionResolutionOptions,
 ): Promise<{ cleanedMessage: string; contexts: ResolvedContext[]; unresolved: string[] }> {
 	// Match @trigger optionally followed by a non-@ argument, e.g. "@file src/auth.ts"
-	const mentionPattern = /@(file|diff|selection|review|knowledge)(?:\s+([^\s@][^\n@]*))?/g;
+	const mentionPattern = /@(file|diff|selection|review|codebase|knowledge)(?:\s+([^\s@][^\n@]*))?/g;
 
 	const contexts: ResolvedContext[] = [];
 	const unresolved: string[] = [];
@@ -59,7 +74,7 @@ export async function resolveAtMentions(
 		const args = (m[2] ?? '').trim();
 		toRemove.push(fullMatch);
 
-		const resolved = await resolveOneMention(trigger, args, lastReviewText);
+		const resolved = await resolveOneMention(trigger, args, lastReviewText, options);
 		if (resolved) {
 			contexts.push(resolved);
 		} else {
@@ -80,14 +95,67 @@ async function resolveOneMention(
 	trigger: string,
 	args: string,
 	lastReviewText: string,
+	options?: MentionResolutionOptions,
 ): Promise<ResolvedContext | null> {
 	switch (trigger) {
 		case 'file': return resolveFile(args);
 		case 'diff': return resolveDiff();
 		case 'selection': return resolveSelection();
 		case 'review': return resolveReview(lastReviewText);
+		case 'codebase': return resolveCodebase(args, options);
 		case 'knowledge': return resolveKnowledge();
 		default: return null;
+	}
+}
+
+async function resolveCodebase(
+	query: string,
+	options?: MentionResolutionOptions,
+): Promise<ResolvedContext | null> {
+	const trimmedQuery = query.trim();
+	if (!trimmedQuery || !options?.ragGlobalStoragePath) {
+		return null;
+	}
+
+	try {
+		const store = new JsonVectorStore(options.ragGlobalStoragePath);
+		if (store.chunkCount === 0) {
+			return null;
+		}
+
+		const ragConfig = getRagConfig();
+		const config = options.config ?? vscode.workspace.getConfiguration('ollama-code-review');
+		const endpoint = config.get<string>('endpoint', 'http://localhost:11434/api/generate');
+		const cacheKey = `${endpoint}::${ragConfig.embeddingModel}`;
+		let useOllamaEmbeddings = ragEmbeddingAvailability.get(cacheKey);
+		if (useOllamaEmbeddings === undefined) {
+			useOllamaEmbeddings = await isEmbeddingModelAvailable(ragConfig.embeddingModel, endpoint);
+			ragEmbeddingAvailability.set(cacheKey, useOllamaEmbeddings);
+		}
+
+		const results = await retrieveRelevantChunks(
+			trimmedQuery,
+			store,
+			ragConfig,
+			endpoint,
+			useOllamaEmbeddings,
+		);
+		if (results.length === 0) {
+			return null;
+		}
+
+		const section = buildRagContextSection(results).trim();
+		const truncated = section.length > CONTEXT_MAX_CHARS
+			? `${section.slice(0, CONTEXT_MAX_CHARS)}\n\n[... codebase context truncated ...]`
+			: section;
+
+		return {
+			mention: `@codebase ${trimmedQuery}`,
+			label: `Codebase search: ${trimmedQuery}`,
+			content: truncated,
+		};
+	} catch {
+		return null;
 	}
 }
 

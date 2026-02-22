@@ -1344,9 +1344,9 @@ Add `@`-mention context providers to the sidebar chat. Users type `@` to see a d
 
 #### Acceptance Criteria
 
-- [ ] `@file` resolves workspace files with autocomplete
-- [ ] `@diff` injects current staged changes
-- [ ] `@codebase` returns semantically similar code chunks
+- [x] `@file` resolves workspace files with autocomplete
+- [x] `@diff` injects current staged changes
+- [x] `@codebase` returns semantically similar code chunks
 - [ ] Context preview shown in chat UI
 - [ ] Token budget respected — large contexts truncated
 

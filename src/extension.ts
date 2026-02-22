@@ -16,7 +16,11 @@ function loadCommands(): CommandsModule {
 
 export async function activate(context: vscode.ExtensionContext) {
 	const conversationManager = new ConversationManager(context.globalState);
-	const chatSidebarProvider = new ChatSidebarProvider(context.extensionUri, conversationManager);
+	const chatSidebarProvider = new ChatSidebarProvider(
+		context.extensionUri,
+		conversationManager,
+		context.globalStorageUri.fsPath,
+	);
 	context.subscriptions.push(conversationManager);
 
 	context.subscriptions.push(
