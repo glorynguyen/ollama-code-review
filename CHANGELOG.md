@@ -1,3 +1,10 @@
+# [3.18.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.17.0...v3.18.0) (2026-02-22)
+
+
+### Features
+
+* **chat:** implement @-context mentions in sidebar chat (F-023) ([d0b764f](https://github.com/glorynguyen/ollama-code-review/commit/d0b764f8838d75174669b3b0e27dcf782fa4826c))
+
 # [3.17.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.16.0...v3.17.0) (2026-02-21)
 
 
