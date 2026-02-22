@@ -1,23 +1,7 @@
 import * as vscode from 'vscode';
-import axios from 'axios';
 import { getOllamaModel } from '../utils';
 import { parseCodeResponse } from '../codeActions';
-import {
-	isClaudeModel,
-	isGlmModel,
-	isHuggingFaceModel,
-	isGeminiModel,
-	isMistralModel,
-	isMiniMaxModel,
-	isOpenAICompatibleModel,
-	callClaudeAPI,
-	callGlmAPI,
-	callHuggingFaceAPI,
-	callGeminiAPI,
-	callMistralAPI,
-	callMiniMaxAPI,
-	callOpenAICompatibleAPI,
-} from './providerClients';
+import { providerRegistry } from '../providers';
 
 export async function getOllamaSuggestion(codeSnippet: string, languageId: string): Promise<string> {
 	const config = vscode.workspace.getConfiguration('ollama-code-review');
@@ -41,53 +25,7 @@ export async function getOllamaSuggestion(codeSnippet: string, languageId: strin
 		---
 	`;
 
-	try {
-		// Use Claude API if a Claude model is selected
-		if (isClaudeModel(model)) {
-			return await callClaudeAPI(prompt, config);
-		}
-
-		// Use GLM API if a GLM model is selected
-		if (isGlmModel(model)) {
-			return await callGlmAPI(prompt, config);
-		}
-
-		// Use Hugging Face API if huggingface is selected
-		if (isHuggingFaceModel(model)) {
-			return await callHuggingFaceAPI(prompt, config);
-		}
-
-		// Use Gemini API if a Gemini model is selected
-		if (isGeminiModel(model)) {
-			return await callGeminiAPI(prompt, config);
-		}
-
-		// Use Mistral API if a Mistral model is selected
-		if (isMistralModel(model)) {
-			return await callMistralAPI(prompt, config);
-		}
-
-		// Use MiniMax API if a MiniMax model is selected
-		if (isMiniMaxModel(model)) {
-			return await callMiniMaxAPI(prompt, config);
-		}
-
-		// Use OpenAI-compatible API if selected
-		if (isOpenAICompatibleModel(model)) {
-			return await callOpenAICompatibleAPI(prompt, config);
-		}
-
-		// Otherwise use Ollama API
-		const response = await axios.post(endpoint, {
-			model: model,
-			prompt: prompt,
-			stream: false,
-			options: { temperature }
-		});
-		return response.data.response.trim();
-	} catch (error) {
-		throw error;
-	}
+	return callAIProvider(prompt, config, model, endpoint, temperature);
 }
 
 /**
@@ -251,40 +189,11 @@ Generate the documentation comment now.
  * Helper function to call the appropriate AI provider
  */
 export async function callAIProvider(prompt: string, config: vscode.WorkspaceConfiguration, model: string, endpoint: string, temperature: number): Promise<string> {
-	if (isClaudeModel(model)) {
-		return await callClaudeAPI(prompt, config);
-	}
-
-	if (isGlmModel(model)) {
-		return await callGlmAPI(prompt, config);
-	}
-
-	if (isHuggingFaceModel(model)) {
-		return await callHuggingFaceAPI(prompt, config);
-	}
-
-	if (isGeminiModel(model)) {
-		return await callGeminiAPI(prompt, config);
-	}
-
-	if (isMistralModel(model)) {
-		return await callMistralAPI(prompt, config);
-	}
-
-	if (isMiniMaxModel(model)) {
-		return await callMiniMaxAPI(prompt, config);
-	}
-
-	if (isOpenAICompatibleModel(model)) {
-		return await callOpenAICompatibleAPI(prompt, config);
-	}
-
-	// Default to Ollama API
-	const response = await axios.post(endpoint, {
-		model: model,
-		prompt: prompt,
-		stream: false,
-		options: { temperature }
+	const provider = providerRegistry.resolve(model);
+	return provider.generate(prompt, {
+		config,
+		model,
+		endpoint,
+		temperature,
 	});
-	return response.data.response.trim();
 }

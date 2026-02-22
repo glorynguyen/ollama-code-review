@@ -112,25 +112,8 @@ import {
 	checkActiveModels,
 	getLastPerformanceMetrics,
 	clearPerformanceMetrics,
-	setLastPerformanceMetrics,
-	isClaudeModel,
-	isGlmModel,
-	isHuggingFaceModel,
-	isGeminiModel,
-	isMistralModel,
-	isMiniMaxModel,
-	isOpenAICompatibleModel,
-	callClaudeAPI,
-	callGlmAPI,
-	callHuggingFaceAPI,
-	callGeminiAPI,
-	callMistralAPI,
-	callMiniMaxAPI,
-	callOpenAICompatibleAPI,
-	streamOllamaAPI,
-	streamClaudeAPI,
-	streamOpenAICompatibleAPI,
 } from './providerClients';
+import { type ProviderRequestContext, providerRegistry } from '../providers';
 import {
 	selectRepository,
 	parseSuggestion,
@@ -2358,13 +2341,7 @@ async function runReview(diff: string, context: vscode.ExtensionContext, reviewT
 	const streamingConfig = vscode.workspace.getConfiguration('ollama-code-review');
 	const streamingEnabled = streamingConfig.get<boolean>('streaming.enabled', true);
 	const activeModel = getOllamaModel(streamingConfig);
-	const supportsStreaming = streamingEnabled && (
-		!isGlmModel(activeModel) &&
-		!isHuggingFaceModel(activeModel) &&
-		!isGeminiModel(activeModel) &&
-		!isMistralModel(activeModel) &&
-		!isMiniMaxModel(activeModel)
-	);
+	const supportsStreaming = streamingEnabled && providerRegistry.resolve(activeModel).supportsStreaming();
 
 	// Gather context (always, regardless of streaming)
 	let contextBundle: ContextBundle | undefined;
@@ -2682,23 +2659,13 @@ ${content}
 \`\`\``;
 
 	clearPerformanceMetrics();
-
-	if (isClaudeModel(model))              { return await callClaudeAPI(prompt, config, true); }
-	if (isGlmModel(model))                 { return await callGlmAPI(prompt, config, true); }
-	if (isHuggingFaceModel(model))         { return await callHuggingFaceAPI(prompt, config, true); }
-	if (isGeminiModel(model))              { return await callGeminiAPI(prompt, config, true); }
-	if (isMistralModel(model))             { return await callMistralAPI(prompt, config, true); }
-	if (isMiniMaxModel(model))             { return await callMiniMaxAPI(prompt, config, true); }
-	if (isOpenAICompatibleModel(model))    { return await callOpenAICompatibleAPI(prompt, config, true); }
-
-	// Ollama
-	const response = await axios.post(endpoint, {
+	const requestContext: ProviderRequestContext = {
+		config,
 		model,
-		prompt,
-		stream: false,
-		options: { temperature },
-	});
-	return response.data?.response ?? '';
+		endpoint,
+		temperature,
+	};
+	return providerRegistry.resolve(model).generate(prompt, requestContext, { captureMetrics: true });
 }
 
 async function getOllamaReview(diff: string, context?: vscode.ExtensionContext, contextBundle?: ContextBundle, onChunk?: (text: string) => void): Promise<string> {
@@ -2821,92 +2788,19 @@ async function getOllamaReview(diff: string, context?: vscode.ExtensionContext, 
 
 	// Clear previous metrics before the API call
 	clearPerformanceMetrics();
+	const provider = providerRegistry.resolve(model);
+	const requestContext: ProviderRequestContext = {
+		config,
+		model,
+		endpoint,
+		temperature,
+	};
 
-	// F-022: Streaming path — for Ollama, Claude, and OpenAI-compatible when onChunk is provided
-	if (onChunk) {
-		if (isClaudeModel(model)) {
-			return await streamClaudeAPI(prompt, config, onChunk);
-		}
-		if (isOpenAICompatibleModel(model)) {
-			return await streamOpenAICompatibleAPI(prompt, config, onChunk);
-		}
-		if (!isGlmModel(model) && !isHuggingFaceModel(model) && !isGeminiModel(model) &&
-		    !isMistralModel(model) && !isMiniMaxModel(model)) {
-			// Default: stream from Ollama
-			return await streamOllamaAPI(prompt, model, endpoint, temperature, onChunk);
-		}
-		// Fall through to non-streaming for providers that don't support it yet
+	if (onChunk && provider.supportsStreaming()) {
+		return provider.stream(prompt, requestContext, { onChunk, captureMetrics: true });
 	}
 
-	try {
-		// Use Claude API if a Claude model is selected
-		if (isClaudeModel(model)) {
-			return await callClaudeAPI(prompt, config, true);
-		}
-
-		// Use GLM API if a GLM model is selected
-		if (isGlmModel(model)) {
-			return await callGlmAPI(prompt, config, true);
-		}
-
-		// Use Hugging Face API if huggingface is selected
-		if (isHuggingFaceModel(model)) {
-			return await callHuggingFaceAPI(prompt, config, true);
-		}
-
-		// Use Gemini API if a Gemini model is selected
-		if (isGeminiModel(model)) {
-			return await callGeminiAPI(prompt, config, true);
-		}
-
-		// Use Mistral API if a Mistral model is selected
-		if (isMistralModel(model)) {
-			return await callMistralAPI(prompt, config, true);
-		}
-
-		// Use MiniMax API if a MiniMax model is selected
-		if (isMiniMaxModel(model)) {
-			return await callMiniMaxAPI(prompt, config, true);
-		}
-
-		// Use OpenAI-compatible API if selected
-		if (isOpenAICompatibleModel(model)) {
-			return await callOpenAICompatibleAPI(prompt, config, true);
-		}
-
-		// Otherwise use Ollama API
-		const response = await axios.post(endpoint, {
-			model: model,
-			prompt: prompt,
-			stream: false,
-			options: { temperature }
-		});
-
-		// Capture Ollama performance metrics from response
-		const data = response.data;
-		if (data) {
-			const evalDuration = data.eval_duration || 0;
-			const evalCount = data.eval_count || 0;
-			const tokensPerSecond = evalDuration > 0 ? (evalCount / (evalDuration / 1e9)) : undefined;
-			const totalDurationSeconds = data.total_duration ? data.total_duration / 1e9 : undefined;
-
-			setLastPerformanceMetrics({
-				provider: 'ollama',
-				model: model,
-				totalDuration: data.total_duration,
-				loadDuration: data.load_duration,
-				promptEvalCount: data.prompt_eval_count,
-				evalCount: data.eval_count,
-				evalDuration: data.eval_duration,
-				tokensPerSecond: tokensPerSecond,
-				totalDurationSeconds: totalDurationSeconds
-			});
-		}
-
-		return data.response.trim();
-	} catch (error) {
-		throw error;
-	}
+	return provider.generate(prompt, requestContext, { captureMetrics: true });
 }
 
 async function getOllamaCommitMessage(diff: string, existingMessage?: string): Promise<string> {
@@ -2926,39 +2820,12 @@ async function getOllamaCommitMessage(diff: string, existingMessage?: string): P
 	const prompt = resolvePrompt(promptTemplate, variables);
 
 	try {
-		let message: string;
-
-		// Use Claude API if a Claude model is selected
-		if (isClaudeModel(model)) {
-			message = await callClaudeAPI(prompt, config);
-		} else if (isGlmModel(model)) {
-			// Use GLM API if a GLM model is selected
-			message = await callGlmAPI(prompt, config);
-		} else if (isHuggingFaceModel(model)) {
-			// Use Hugging Face API if huggingface is selected
-			message = await callHuggingFaceAPI(prompt, config);
-		} else if (isGeminiModel(model)) {
-			// Use Gemini API if a Gemini model is selected
-			message = await callGeminiAPI(prompt, config);
-		} else if (isMistralModel(model)) {
-			// Use Mistral API if a Mistral model is selected
-			message = await callMistralAPI(prompt, config);
-		} else if (isMiniMaxModel(model)) {
-			// Use MiniMax API if a MiniMax model is selected
-			message = await callMiniMaxAPI(prompt, config);
-		} else if (isOpenAICompatibleModel(model)) {
-			// Use OpenAI-compatible API if selected
-			message = await callOpenAICompatibleAPI(prompt, config);
-		} else {
-			// Otherwise use Ollama API
-			const response = await axios.post(endpoint, {
-				model: model,
-				prompt: prompt,
-				stream: false,
-				options: { temperature }
-			});
-			message = response.data.response.trim();
-		}
+		let message = await providerRegistry.resolve(model).generate(prompt, {
+			config,
+			model,
+			endpoint,
+			temperature,
+		});
 
 		// Sometimes models add quotes or markdown blocks around the message, so we trim them.
 		if (message.startsWith('```') && message.endsWith('```')) {

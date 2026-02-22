@@ -1,19 +1,7 @@
 import * as vscode from 'vscode';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { callAIProvider } from '../commands/aiActions';
-import {
-	isClaudeModel,
-	isGeminiModel,
-	isGlmModel,
-	isHuggingFaceModel,
-	isMiniMaxModel,
-	isMistralModel,
-	isOpenAICompatibleModel,
-	streamClaudeAPI,
-	streamOllamaAPI,
-	streamOpenAICompatibleAPI,
-} from '../commands/providerClients';
+import { type ProviderRequestContext, providerRegistry } from '../providers';
 import { getOllamaModel } from '../utils';
 import {
 	CONTEXT_MENTION_DEFS,
@@ -358,27 +346,21 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 		const endpoint = config.get<string>('endpoint', 'http://localhost:11434/api/generate');
 		const temperature = config.get<number>('temperature', 0);
 		const streamingEnabled = config.get<boolean>('streaming.enabled', true);
+		const provider = providerRegistry.resolve(model);
+		const requestContext: ProviderRequestContext = {
+			config,
+			model,
+			endpoint,
+			temperature,
+		};
 
 		return {
 			sendMessage: async (prompt: string, onChunk: (chunk: string) => void): Promise<string> => {
-				if (streamingEnabled) {
-					if (isClaudeModel(model)) {
-						return streamClaudeAPI(prompt, config, onChunk);
-					}
-					if (isOpenAICompatibleModel(model)) {
-						return streamOpenAICompatibleAPI(prompt, config, onChunk);
-					}
-					const isCloudNonOllama = isGlmModel(model)
-						|| isHuggingFaceModel(model)
-						|| isGeminiModel(model)
-						|| isMistralModel(model)
-						|| isMiniMaxModel(model);
-					if (!isCloudNonOllama) {
-						return streamOllamaAPI(prompt, model, endpoint, temperature, onChunk);
-					}
+				if (streamingEnabled && provider.supportsStreaming()) {
+					return provider.stream(prompt, requestContext, { onChunk });
 				}
 
-				const full = await callAIProvider(prompt, config, model, endpoint, temperature);
+				const full = await provider.generate(prompt, requestContext);
 				onChunk(full);
 				return full;
 			},
