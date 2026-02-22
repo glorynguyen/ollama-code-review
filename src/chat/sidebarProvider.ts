@@ -31,7 +31,7 @@ interface AIProvider {
 
 const execFileAsync = promisify(execFile);
 const STAGED_DIFF_MAX_CHARS = 20000;
-const SUPPORTED_CHAT_COMMANDS = ['/staged', '/help'] as const;
+const SUPPORTED_CHAT_COMMANDS = ['/help'] as const;
 
 /** Serialisable form of ContextMentionDef passed to the webview. */
 interface WebviewMentionDef {
@@ -151,16 +151,11 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 		this.conversationManager.addMessage(conversation.id, userMessage);
 		this.sendMessageToWebview({ type: 'messageAdded', message: userMessage });
 
-		if (trimmedContent === '/staged') {
-			await this.handleStagedCommand(conversation.id, activeModel);
-			return;
-		}
 		if (trimmedContent === '/help') {
 			const helpMessage: ChatMessage = {
 				role: 'system',
 				content: [
 					'**Commands:**',
-					'- `/staged` — Load currently staged git changes into chat context.',
 					'- `/help` — Show this help message.',
 					'',
 					'**@-Context mentions** (type `@` to see suggestions):',
@@ -230,33 +225,6 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 				this.sendMessageToWebview({ type: 'error', error: message });
 			}
 			this.sendMessageToWebview({ type: 'streamEnd', content: assistantResponse });
-		}
-	}
-
-	private async handleStagedCommand(conversationId: string, modelId: string): Promise<void> {
-		try {
-			const stagedDiff = await this.getStagedDiffContext();
-			const message = stagedDiff.hasDiff
-				? `Loaded staged changes${stagedDiff.truncated ? ' (truncated)' : ''}:\n\n\`\`\`diff\n${stagedDiff.content}\n\`\`\``
-				: 'No staged changes found. Stage files first with `git add` and try again.';
-			const systemMessage: ChatMessage = {
-				role: 'system',
-				content: message,
-				timestamp: Date.now(),
-				model: modelId,
-			};
-			this.conversationManager.addMessage(conversationId, systemMessage);
-			this.sendMessageToWebview({ type: 'messageAdded', message: systemMessage });
-		} catch (error) {
-			const message = error instanceof Error ? error.message : 'Unable to read staged changes.';
-			const systemMessage: ChatMessage = {
-				role: 'system',
-				content: `Failed to read staged changes: ${message}`,
-				timestamp: Date.now(),
-				model: modelId,
-			};
-			this.conversationManager.addMessage(conversationId, systemMessage);
-			this.sendMessageToWebview({ type: 'messageAdded', message: systemMessage });
 		}
 	}
 
@@ -615,7 +583,7 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 		<div class="command-suggestions">
 			<div id="commandList"></div>
 			<div id="mentionList"></div>
-			<textarea id="input" placeholder="Ask a question... Use / for commands or @ for context"></textarea>
+			<textarea id="input" placeholder="Ask a question... Type @ for context or /help for commands"></textarea>
 		</div>
 		<button id="send" type="button">Send</button>
 	</div>
