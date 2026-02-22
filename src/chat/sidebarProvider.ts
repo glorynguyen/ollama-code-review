@@ -429,25 +429,50 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 	<style>
 		:root {
 			color-scheme: light dark;
+			--apple-font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Helvetica Neue', sans-serif;
+			--apple-bg: color-mix(in srgb, var(--vscode-editor-background) 96%, #0b0b0c);
+			--apple-surface: color-mix(in srgb, var(--vscode-editor-background) 88%, #1b1b1f);
+			--apple-surface-strong: color-mix(in srgb, var(--vscode-editor-background) 78%, #242428);
+			--apple-border: color-mix(in srgb, var(--vscode-panel-border) 62%, #3a3a40);
+			--apple-text: color-mix(in srgb, var(--vscode-foreground) 96%, #f5f5f7);
+			--apple-muted: color-mix(in srgb, var(--vscode-descriptionForeground) 88%, #c7c7cc);
+			--apple-accent: #0a84ff;
+			--apple-accent-strong: #0071e3;
+			--apple-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
 		}
 		body {
 			margin: 0;
-			padding: 8px;
-			font-family: var(--vscode-font-family);
+			padding: 10px;
+			font-family: var(--apple-font);
+			color: var(--apple-text);
 			height: 100vh;
 			display: flex;
 			flex-direction: column;
-			gap: 8px;
+			gap: 10px;
 			box-sizing: border-box;
+			background:
+				radial-gradient(120% 70% at -10% -20%, rgba(10, 132, 255, 0.14) 0%, rgba(10, 132, 255, 0) 55%),
+				radial-gradient(100% 60% at 120% 120%, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0) 60%),
+				var(--apple-bg);
 		}
 		.header {
 			display: flex;
-			gap: 8px;
+			gap: 10px;
 			align-items: center;
+			padding: 8px;
+			border-radius: 14px;
+			background: linear-gradient(180deg, color-mix(in srgb, var(--apple-surface-strong) 92%, #111114), var(--apple-surface));
+			border: 1px solid var(--apple-border);
+			box-shadow: var(--apple-shadow);
+			backdrop-filter: blur(16px) saturate(140%);
 		}
 		.header img {
-			width: 16px;
-			height: 16px;
+			width: 18px;
+			height: 18px;
+			padding: 7px;
+			border-radius: 11px;
+			background: color-mix(in srgb, var(--apple-surface) 65%, #ffffff);
+			border: 1px solid var(--apple-border);
 		}
 		select, button, textarea {
 			font-family: inherit;
@@ -455,55 +480,93 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 		}
 		#model {
 			flex: 1;
-			padding: 6px;
+			padding: 9px 12px;
+			border-radius: 11px;
+			border: 1px solid var(--apple-border);
+			background: color-mix(in srgb, var(--apple-surface) 82%, #ffffff);
+			color: var(--apple-text);
+			transition: border-color 120ms ease, box-shadow 120ms ease;
 		}
 		.controls {
 			display: flex;
-			gap: 6px;
+			gap: 8px;
 		}
 		#history {
 			flex: 1;
 			overflow-y: auto;
-			border: 1px solid var(--vscode-panel-border);
-			border-radius: 6px;
-			padding: 8px;
-			background: var(--vscode-editor-background);
+			border: 1px solid var(--apple-border);
+			border-radius: 16px;
+			padding: 12px;
+			background: linear-gradient(180deg, color-mix(in srgb, var(--apple-surface) 92%, #121216), color-mix(in srgb, var(--apple-surface) 80%, #16161b));
+			box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), var(--apple-shadow);
+			backdrop-filter: blur(14px) saturate(130%);
 		}
 		.message {
-			margin-bottom: 10px;
-			padding: 8px;
-			border-radius: 6px;
-			line-height: 1.45;
+			margin-bottom: 11px;
+			padding: 11px 12px;
+			border-radius: 13px;
+			line-height: 1.5;
+			border: 1px solid transparent;
+			animation: riseIn 180ms ease;
+		}
+		@keyframes riseIn {
+			from {
+				opacity: 0;
+				transform: translateY(6px);
+			}
+			to {
+				opacity: 1;
+				transform: translateY(0);
+			}
 		}
 		.message.user {
-			background: var(--vscode-button-background);
-			color: var(--vscode-button-foreground);
+			background: linear-gradient(180deg, color-mix(in srgb, var(--apple-accent) 90%, #44a1ff), var(--apple-accent-strong));
+			color: #ffffff;
+			border-color: color-mix(in srgb, var(--apple-accent-strong) 80%, #ffffff);
+			box-shadow: 0 8px 18px rgba(10, 132, 255, 0.34);
 		}
 		.message.assistant {
-			background: var(--vscode-editor-inactiveSelectionBackground);
+			background: color-mix(in srgb, var(--apple-surface) 88%, #101015);
+			border-color: var(--apple-border);
+			box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
 		}
 		.message.system {
-			background: var(--vscode-textBlockQuote-background);
-			border-left: 3px solid var(--vscode-textBlockQuote-border);
+			background: color-mix(in srgb, var(--apple-surface) 78%, #2b2414);
+			border-color: color-mix(in srgb, var(--apple-border) 60%, #ffbf47);
+			box-shadow: inset 0 0 0 1px rgba(255, 191, 71, 0.16);
 		}
 		.message .meta {
 			font-size: 11px;
-			opacity: 0.8;
-			margin-bottom: 4px;
+			opacity: 0.95;
+			margin-bottom: 6px;
+			font-weight: 600;
+			letter-spacing: 0.01em;
+			color: var(--apple-muted);
 		}
 		.input {
 			display: grid;
 			grid-template-columns: 1fr auto;
-			gap: 6px;
+			gap: 10px;
 			align-items: stretch;
+			padding: 8px;
+			border-radius: 14px;
+			border: 1px solid var(--apple-border);
+			background: linear-gradient(180deg, color-mix(in srgb, var(--apple-surface-strong) 92%, #121216), var(--apple-surface));
+			box-shadow: var(--apple-shadow);
+			backdrop-filter: blur(16px) saturate(140%);
 		}
 		#input {
 			resize: none;
 			height: 56px;
-			padding: 8px;
+			padding: 10px 12px;
 			width: 100%;
 			min-width: 0;
 			box-sizing: border-box;
+			border-radius: 11px;
+			border: 1px solid var(--apple-border);
+			background: color-mix(in srgb, var(--apple-surface) 90%, #0f0f13);
+			color: var(--apple-text);
+			transition: border-color 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
 		}
 		.command-suggestions {
 			position: relative;
@@ -515,17 +578,18 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 			left: 0;
 			right: 0;
 			bottom: 100%;
-			margin-bottom: 4px;
-			max-height: 160px;
+			margin-bottom: 8px;
+			max-height: 150px;
 			overflow-y: auto;
-			border: 1px solid var(--vscode-panel-border);
-			border-radius: 6px;
-			background: var(--vscode-editorWidget-background);
+			border: 1px solid var(--apple-border);
+			border-radius: 11px;
+			background: color-mix(in srgb, var(--apple-surface-strong) 90%, #121216);
 			display: none;
 			z-index: 5;
+			box-shadow: var(--apple-shadow);
 		}
 		.command-item {
-			padding: 6px 8px;
+			padding: 8px 10px;
 			font-size: 12px;
 			cursor: pointer;
 			display: flex;
@@ -534,7 +598,7 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 		}
 		.command-item:hover,
 		.command-item.active {
-			background: var(--vscode-list-hoverBackground);
+			background: color-mix(in srgb, var(--apple-accent) 20%, transparent);
 		}
 		.mention-trigger {
 			font-weight: 600;
@@ -549,23 +613,73 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 			white-space: nowrap;
 		}
 		button {
-			padding: 6px 10px;
-			border: 1px solid var(--vscode-button-border);
-			background: var(--vscode-button-background);
-			color: var(--vscode-button-foreground);
+			padding: 9px 14px;
+			border: 1px solid color-mix(in srgb, var(--apple-accent-strong) 84%, #ffffff);
+			background: linear-gradient(180deg, color-mix(in srgb, var(--apple-accent) 88%, #45a5ff), var(--apple-accent-strong));
+			color: #ffffff;
+			border-radius: 11px;
 			cursor: pointer;
+			font-weight: 600;
+			letter-spacing: 0.01em;
+			transition: transform 120ms ease, box-shadow 120ms ease, filter 120ms ease;
+			box-shadow: 0 9px 18px rgba(10, 132, 255, 0.33);
 		}
 		#send {
-			min-width: 92px;
+			min-width: 96px;
 		}
 		button.secondary {
-			background: var(--vscode-inputOption-activeBackground);
-			color: var(--vscode-foreground);
+			background: color-mix(in srgb, var(--apple-surface) 86%, #111115);
+			color: var(--apple-text);
+			border-color: var(--apple-border);
+			box-shadow: 0 7px 14px rgba(0, 0, 0, 0.18);
+		}
+		button:hover {
+			transform: translateY(-1px);
+			filter: brightness(1.04);
+		}
+		button:active {
+			transform: translateY(0);
+			filter: brightness(0.98);
+		}
+		button:disabled {
+			opacity: 0.6;
+			cursor: default;
+			transform: none;
+			box-shadow: none;
+		}
+		select:focus,
+		textarea:focus,
+		button:focus-visible {
+			outline: none;
+			border-color: color-mix(in srgb, var(--apple-accent) 82%, #ffffff);
+			box-shadow: 0 0 0 3px color-mix(in srgb, var(--apple-accent) 30%, transparent);
 		}
 		.status {
 			min-height: 16px;
 			font-size: 11px;
-			opacity: 0.8;
+			opacity: 0.9;
+			color: var(--apple-muted);
+			padding: 0 4px;
+		}
+		@media (max-width: 520px) {
+			body {
+				padding: 8px;
+				gap: 8px;
+			}
+			.header,
+			.input {
+				padding: 7px;
+				border-radius: 12px;
+			}
+			.controls {
+				gap: 6px;
+			}
+			button {
+				padding: 8px 11px;
+			}
+			#input {
+				height: 52px;
+			}
 		}
 	</style>
 </head>
