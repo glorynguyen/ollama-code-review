@@ -843,8 +843,8 @@
     "vscode:prepublish": "yarn run compile",
     "compile": "tsc -p ./",
     "build": "yarn run lint --fix && yarn run compile",
-    "package": "yarn run build && vsce package",
-    "deploy": "vsce publish",
+    "package": "yarn run build && vsce package --yarn",
+    "deploy": "vsce publish --yarn",
     "watch": "tsc -watch -p ./",
     "pretest": "yarn run compile && yarn run lint --fix",
     "lint": "eslint src",
@@ -922,5 +922,6 @@
         }
       ]
     ]
-  }
+  },
+  "packageManager": "yarn@1.22.22"
 }

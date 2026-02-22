@@ -23,8 +23,14 @@ jobs:
           node-version: 22
           cache: 'yarn'
 
+      - name: Enable Corepack & Set Yarn Version
+        run: |
+          corepack enable
+          corepack prepare yarn@1.22.22 --activate
+
       - name: Install dependencies
-        run: yarn install --immutable
+        # Correct flag for Yarn 1.22.x
+        run: yarn install --frozen-lockfile
 
       - name: Release
         run: yarn release
