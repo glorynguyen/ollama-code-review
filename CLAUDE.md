@@ -1609,7 +1609,7 @@ See [docs/roadmap/](./docs/roadmap/) for comprehensive planning documents:
 | Streaming Responses | F-022 | P1 | Medium (3-5 days) | ✅ Complete | SSE/NDJSON streaming for Ollama, Claude, OpenAI-compatible; incremental review panel rendering |
 | Rules Directory | F-026 | P3 | Low (1-2 days) | ✅ Complete | `.ollama-review/rules/*.md` files always injected into review prompts |
 | extension.ts Decomposition | F-027 | P0 | Medium (3-5 days) | ✅ Complete | Split monolithic `extension.ts` into `commands/index.ts`, `commands/providerClients.ts`, `commands/aiActions.ts`, `commands/uiHelpers.ts` with `extension.ts` as thin loader |
+| Sidebar Chat Panel | F-021 | P1 | High (7-10 days) | ✅ Complete | Persistent `WebviewViewProvider` sidebar chat with conversation history, model switching, `/staged`, `/help` commands, and review panel "Discuss" integration |
+| @-Context Mentions in Chat | F-023 | P2 | Medium (4-5 days) | ✅ Complete | `@file` (file picker), `@diff`, `@selection`, `@review`, `@knowledge` context providers with autocomplete dropdown in sidebar chat |
 | Provider Abstraction Layer | F-025 | P0 | Medium (3-4 days) | 📋 Planned | Unified `ModelProvider` interface + `ProviderRegistry` for all 8 providers |
-| Sidebar Chat Panel | F-021 | P1 | High (7-10 days) | 📋 Planned | Persistent `WebviewViewProvider` sidebar chat with conversation history and model switching |
-| @-Context Mentions in Chat | F-023 | P2 | Medium (4-5 days) | 📋 Planned | `@file`, `@diff`, `@review`, `@codebase`, `@selection`, `@knowledge` context providers in chat |
 | Inline Edit Mode | F-024 | P2 | High (5-7 days) | 📋 Planned | Highlight code, describe change, AI applies edit with streaming inline diff preview |

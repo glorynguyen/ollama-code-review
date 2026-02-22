@@ -311,6 +311,8 @@ After a review completes, use the toolbar buttons at the top of the review panel
 - **Save as Markdown**: Opens a system save dialog and writes the review as a `.md` file.
 - **PR Description**: Wraps the review with a model attribution header and copies it to your clipboard — ready to paste into a Pull Request description.
 - **Create GitHub Gist**: Posts a private Gist containing the review. Requires a GitHub Personal Access Token with the `gist` scope configured in settings (`ollama-code-review.github.gistToken`). After creation you can open the Gist in your browser or copy its URL.
+- **✨ Commit Msg**: Generate a conventional commit message from your currently staged changes directly from the review panel — no need to switch to the Source Control panel.
+- **💬 Discuss**: Open the current review in the [Persistent AI Review Chat Sidebar](#41-persistent-ai-review-chat-sidebar) to continue the conversation with multi-turn follow-up questions.
 
 ### 24. GitHub PR Integration
 Review GitHub Pull Requests directly from VS Code and post AI-generated reviews as PR comments:
@@ -847,6 +849,62 @@ This is a lightweight companion to the [Team Knowledge Base](#36-team-knowledge-
 - **Command**: `Ollama Code Review: Reload Rules Directory (.ollama-review/rules/)` — manually flush the rules cache
 
 > Rules are plain Markdown, so they're easy to write, review, and version-control alongside your code. Use numbered filenames (e.g., `01-typescript.md`, `02-react.md`) to control injection order.
+
+### 41. Persistent AI Review Chat Sidebar
+
+A dedicated AI chat panel pinned to the VS Code Activity Bar — always accessible, with full conversation history that persists across sessions. Use it for free-form AI assistance, to discuss a code review, or to ask questions about your staged changes.
+
+- **Activity Bar icon**: Click the **AI Review** icon (`$(comment-discussion)`) in the Activity Bar to open the chat sidebar.
+- **Command**: `AI Review: Focus AI Review Chat` — focus the chat sidebar from the Command Palette or keyboard shortcut.
+- **💬 Discuss button**: After any code review, click the **💬 Discuss** button in the review panel toolbar to send the full review into the sidebar and start a discussion with the AI.
+
+**Chat commands:**
+
+| Command | Description |
+|---------|-------------|
+| `/staged` | Load the currently staged git diff into the conversation as context |
+| `/help` | Show all available chat commands |
+
+**Features:**
+- **Persistent history**: Conversations are saved in VS Code's global state and survive restarts. Each conversation is auto-titled based on your first message.
+- **Multi-conversation management**: Start new conversations, switch between them, or clear history — all within the sidebar.
+- **Streaming responses**: Tokens stream in real-time for supported providers (Ollama, Claude, OpenAI-compatible).
+- **All providers supported**: Works with Ollama, Claude, Gemini, Mistral, MiniMax, GLM, Hugging Face, and OpenAI-compatible endpoints.
+- **Review integration**: When you click **💬 Discuss** in the review panel, the full review context is injected as a system message so the AI can answer follow-up questions about specific findings.
+
+**Getting started:**
+1. Click the **AI Review** icon in the Activity Bar (or use the Command Palette: `AI Review: Focus AI Review Chat`)
+2. Type a question or use `/staged` to load your staged changes
+3. After completing a code review, click **💬 Discuss** to continue the conversation in the sidebar
+
+### 42. @-Context Mentions in Chat
+
+Type `@` in the chat input to instantly inject rich context into your AI conversation — no copy-pasting required. The extension shows an autocomplete dropdown as you type, and resolves the referenced content before sending it to the AI.
+
+**Available @-mentions:**
+
+| Mention | Description |
+|---------|-------------|
+| `@file <path>` | Include a workspace file — opens a VS Code file picker to select the file |
+| `@diff` | Include the current staged git changes |
+| `@selection` | Include the text currently selected in the active editor |
+| `@review` | Include the most recent AI code review |
+| `@knowledge` | Include relevant entries from the Team Knowledge Base (`.ollama-review-knowledge.yaml`) |
+
+**Usage:**
+1. Start typing `@` in the chat input — the autocomplete dropdown appears immediately
+2. Continue typing to filter (e.g., `@fi` shows `@file`, `@sel` shows `@selection`)
+3. Use **↑ / ↓** to navigate, **Tab** or **Enter** to select, **Esc** to dismiss
+4. For `@file`: a VS Code file picker opens; the selected path is inserted automatically
+5. Combine with your question: `@file src/auth.ts what does the token validation do?`
+6. Send — the extension resolves all @-mentions and injects their content into the AI prompt
+
+**How it works:**
+- @-mention tokens are resolved in the extension host (not the webview) for full workspace access
+- Resolved contexts appear as a "Context References" section in the AI prompt
+- Each context is capped at 8,000 characters to stay within model token budgets
+- Unresolved mentions (e.g., `@review` with no prior review) show a status warning and are skipped
+- Multiple @-mentions can be combined in a single message
 
 ---
 

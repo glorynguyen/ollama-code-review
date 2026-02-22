@@ -736,9 +736,9 @@ Build a shared knowledge base of team decisions, patterns, and conventions that 
 | F-018 | Notification Integrations | 5 | ✅ Complete | v4.1 |
 | F-019 | Batch / Legacy Code Review | 5 | ✅ Complete | v4.1 |
 | F-020 | Architecture Diagram Generation | 5 | ✅ Complete | v4.2 |
-| F-021 | Sidebar Chat Panel | 6 | 📋 Planned | — |
+| F-021 | Sidebar Chat Panel | 6 | ✅ Complete | main (2026-02-21) |
 | F-022 | Streaming Responses | 6 | ✅ Complete | v6.0 |
-| F-023 | @-Context Mentions in Chat | 6 | 📋 Planned | — |
+| F-023 | @-Context Mentions in Chat | 6 | ✅ Complete | main (2026-02-22) |
 | F-024 | Inline Edit Mode | 6 | 📋 Planned | — |
 | F-025 | Provider Abstraction Layer | 6 | 📋 Planned | — |
 | F-026 | Rules Directory | 6 | ✅ Complete | v6.0 |
@@ -1311,12 +1311,12 @@ Current reviews show a loading spinner for 10-60 seconds before any content appe
 | **ID** | F-023 |
 | **Priority** | 🟡 P2 |
 | **Effort** | Medium (4-5 days) |
-| **Status** | 📋 Planned |
+| **Status** | ✅ Complete |
 | **Dependencies** | F-021 (sidebar chat), F-008 (context gathering), F-009 (RAG) |
 
 #### Overview
 
-Add `@`-mention context providers to the sidebar chat. Users type `@` to see a dropdown of available context sources — `@file`, `@diff`, `@review`, `@codebase` — and the referenced content is injected into the AI prompt.
+Add `@`-mention context providers to the sidebar chat. Users type `@` to see a dropdown of available context sources — `@file`, `@diff`, `@review`, `@selection`, `@knowledge` — and the referenced content is injected into the AI prompt.
 
 #### Context Providers
 
