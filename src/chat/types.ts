@@ -19,7 +19,9 @@ export type WebviewInboundMessage =
 	| { type: 'sendMessage'; content: string }
 	| { type: 'setModel'; modelId: string }
 	| { type: 'newConversation' }
-	| { type: 'clearHistory' };
+	| { type: 'clearHistory' }
+	/** Sent when the user selects @file from the mention dropdown. Extension opens a VS Code file picker. */
+	| { type: 'pickFile'; insertOffset: number };
 
 export type WebviewOutboundMessage =
 	| {
@@ -36,6 +38,10 @@ export type WebviewOutboundMessage =
 	| { type: 'modelUpdated'; modelId: string }
 	| { type: 'conversationCreated'; conversation: Conversation }
 	| { type: 'contextInjected'; context: string }
-	| { type: 'error'; error: string };
+	| { type: 'error'; error: string }
+	/** Sent after a file is picked; webview inserts the relative path into the input. */
+	| { type: 'filePicked'; relativePath: string; insertOffset: number }
+	/** Sent to notify the webview that one or more @-mentions could not be resolved. */
+	| { type: 'mentionWarning'; mentions: string[] };
 
 export type WebviewMessage = WebviewInboundMessage | WebviewOutboundMessage;

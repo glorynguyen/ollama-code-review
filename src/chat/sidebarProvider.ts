@@ -15,6 +15,12 @@ import {
 	streamOpenAICompatibleAPI,
 } from '../commands/providerClients';
 import { getOllamaModel } from '../utils';
+import {
+	CONTEXT_MENTION_DEFS,
+	pickWorkspaceFile,
+	resolveAtMentions,
+	type ResolvedContext,
+} from './contextProviders';
 import { ConversationManager } from './conversationManager';
 import { toModelLimitChatMessage } from './modelErrorUtils';
 import type { ChatMessage, Conversation, WebviewInboundMessage, WebviewOutboundMessage } from './types';
@@ -26,6 +32,12 @@ interface AIProvider {
 const execFileAsync = promisify(execFile);
 const STAGED_DIFF_MAX_CHARS = 20000;
 const SUPPORTED_CHAT_COMMANDS = ['/staged', '/help'] as const;
+
+/** Serialisable form of ContextMentionDef passed to the webview. */
+interface WebviewMentionDef {
+	trigger: string;
+	description: string;
+}
 
 interface StagedDiffContext {
 	content: string;
@@ -40,6 +52,8 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 
 	private view: vscode.WebviewView | undefined;
 	private lastInjectedContext = '';
+	/** Stores the last completed review text so @review can reference it. */
+	private lastReviewText = '';
 
 	constructor(
 		private readonly extensionUri: vscode.Uri,
@@ -50,6 +64,14 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 
 	public static getInstance(): ChatSidebarProvider | undefined {
 		return ChatSidebarProvider.instance;
+	}
+
+	/**
+	 * Stores the latest completed review text so `@review` can reference it.
+	 * Called by the review panel after each review completes.
+	 */
+	public setLastReview(text: string): void {
+		this.lastReviewText = text;
 	}
 
 	public resolveWebviewView(webviewView: vscode.WebviewView): void {
@@ -77,6 +99,9 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 				case 'clearHistory':
 					this.handleClearHistory();
 					break;
+				case 'pickFile':
+					await this.handlePickFile(message.insertOffset);
+					break;
 			}
 		});
 	}
@@ -99,6 +124,8 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 		};
 		this.conversationManager.addMessage(conversation.id, injected);
 		this.lastInjectedContext = context;
+		// Also make the review available via @review
+		this.lastReviewText = context;
 
 		await vscode.commands.executeCommand('ai-review.focusChat');
 		this.hydrate();
@@ -132,9 +159,18 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 			const helpMessage: ChatMessage = {
 				role: 'system',
 				content: [
-					'Supported commands:',
-					'- `/staged` Load currently staged git changes into chat context.',
-					'- `/help` Show this command list.',
+					'**Commands:**',
+					'- `/staged` — Load currently staged git changes into chat context.',
+					'- `/help` — Show this help message.',
+					'',
+					'**@-Context mentions** (type `@` to see suggestions):',
+					'- `@file <path>` — Include a workspace file as context.',
+					'- `@diff` — Include current staged git changes.',
+					'- `@selection` — Include the current editor selection.',
+					'- `@review` — Include the most recent AI review.',
+					'- `@knowledge` — Include team knowledge base entries.',
+					'',
+					'*Example:* `@file src/auth.ts explain the token validation logic`',
 				].join('\n'),
 				timestamp: Date.now(),
 				model: activeModel,
@@ -144,12 +180,25 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 			return;
 		}
 
+		// Resolve any @-mention context references before sending to AI
+		const { cleanedMessage, contexts, unresolved } = await resolveAtMentions(
+			trimmedContent,
+			this.lastReviewText,
+		);
+
+		if (unresolved.length > 0) {
+			this.sendMessageToWebview({ type: 'mentionWarning', mentions: unresolved });
+		}
+
+		// Use the cleaned message (without @-tokens) as the actual user question
+		const effectiveMessage = cleanedMessage || trimmedContent;
+
 		this.sendMessageToWebview({ type: 'streamStart' });
 
 		let assistantResponse = '';
 		try {
 			const stagedDiff = await this.getStagedDiffContext();
-			const prompt = this.buildPrompt(conversation, trimmedContent, stagedDiff);
+			const prompt = this.buildPrompt(conversation, effectiveMessage, stagedDiff, contexts);
 			const provider = this.getAIProvider(config);
 			assistantResponse = await provider.sendMessage(prompt, (chunk) => {
 				assistantResponse += chunk;
@@ -254,7 +303,12 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 		});
 	}
 
-	private buildPrompt(conversation: Conversation, latestUserMessage: string, stagedDiff: StagedDiffContext): string {
+	private buildPrompt(
+		conversation: Conversation,
+		latestUserMessage: string,
+		stagedDiff: StagedDiffContext,
+		contexts: ResolvedContext[] = [],
+	): string {
 		const historyLines = conversation.messages
 			.slice(-12)
 			.map((message) => `${message.role.toUpperCase()}: ${message.content}`)
@@ -264,16 +318,30 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 			? `\n\nReview Context:\n${this.lastInjectedContext}\n`
 			: '';
 
+		const contextSection = contexts.length > 0
+			? '\n\nContext References:\n' + contexts.map(c => `### ${c.label}\n${c.content}`).join('\n\n')
+			: '';
+
+		const stagedSection = stagedDiff.hasDiff
+			? `Staged Changes${stagedDiff.truncated ? ' (truncated to fit model context)' : ''}:\n${stagedDiff.content}`
+			: '';
+
 		return [
 			'You are an expert software engineer helping with code review follow-ups.',
 			reviewContext,
-			stagedDiff.hasDiff
-				? `Staged Changes${stagedDiff.truncated ? ' (truncated to fit model context)' : ''}:\n${stagedDiff.content}`
-				: 'Staged Changes:\n(none)',
+			contextSection,
+			stagedSection,
 			'Conversation history:',
 			historyLines,
 			`Latest user message:\n${latestUserMessage}`,
-		].join('\n');
+		].filter(Boolean).join('\n');
+	}
+
+	private async handlePickFile(insertOffset: number): Promise<void> {
+		const relativePath = await pickWorkspaceFile();
+		if (relativePath) {
+			this.sendMessageToWebview({ type: 'filePicked', relativePath, insertOffset });
+		}
 	}
 
 	private async getStagedDiffContext(): Promise<StagedDiffContext> {
@@ -378,6 +446,10 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 	private getHtml(webview: vscode.Webview): string {
 		const nonce = this.getNonce();
 		const iconUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'images', 'icon.png'));
+		const mentionDefs: WebviewMentionDef[] = CONTEXT_MENTION_DEFS.map(d => ({
+			trigger: d.trigger,
+			description: d.description,
+		}));
 
 		return `<!DOCTYPE html>
 <html lang="en">
@@ -470,13 +542,13 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 			width: 100%;
 			min-width: 0;
 		}
-		#commandList {
+		#commandList, #mentionList {
 			position: absolute;
 			left: 0;
 			right: 0;
 			bottom: 100%;
 			margin-bottom: 4px;
-			max-height: 120px;
+			max-height: 160px;
 			overflow-y: auto;
 			border: 1px solid var(--vscode-panel-border);
 			border-radius: 6px;
@@ -488,10 +560,25 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 			padding: 6px 8px;
 			font-size: 12px;
 			cursor: pointer;
+			display: flex;
+			gap: 6px;
+			align-items: baseline;
 		}
 		.command-item:hover,
 		.command-item.active {
 			background: var(--vscode-list-hoverBackground);
+		}
+		.mention-trigger {
+			font-weight: 600;
+			color: var(--vscode-symbolIcon-colorForeground, var(--vscode-charts-blue));
+			white-space: nowrap;
+		}
+		.mention-desc {
+			opacity: 0.75;
+			font-size: 11px;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
 		}
 		button {
 			padding: 6px 10px;
@@ -527,7 +614,8 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 	<div class="input">
 		<div class="command-suggestions">
 			<div id="commandList"></div>
-			<textarea id="input" placeholder="Ask a question... Use / for commands"></textarea>
+			<div id="mentionList"></div>
+			<textarea id="input" placeholder="Ask a question... Use / for commands or @ for context"></textarea>
 		</div>
 		<button id="send" type="button">Send</button>
 	</div>
@@ -545,14 +633,22 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 		const newChatBtn = document.getElementById('newChat');
 		const clearBtn = document.getElementById('clear');
 		const commandListEl = document.getElementById('commandList');
+		const mentionListEl = document.getElementById('mentionList');
 		const supportedCommands = ${JSON.stringify(SUPPORTED_CHAT_COMMANDS)};
+		const mentionDefs = ${JSON.stringify(mentionDefs)};
 
 		let messages = [];
 		let isStreaming = false;
 		let streamingIndex = -1;
 		let streamRenderTimer = null;
+
+		// / command state
 		let filteredCommands = [];
 		let activeCommandIndex = 0;
+
+		// @ mention state
+		let filteredMentions = [];
+		let activeMentionIndex = 0;
 
 		function escapeHtml(value) {
 			return value
@@ -614,9 +710,12 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 				return;
 			}
 			hideCommandSuggestions();
+			hideMentionSuggestions();
 			vscode.postMessage({ type: 'sendMessage', content });
 			inputEl.value = '';
 		}
+
+		// ── / command suggestions ──────────────────────────────────────────────
 
 		function hideCommandSuggestions() {
 			filteredCommands = [];
@@ -656,9 +755,116 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 			commandListEl.style.display = 'block';
 		}
 
+		// ── @ mention suggestions ──────────────────────────────────────────────
+
+		/**
+		 * Returns the @-mention "token" currently being typed at the cursor,
+		 * or null if no @-mention is active.
+		 * Example: "check @fi" at cursor pos 9 → { query: 'fi', start: 6 }
+		 */
+		function getAtMentionAtCursor() {
+			const pos = inputEl.selectionStart;
+			const textBeforeCursor = inputEl.value.slice(0, pos);
+			const match = textBeforeCursor.match(/@(\\w*)$/);
+			if (!match) return null;
+			return { query: match[1].toLowerCase(), start: pos - match[0].length };
+		}
+
+		function hideMentionSuggestions() {
+			filteredMentions = [];
+			activeMentionIndex = 0;
+			mentionListEl.style.display = 'none';
+			mentionListEl.innerHTML = '';
+		}
+
+		function renderMentionSuggestions() {
+			const atMention = getAtMentionAtCursor();
+			if (!atMention) {
+				hideMentionSuggestions();
+				return;
+			}
+			// Hide / suggestions when @ is active
+			hideCommandSuggestions();
+
+			filteredMentions = mentionDefs.filter((m) =>
+				m.trigger.slice(1).startsWith(atMention.query)
+			);
+			if (!filteredMentions.length) {
+				hideMentionSuggestions();
+				return;
+			}
+			if (activeMentionIndex >= filteredMentions.length) {
+				activeMentionIndex = 0;
+			}
+
+			mentionListEl.innerHTML = filteredMentions.map((m, index) => {
+				const activeClass = index === activeMentionIndex ? ' active' : '';
+				return '<div class="command-item' + activeClass + '" data-trigger="' + m.trigger + '">' +
+					'<span class="mention-trigger">' + escapeHtml(m.trigger) + '</span>' +
+					'<span class="mention-desc">' + escapeHtml(m.description) + '</span>' +
+				'</div>';
+			}).join('');
+			mentionListEl.style.display = 'block';
+		}
+
+		function applyMentionSelection() {
+			if (!filteredMentions.length) return;
+			const selected = filteredMentions[activeMentionIndex] || filteredMentions[0];
+			const atMention = getAtMentionAtCursor();
+			if (!atMention) return;
+
+			const val = inputEl.value;
+			const before = val.slice(0, atMention.start);
+			const after = val.slice(inputEl.selectionStart);
+			hideMentionSuggestions();
+
+			if (selected.trigger === '@file') {
+				// Insert @file placeholder and ask extension to open file picker
+				const inserted = '@file ';
+				inputEl.value = before + inserted + after;
+				const newPos = atMention.start + inserted.length;
+				inputEl.setSelectionRange(newPos, newPos);
+				vscode.postMessage({ type: 'pickFile', insertOffset: atMention.start });
+			} else {
+				// Insert the trigger + space so user can keep typing their message
+				const inserted = selected.trigger + ' ';
+				inputEl.value = before + inserted + after;
+				const newPos = atMention.start + inserted.length;
+				inputEl.setSelectionRange(newPos, newPos);
+				inputEl.focus();
+			}
+		}
+
+		// ── event listeners ────────────────────────────────────────────────────
+
 		sendBtn.addEventListener('click', sendCurrentMessage);
+
 		inputEl.addEventListener('keydown', (event) => {
-			if (commandListEl.style.display === 'block' && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+			const mentionOpen = mentionListEl.style.display === 'block';
+			const commandOpen = commandListEl.style.display === 'block';
+
+			if (mentionOpen && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+				event.preventDefault();
+				if (event.key === 'ArrowDown') {
+					activeMentionIndex = (activeMentionIndex + 1) % filteredMentions.length;
+				} else {
+					activeMentionIndex = (activeMentionIndex - 1 + filteredMentions.length) % filteredMentions.length;
+				}
+				renderMentionSuggestions();
+				return;
+			}
+			if (mentionOpen && (event.key === 'Tab' || (event.key === 'Enter' && !event.shiftKey))) {
+				event.preventDefault();
+				applyMentionSelection();
+				return;
+			}
+			if (mentionOpen && event.key === 'Escape') {
+				event.preventDefault();
+				hideMentionSuggestions();
+				return;
+			}
+
+			if (commandOpen && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
 				event.preventDefault();
 				if (event.key === 'ArrowDown') {
 					activeCommandIndex = (activeCommandIndex + 1) % filteredCommands.length;
@@ -668,27 +874,56 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 				renderCommandSuggestions();
 				return;
 			}
-			if (commandListEl.style.display === 'block' && (event.key === 'Tab' || (event.key === 'Enter' && !event.shiftKey))) {
+			if (commandOpen && (event.key === 'Tab' || (event.key === 'Enter' && !event.shiftKey))) {
 				event.preventDefault();
 				applyCommandSelection();
 				return;
 			}
+
 			if (event.key === 'Enter' && !event.shiftKey) {
 				event.preventDefault();
 				sendCurrentMessage();
 			}
 		});
-		inputEl.addEventListener('input', renderCommandSuggestions);
-		inputEl.addEventListener('blur', () => {
-			setTimeout(() => hideCommandSuggestions(), 100);
+
+		inputEl.addEventListener('input', () => {
+			// Only one dropdown at a time: @ takes priority over /
+			const atMention = getAtMentionAtCursor();
+			if (atMention !== null) {
+				hideCommandSuggestions();
+				renderMentionSuggestions();
+			} else {
+				hideMentionSuggestions();
+				renderCommandSuggestions();
+			}
 		});
+
+		inputEl.addEventListener('blur', () => {
+			setTimeout(() => {
+				hideCommandSuggestions();
+				hideMentionSuggestions();
+			}, 100);
+		});
+
 		commandListEl.addEventListener('mousedown', (event) => {
 			const target = event.target;
 			if (!(target instanceof HTMLElement)) return;
-			const selected = target.getAttribute('data-command');
+			const selected = target.closest('[data-command]')?.getAttribute('data-command');
 			if (!selected) return;
 			inputEl.value = selected + ' ';
 			hideCommandSuggestions();
+			inputEl.focus();
+		});
+
+		mentionListEl.addEventListener('mousedown', (event) => {
+			const target = event.target;
+			if (!(target instanceof HTMLElement)) return;
+			const trigger = target.closest('[data-trigger]')?.getAttribute('data-trigger');
+			if (!trigger) return;
+			// Simulate selecting the mention by setting the filteredMentions and applying
+			const idx = filteredMentions.findIndex(m => m.trigger === trigger);
+			if (idx >= 0) { activeMentionIndex = idx; }
+			applyMentionSelection();
 			inputEl.focus();
 		});
 
@@ -703,6 +938,8 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 		clearBtn.addEventListener('click', () => {
 			vscode.postMessage({ type: 'clearHistory' });
 		});
+
+		// ── extension → webview messages ───────────────────────────────────────
 
 		window.addEventListener('message', (event) => {
 			const message = event.data;
@@ -748,9 +985,7 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 				case 'modelUpdated':
 					statusEl.textContent = 'Model set to ' + message.modelId;
 					setTimeout(() => {
-						if (!isStreaming) {
-							statusEl.textContent = '';
-						}
+						if (!isStreaming) { statusEl.textContent = ''; }
 					}, 1500);
 					break;
 				case 'conversationCreated':
@@ -760,10 +995,32 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 				case 'contextInjected':
 					statusEl.textContent = 'Review context added to this conversation.';
 					setTimeout(() => {
-						if (!isStreaming) {
-							statusEl.textContent = '';
-						}
+						if (!isStreaming) { statusEl.textContent = ''; }
 					}, 2500);
+					break;
+				case 'filePicked': {
+					// Insert the selected file path at the offset where @file was placed
+					const insertOffset = message.insertOffset ?? 0;
+					const prefix = '@file ';
+					const val = inputEl.value;
+					// Find the end of the '@file ' prefix starting at insertOffset
+					const prefixEnd = insertOffset + prefix.length;
+					const before = val.slice(0, prefixEnd);
+					const after = val.slice(prefixEnd);
+					const relativePath = message.relativePath || '';
+					inputEl.value = before + relativePath + ' ' + after;
+					const newCursorPos = prefixEnd + relativePath.length + 1;
+					inputEl.setSelectionRange(newCursorPos, newCursorPos);
+					inputEl.focus();
+					break;
+				}
+				case 'mentionWarning':
+					if (message.mentions && message.mentions.length > 0) {
+						statusEl.textContent = 'Could not resolve: ' + message.mentions.join(', ');
+						setTimeout(() => {
+							if (!isStreaming) { statusEl.textContent = ''; }
+						}, 3000);
+					}
 					break;
 				case 'error':
 					setStreaming(false);

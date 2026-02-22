@@ -877,6 +877,35 @@ A dedicated AI chat panel pinned to the VS Code Activity Bar — always accessib
 2. Type a question or use `/staged` to load your staged changes
 3. After completing a code review, click **💬 Discuss** to continue the conversation in the sidebar
 
+### 42. @-Context Mentions in Chat
+
+Type `@` in the chat input to instantly inject rich context into your AI conversation — no copy-pasting required. The extension shows an autocomplete dropdown as you type, and resolves the referenced content before sending it to the AI.
+
+**Available @-mentions:**
+
+| Mention | Description |
+|---------|-------------|
+| `@file <path>` | Include a workspace file — opens a VS Code file picker to select the file |
+| `@diff` | Include the current staged git changes |
+| `@selection` | Include the text currently selected in the active editor |
+| `@review` | Include the most recent AI code review |
+| `@knowledge` | Include relevant entries from the Team Knowledge Base (`.ollama-review-knowledge.yaml`) |
+
+**Usage:**
+1. Start typing `@` in the chat input — the autocomplete dropdown appears immediately
+2. Continue typing to filter (e.g., `@fi` shows `@file`, `@sel` shows `@selection`)
+3. Use **↑ / ↓** to navigate, **Tab** or **Enter** to select, **Esc** to dismiss
+4. For `@file`: a VS Code file picker opens; the selected path is inserted automatically
+5. Combine with your question: `@file src/auth.ts what does the token validation do?`
+6. Send — the extension resolves all @-mentions and injects their content into the AI prompt
+
+**How it works:**
+- @-mention tokens are resolved in the extension host (not the webview) for full workspace access
+- Resolved contexts appear as a "Context References" section in the AI prompt
+- Each context is capped at 8,000 characters to stay within model token budgets
+- Unresolved mentions (e.g., `@review` with no prior review) show a status warning and are skipped
+- Multiple @-mentions can be combined in a single message
+
 ---
 
 ## Requirements
