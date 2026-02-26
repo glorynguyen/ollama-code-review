@@ -1900,6 +1900,180 @@ export async function activate(context: vscode.ExtensionContext) {
 	);
 	context.subscriptions.push(explainFileWithImportsCommand);
 
+	// F-028: Semantic Version Bump Advisor — analyze staged diff and suggest MAJOR/MINOR/PATCH
+	const suggestVersionBumpCommand = vscode.commands.registerCommand(
+		'ollama-code-review.suggestVersionBump',
+		async () => {
+			try {
+				const gitAPI = getGitAPI();
+				if (!gitAPI) { return; }
+				const repo = await selectRepository(gitAPI);
+				if (!repo) { return; }
+				const repoPath = repo.rootUri.fsPath;
+
+				// Collect staged diff, fallback to HEAD diff if nothing staged
+				let diff = await runGitCommand(repoPath, ['diff', '--staged']);
+				let diffSource = 'staged changes';
+				if (!diff || !diff.trim()) {
+					diff = await runGitCommand(repoPath, ['diff', 'HEAD']);
+					diffSource = 'uncommitted changes (HEAD)';
+				}
+				if (!diff || !diff.trim()) {
+					vscode.window.showInformationMessage(
+						'No changes found. Stage or modify files before requesting a version bump suggestion.'
+					);
+					return;
+				}
+
+				// Try to read current version from the nearest package.json in workspace
+				let currentVersion = 'unknown';
+				const pkgUris = await vscode.workspace.findFiles(
+					new vscode.RelativePattern(repo.rootUri, 'package.json'),
+					'**/node_modules/**',
+					1
+				);
+				if (pkgUris.length > 0) {
+					try {
+						const raw = await vscode.workspace.fs.readFile(pkgUris[0]);
+						const pkg = JSON.parse(Buffer.from(raw).toString('utf8'));
+						if (pkg.version) { currentVersion = pkg.version; }
+					} catch { /* ignore parse errors */ }
+				}
+
+				await vscode.window.withProgress({
+					location: vscode.ProgressLocation.Notification,
+					title: 'Ollama: Suggest Version Bump',
+					cancellable: true,
+				}, async (progress, token) => {
+					progress.report({ message: `Analyzing ${diffSource}...` });
+
+					const cfg = vscode.workspace.getConfiguration('ollama-code-review');
+					const model = getOllamaModel(cfg);
+					const endpoint = cfg.get<string>('endpoint', 'http://localhost:11434/api/generate');
+					const temperature = cfg.get<number>('temperature', 0);
+
+					const VERSION_BUMP_PROMPT = `You are a semantic versioning expert. Analyze the following git diff and determine the appropriate semantic version bump type based on the Semantic Versioning specification (semver.org).
+
+Current version: ${currentVersion}
+
+Rules:
+- MAJOR: Breaking changes (removed APIs, changed function signatures, renamed exports, behavior changes that break existing usage)
+- MINOR: New features added in a backwards-compatible manner (new functions, new optional parameters, new exports)
+- PATCH: Backwards-compatible bug fixes, performance improvements, documentation, refactoring with no API changes
+
+Respond ONLY in this exact JSON format (no markdown, no explanation outside the JSON):
+{
+  "bump": "MAJOR" | "MINOR" | "PATCH",
+  "suggestedVersion": "<new semver string>",
+  "confidence": "HIGH" | "MEDIUM" | "LOW",
+  "reasons": ["<reason 1>", "<reason 2>", ...],
+  "breakingChanges": ["<breaking change description>"] or [],
+  "newFeatures": ["<feature description>"] or [],
+  "bugFixes": ["<fix description>"] or []
+}
+
+Git diff to analyze:
+---
+${diff.slice(0, 12000)}
+---`;
+
+					const response = await callAIProvider(VERSION_BUMP_PROMPT, cfg, model, endpoint, temperature);
+					if (token.isCancellationRequested) { return; }
+
+					// Parse the JSON response
+					let parsed: {
+						bump: 'MAJOR' | 'MINOR' | 'PATCH';
+						suggestedVersion: string;
+						confidence: 'HIGH' | 'MEDIUM' | 'LOW';
+						reasons: string[];
+						breakingChanges: string[];
+						newFeatures: string[];
+						bugFixes: string[];
+					} | null = null;
+
+					try {
+						// Extract JSON from response (model may wrap in markdown fences)
+						const jsonMatch = response.match(/\{[\s\S]*\}/);
+						if (jsonMatch) {
+							parsed = JSON.parse(jsonMatch[0]);
+						}
+					} catch { /* fall through to raw display */ }
+
+					if (!parsed) {
+						// Fallback: show raw response
+						vscode.window.showInformationMessage(
+							`Version Bump Analysis:\n${response}`,
+							{ modal: true }
+						);
+						return;
+					}
+
+					const bumpEmoji = parsed.bump === 'MAJOR' ? '🔴' : parsed.bump === 'MINOR' ? '🟡' : '🟢';
+					const confidenceLabel = parsed.confidence === 'HIGH' ? 'High confidence' : parsed.confidence === 'MEDIUM' ? 'Medium confidence' : 'Low confidence';
+
+					// Build summary message
+					let summary = `${bumpEmoji} **${parsed.bump}** bump recommended\n`;
+					summary += `📦 ${currentVersion} → **${parsed.suggestedVersion}**  (${confidenceLabel})\n\n`;
+
+					if (parsed.breakingChanges.length > 0) {
+						summary += `**Breaking Changes:**\n${parsed.breakingChanges.map(b => `• ${b}`).join('\n')}\n\n`;
+					}
+					if (parsed.newFeatures.length > 0) {
+						summary += `**New Features:**\n${parsed.newFeatures.map(f => `• ${f}`).join('\n')}\n\n`;
+					}
+					if (parsed.bugFixes.length > 0) {
+						summary += `**Bug Fixes:**\n${parsed.bugFixes.map(f => `• ${f}`).join('\n')}\n\n`;
+					}
+					if (parsed.reasons.length > 0) {
+						summary += `**Reasons:**\n${parsed.reasons.map(r => `• ${r}`).join('\n')}`;
+					}
+
+					outputChannel.appendLine('\n[Version Bump Advisor] ' + '='.repeat(50));
+					outputChannel.appendLine(summary.replace(/\*\*/g, ''));
+					outputChannel.appendLine('='.repeat(51));
+					outputChannel.show(true);
+
+					// Offer to apply the version bump if a package.json was found
+					const actions: string[] = ['Copy Version', 'View Details'];
+					if (pkgUris.length > 0 && parsed.suggestedVersion && parsed.suggestedVersion !== 'unknown') {
+						actions.unshift(`Apply ${parsed.suggestedVersion}`);
+					}
+
+					const shortMsg = `${bumpEmoji} ${parsed.bump}: ${currentVersion} → ${parsed.suggestedVersion} (${confidenceLabel})`;
+					const choice = await vscode.window.showInformationMessage(shortMsg, ...actions);
+
+					if (choice === `Apply ${parsed.suggestedVersion}`) {
+						try {
+							const raw = await vscode.workspace.fs.readFile(pkgUris[0]);
+							const pkgText = Buffer.from(raw).toString('utf8');
+							const updated = pkgText.replace(
+								/"version"\s*:\s*"[^"]*"/,
+								`"version": "${parsed.suggestedVersion}"`
+							);
+							await vscode.workspace.fs.writeFile(
+								pkgUris[0],
+								Buffer.from(updated, 'utf8')
+							);
+							vscode.window.showInformationMessage(
+								`✅ package.json updated to version ${parsed.suggestedVersion}`
+							);
+						} catch (e) {
+							vscode.window.showErrorMessage(`Failed to update package.json: ${e}`);
+						}
+					} else if (choice === 'Copy Version') {
+						await vscode.env.clipboard.writeText(parsed.suggestedVersion);
+						vscode.window.showInformationMessage(`Copied ${parsed.suggestedVersion} to clipboard.`);
+					} else if (choice === 'View Details') {
+						outputChannel.show(true);
+					}
+				});
+			} catch (error) {
+				handleError(error, 'Failed to suggest version bump.');
+			}
+		}
+	);
+	context.subscriptions.push(suggestVersionBumpCommand);
+
 	// F-019: Batch / Legacy Code Review — Review Folder command
 	const reviewFolderCommand = vscode.commands.registerCommand(
 		'ollama-code-review.reviewFolder',
@@ -2391,6 +2565,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		clearRagIndexCommand,
 		reloadRulesCommand,
 		rulesWatcher,
+		suggestVersionBumpCommand,
 	);
 }
 

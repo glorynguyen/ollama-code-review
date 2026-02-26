@@ -248,6 +248,12 @@
         "title": "Clear RAG Codebase Index",
         "category": "Ollama Code Review",
         "icon": "$(trash)"
+      },
+      {
+        "command": "ollama-code-review.suggestVersionBump",
+        "title": "Suggest Version Bump (Semantic Versioning)",
+        "category": "Ollama Code Review",
+        "icon": "$(tag)"
       }
     ],
     "viewsContainers": {
@@ -346,6 +352,11 @@
         },
         {
           "command": "ollama-code-review.agentReview",
+          "when": "scmProvider == 'git'",
+          "group": "navigation"
+        },
+        {
+          "command": "ollama-code-review.suggestVersionBump",
           "when": "scmProvider == 'git'",
           "group": "navigation"
         }
