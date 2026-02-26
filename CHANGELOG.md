@@ -1,3 +1,10 @@
+# [3.22.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.21.0...v3.22.0) (2026-02-26)
+
+
+### Features
+
+* **F-028:** implement Semantic Version Bump Advisor ([9217913](https://github.com/glorynguyen/ollama-code-review/commit/92179131fd1948e7172c318d9c116b6c220ebcc6))
+
 # [3.21.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.20.0...v3.21.0) (2026-02-26)
 
 

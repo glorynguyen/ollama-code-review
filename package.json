@@ -2,7 +2,7 @@
   "name": "ollama-code-review",
   "displayName": "Ollama Code Review",
   "description": "Get AI code reviews and generate commit messages from a local Ollama instance before you commit.",
-  "version": "3.21.0",
+  "version": "3.22.0",
   "sponsor": {
     "url": "https://ko-fi.com/nguyenbavinh"
   },
