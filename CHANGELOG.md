@@ -1,3 +1,10 @@
+# [3.21.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.20.0...v3.21.0) (2026-02-26)
+
+
+### Features
+
+* **F-024:** implement Inline Edit Mode with streaming diff preview ([79b0752](https://github.com/glorynguyen/ollama-code-review/commit/79b07526c693ef4fe67f2bdd43a656130d37a614)), closes [#43](https://github.com/glorynguyen/ollama-code-review/issues/43)
+
 # [3.20.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.19.0...v3.20.0) (2026-02-26)
 
 
