@@ -1601,6 +1601,8 @@ See [docs/roadmap/](./docs/roadmap/) for comprehensive planning documents:
 | CI/CD Integration (headless CLI, GitHub Actions template, GitLab CI template) | F-010 | v5.0 |
 | Streaming Responses (Ollama, Claude, OpenAI-compatible; token-by-token review panel; `streaming.enabled` setting) | F-022 | v6.0 |
 | Rules Directory (`.ollama-review/rules/*.md`; plain-Markdown team rules; file watcher; coexists with F-012) | F-026 | v6.0 |
+| Provider Abstraction Layer (`ModelProvider` interface + `ProviderRegistry` for all 8 providers) | F-025 | v6.0 |
+| Inline Edit Mode (Ctrl+Shift+K; natural-language description; streaming side-by-side diff preview; accept/reject) | F-024 | v6.0 |
 
 ### Phase 6: AI Assistant Evolution (In Progress — v6.0)
 
@@ -1611,5 +1613,5 @@ See [docs/roadmap/](./docs/roadmap/) for comprehensive planning documents:
 | extension.ts Decomposition | F-027 | P0 | Medium (3-5 days) | ✅ Complete | Split monolithic `extension.ts` into `commands/index.ts`, `commands/providerClients.ts`, `commands/aiActions.ts`, `commands/uiHelpers.ts` with `extension.ts` as thin loader |
 | Sidebar Chat Panel | F-021 | P1 | High (7-10 days) | ✅ Complete | Persistent `WebviewViewProvider` sidebar chat with conversation history, model switching, `/staged`, `/help` commands, and review panel "Discuss" integration |
 | @-Context Mentions in Chat | F-023 | P2 | Medium (4-5 days) | ✅ Complete | `@file` (file picker), `@diff`, `@selection`, `@review`, `@knowledge` context providers with autocomplete dropdown in sidebar chat |
-| Provider Abstraction Layer | F-025 | P0 | Medium (3-4 days) | 📋 Planned | Unified `ModelProvider` interface + `ProviderRegistry` for all 8 providers |
-| Inline Edit Mode | F-024 | P2 | High (5-7 days) | 📋 Planned | Highlight code, describe change, AI applies edit with streaming inline diff preview |
+| Provider Abstraction Layer | F-025 | P0 | Medium (3-4 days) | ✅ Complete | Unified `ModelProvider` interface + `ProviderRegistry` for all 8 providers |
+| Inline Edit Mode | F-024 | P2 | High (5-7 days) | ✅ Complete | Highlight code, describe change, AI applies edit with streaming inline diff preview |

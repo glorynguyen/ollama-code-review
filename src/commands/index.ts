@@ -139,6 +139,7 @@ import {
 	generateDocumentation,
 	callAIProvider,
 } from './aiActions';
+import { executeInlineEdit } from '../inlineEdit/inlineEditProvider';
 
 export { checkActiveModels, getLastPerformanceMetrics, clearPerformanceMetrics };
 export type { PerformanceMetrics };
@@ -819,12 +820,22 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
+	// F-024: Inline Edit Mode
+	const inlineEditCommand = vscode.commands.registerCommand('ollama-code-review.inlineEdit', async () => {
+		try {
+			await executeInlineEdit();
+		} catch (error) {
+			handleError(error, 'Inline Edit failed.');
+		}
+	});
+
 	context.subscriptions.push(
 		explainCodeCommand,
 		generateTestsCommand,
 		fixIssueCommand,
 		fixSelectionCommand,
-		addDocumentationCommand
+		addDocumentationCommand,
+		inlineEditCommand,
 	);
 
 	const reviewStagedChangesCommand = vscode.commands.registerCommand('ollama-code-review.reviewChanges', async (scmRepo?: any) => {

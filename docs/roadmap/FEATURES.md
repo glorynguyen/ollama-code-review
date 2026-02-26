@@ -739,8 +739,8 @@ Build a shared knowledge base of team decisions, patterns, and conventions that 
 | F-021 | Sidebar Chat Panel | 6 | ✅ Complete | main (2026-02-21) |
 | F-022 | Streaming Responses | 6 | ✅ Complete | v6.0 |
 | F-023 | @-Context Mentions in Chat | 6 | ✅ Complete | main (2026-02-22) |
-| F-024 | Inline Edit Mode | 6 | 📋 Planned | — |
-| F-025 | Provider Abstraction Layer | 6 | 📋 Planned | — |
+| F-024 | Inline Edit Mode | 6 | ✅ Complete | v6.0 |
+| F-025 | Provider Abstraction Layer | 6 | ✅ Complete | v6.0 |
 | F-026 | Rules Directory | 6 | ✅ Complete | v6.0 |
 | F-027 | extension.ts Decomposition | 6 | ✅ Complete | main (2026-02-21) |
 
@@ -1359,7 +1359,7 @@ Add `@`-mention context providers to the sidebar chat. Users type `@` to see a d
 | **ID** | F-024 |
 | **Priority** | 🟡 P2 |
 | **Effort** | High (5-7 days) |
-| **Status** | 📋 Planned |
+| **Status** | ✅ Complete |
 | **Dependencies** | F-022 (streaming), F-025 (provider abstraction) |
 
 #### Overview
@@ -1401,11 +1401,11 @@ The current Fix action requires a diagnostic or specific issue. Users want to sa
 
 #### Acceptance Criteria
 
-- [ ] Inline input box appears on Ctrl+K with selection
-- [ ] AI-generated replacement streams with diff highlighting
-- [ ] Accept applies changes to file
-- [ ] Reject restores original code
-- [ ] Works with all 8 AI providers
+- [x] Inline input box appears on Ctrl+Shift+K with selection
+- [x] AI-generated replacement streams with diff highlighting
+- [x] Accept applies changes to file
+- [x] Reject restores original code
+- [x] Works with all 8 AI providers
 
 ---
 
@@ -1416,7 +1416,7 @@ The current Fix action requires a diagnostic or specific issue. Users want to sa
 | **ID** | F-025 |
 | **Priority** | 🔴 P0 |
 | **Effort** | Medium (3-4 days) |
-| **Status** | 📋 Planned |
+| **Status** | ✅ Complete |
 | **Dependencies** | None |
 
 #### Overview
