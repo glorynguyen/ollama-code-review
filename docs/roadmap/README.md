@@ -96,11 +96,21 @@ v8.0 (2026) ───── Review Annotations (F-029) — inline editor decorat
 |----------|--------|--------|----------|
 | 🟠 P1 | High | Low | F-029: Review Annotations (inline gutter/highlight/hover for findings) |
 
+## Phase 9: Review Intelligence (v9.0)
+
+```
+v9.0 (2026) ───── Multi-Model Review Comparison (F-030) — compare reviews across models
+```
+
+| Priority | Impact | Effort | Features |
+|----------|--------|--------|----------|
+| 🟡 P2 | High | Medium | F-030: Multi-Model Review Comparison (run same review across 2-4 models; side-by-side panel) |
+
 ## Current Status
 
-- **Current Version:** 8.0.0
-- **Next Milestone:** v8.0.0 (Review Experience)
-- **Theme:** Bring review findings into the editor for immediate, in-context visibility
+- **Current Version:** 9.0.0
+- **Next Milestone:** v9.0.0 (Review Intelligence)
+- **Theme:** Compare and cross-reference AI reviews across models for deeper insights
 
 ---
 

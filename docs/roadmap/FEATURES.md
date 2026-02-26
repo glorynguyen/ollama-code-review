@@ -1696,3 +1696,56 @@ src/
 - [x] Build remains successful
 
 ---
+
+### F-030: Multi-Model Review Comparison
+
+| Attribute | Value |
+|-----------|-------|
+| **ID** | F-030 |
+| **Priority** | P2 |
+| **Effort** | Medium (2-3 days) |
+| **Status** | ✅ Complete |
+| **Shipped** | v9.0.0 (Feb 2026) |
+| **Dependencies** | F-025 (Provider Abstraction Layer), F-016 (Review Quality Scoring) |
+
+#### Overview
+
+Run the same code review across 2-4 AI models simultaneously and compare results in a side-by-side webview panel. Helps users evaluate model quality, cross-reference findings, and compare cost/speed/quality tradeoffs.
+
+#### User Problem
+
+With 8+ AI providers available, users have no way to objectively compare which model produces the best reviews for their specific codebase. Manually switching models and re-running reviews is tedious and error-prone.
+
+#### Implementation Notes
+
+1. New command `ollama-code-review.compareModels` registered in `src/commands/index.ts`
+2. Multi-select QuickPick shows all cloud models + auto-discovered local Ollama models
+3. User selects 2-4 models; all run the same review prompt in parallel via `Promise.all`
+4. Each result scored with `parseFindingCounts()` + `computeScore()` from F-016
+5. Comparison webview panel (`src/compareModels/comparisonPanel.ts`) displays side-by-side results
+6. Summary table highlights "Best" (highest score) and "Fastest" (lowest duration) models
+7. Each column shows the full review rendered as Markdown with syntax highlighting
+
+#### Files Created
+
+- `src/compareModels/index.ts` — Barrel exports
+- `src/compareModels/types.ts` — `ModelComparisonEntry`, `ComparisonResult` interfaces
+- `src/compareModels/comparisonPanel.ts` — Side-by-side comparison webview panel
+
+#### Files Modified
+
+- `src/commands/index.ts` — Added `compareModelsCommand` registration
+- `package.json` — Added command definition and SCM title menu entry
+
+#### Acceptance Criteria
+
+- [x] QuickPick shows all available models (cloud + local Ollama) with multi-select
+- [x] 2-4 models can be selected; validation enforced
+- [x] All selected models review the same diff in parallel
+- [x] Comparison panel shows summary table with scores, durations, and finding counts
+- [x] "Best" and "Fastest" badges displayed for quick identification
+- [x] Each review rendered as Markdown with syntax highlighting
+- [x] Copy button per review for clipboard export
+- [x] Errors from individual models displayed gracefully without blocking others
+
+---

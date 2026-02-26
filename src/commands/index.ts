@@ -141,6 +141,7 @@ import {
 	callAIProvider,
 } from './aiActions';
 import { executeInlineEdit } from '../inlineEdit/inlineEditProvider';
+import { ComparisonPanel, type ModelComparisonEntry, type ComparisonResult } from '../compareModels';
 
 export { checkActiveModels, getLastPerformanceMetrics, clearPerformanceMetrics };
 export type { PerformanceMetrics };
@@ -2561,6 +2562,197 @@ ${diff.slice(0, 12000)}
 		outputChannel.appendLine('[Ollama Code Review] Rules file deleted — rules cache invalidated.');
 	});
 
+	// F-030: Multi-Model Review Comparison — run the same review across multiple models in parallel
+	const compareModelsCommand = vscode.commands.registerCommand(
+		'ollama-code-review.compareModels',
+		async () => {
+			try {
+				const gitAPI = getGitAPI();
+				if (!gitAPI) { return; }
+				const repo = await selectRepository(gitAPI);
+				if (!repo) {
+					vscode.window.showInformationMessage('No Git repository found.');
+					return;
+				}
+				const repoPath = repo.rootUri.fsPath;
+				const diffResult = await runGitCommand(repoPath, ['diff', '--staged']);
+
+				if (!diffResult || !diffResult.trim()) {
+					vscode.window.showInformationMessage('No staged changes found. Stage some changes first.');
+					return;
+				}
+
+				// Apply diff filtering
+				const filterConfig = await getDiffFilterConfigWithYaml(outputChannel);
+				const filterResult = filterDiff(diffResult, filterConfig);
+				const filteredDiff = filterResult.filteredDiff;
+
+				if (!filteredDiff || !filteredDiff.trim()) {
+					vscode.window.showInformationMessage('All changes were filtered out. No code to review.');
+					return;
+				}
+
+				// Build the list of available models for the QuickPick
+				const config = vscode.workspace.getConfiguration('ollama-code-review');
+				const allModels = [
+					{ label: 'kimi-k2.5:cloud', description: 'Kimi cloud model' },
+					{ label: 'qwen3-coder:480b-cloud', description: 'Cloud coding model' },
+					{ label: 'glm-4.7:cloud', description: 'GLM cloud model' },
+					{ label: 'glm-4.7-flash', description: 'GLM 4.7 Flash (Z.AI)' },
+					{ label: 'gemini-2.5-flash', description: 'Gemini 2.5 Flash (Google AI)' },
+					{ label: 'gemini-2.5-pro', description: 'Gemini 2.5 Pro (Google AI)' },
+					{ label: 'mistral-large-latest', description: 'Mistral Large (Mistral AI)' },
+					{ label: 'mistral-small-latest', description: 'Mistral Small (Mistral AI)' },
+					{ label: 'codestral-latest', description: 'Codestral (Mistral AI)' },
+					{ label: 'MiniMax-M2.5', description: 'MiniMax M2.5' },
+					{ label: 'claude-sonnet-4-20250514', description: 'Claude Sonnet 4 (Anthropic)' },
+					{ label: 'claude-opus-4-20250514', description: 'Claude Opus 4 (Anthropic)' },
+					{ label: 'claude-3-7-sonnet-20250219', description: 'Claude 3.7 Sonnet (Anthropic)' },
+				];
+
+				// Also try to fetch local Ollama models
+				try {
+					const endpoint = config.get<string>('endpoint', 'http://localhost:11434/api/generate');
+					const baseUrl = endpoint.replace(/\/api\/generate\/?$/, '').replace(/\/$/, '');
+					const controller = new AbortController();
+					const timeout = setTimeout(() => controller.abort(), 3000);
+					const resp = await fetch(`${baseUrl}/api/tags`, { signal: controller.signal });
+					clearTimeout(timeout);
+					if (resp.ok) {
+						const data = await resp.json() as { models: Array<{ name: string; details?: { parameter_size?: string } }> };
+						for (const m of data.models) {
+							allModels.push({ label: m.name, description: `Local Ollama${m.details?.parameter_size ? ' • ' + m.details.parameter_size : ''}` });
+						}
+					}
+				} catch { /* Ollama not running — skip local models */ }
+
+				const selected = await vscode.window.showQuickPick(
+					allModels.map(m => ({ ...m, picked: false })),
+					{
+						placeHolder: 'Select 2-4 models to compare (use checkboxes)',
+						canPickMany: true,
+					},
+				);
+
+				if (!selected || selected.length < 2) {
+					vscode.window.showInformationMessage('Please select at least 2 models to compare.');
+					return;
+				}
+
+				if (selected.length > 4) {
+					vscode.window.showInformationMessage('Please select at most 4 models.');
+					return;
+				}
+
+				const modelNames = selected.map(s => s.label);
+				outputChannel.appendLine(`\n[Compare Models] Starting comparison with: ${modelNames.join(', ')}`);
+
+				await vscode.window.withProgress({
+					location: vscode.ProgressLocation.Notification,
+					title: 'Comparing models...',
+					cancellable: true,
+				}, async (progress, token) => {
+					// Build the review prompt (same as getOllamaReview but without calling provider)
+					const frameworksList = (await getEffectiveFrameworks(outputChannel)).join(', ');
+					let skillContext = '';
+					const selectedSkills = context.globalState.get<any[]>('selectedSkills', []);
+					if (selectedSkills && selectedSkills.length > 0) {
+						const skillContents = selectedSkills.map((skill: any, idx: number) =>
+							`### Skill ${idx + 1}: ${skill.name}\n${skill.content}`
+						).join('\n\n');
+						skillContext = `\n\nAdditional Review Guidelines (${selectedSkills.length} skill(s) applied):\n${skillContents}\n`;
+					}
+					let profileCtx = '';
+					const profile = getActiveProfile(context);
+					profileCtx = buildProfilePromptContext(profile);
+
+					const promptTemplate = await getEffectiveReviewPrompt(DEFAULT_REVIEW_PROMPT, outputChannel);
+					const variables: Record<string, string> = {
+						code: filteredDiff,
+						frameworks: frameworksList,
+						skills: skillContext,
+						profile: profileCtx,
+					};
+					let prompt = resolvePrompt(promptTemplate, variables);
+					if (skillContext && !promptTemplate.includes('${skills}')) { prompt += '\n' + skillContext; }
+					if (profileCtx && !promptTemplate.includes('${profile}')) { prompt += '\n' + profileCtx; }
+
+					// Run all models in parallel
+					const endpoint = config.get<string>('endpoint', 'http://localhost:11434/api/generate');
+					const temperature = config.get<number>('temperature', 0);
+
+					const entries: ModelComparisonEntry[] = await Promise.all(
+						modelNames.map(async (model) => {
+							if (token.isCancellationRequested) {
+								return {
+									model,
+									provider: providerRegistry.resolve(model).name,
+									review: '',
+									durationMs: 0,
+									score: 0,
+									findingCounts: { critical: 0, high: 0, medium: 0, low: 0, info: 0 },
+									error: 'Cancelled',
+								};
+							}
+
+							progress.report({ message: `Reviewing with ${model}...` });
+							const start = Date.now();
+							try {
+								const provider = providerRegistry.resolve(model);
+								const review = await provider.generate(prompt, {
+									config,
+									model,
+									endpoint,
+									temperature,
+								}, { captureMetrics: false });
+
+								const dur = Date.now() - start;
+								const counts = parseFindingCounts(review);
+								const scoreResult = computeScore(counts);
+
+								outputChannel.appendLine(`[Compare Models] ${model} completed in ${dur}ms — score ${scoreResult.score}/100`);
+
+								return {
+									model,
+									provider: provider.name,
+									review,
+									durationMs: dur,
+									score: scoreResult.score,
+									findingCounts: counts,
+								};
+							} catch (err: any) {
+								const dur = Date.now() - start;
+								const errMsg = err?.message || String(err);
+								outputChannel.appendLine(`[Compare Models] ${model} failed: ${errMsg}`);
+								return {
+									model,
+									provider: providerRegistry.resolve(model).name,
+									review: '',
+									durationMs: dur,
+									score: 0,
+									findingCounts: { critical: 0, high: 0, medium: 0, low: 0, info: 0 },
+									error: errMsg,
+								};
+							}
+						}),
+					);
+
+					const comparisonResult: ComparisonResult = {
+						diff: filteredDiff,
+						entries,
+						timestamp: new Date().toLocaleString(),
+						commonFindings: [],
+					};
+
+					ComparisonPanel.createOrShow(comparisonResult);
+					outputChannel.appendLine(`[Compare Models] Comparison complete. ${entries.filter(e => !e.error).length}/${entries.length} succeeded.`);
+				});
+			} catch (error) {
+				handleError(error, 'Failed to compare models.');
+			}
+		}
+	);
+
 	context.subscriptions.push(
 		reviewStagedChangesCommand,
 		reviewCommitRangeCommand,
@@ -2588,6 +2780,7 @@ ${diff.slice(0, 12000)}
 		reloadRulesCommand,
 		rulesWatcher,
 		suggestVersionBumpCommand,
+		compareModelsCommand,
 	);
 }
 

@@ -266,6 +266,12 @@
         "title": "Clear Review Annotations",
         "category": "Ollama Code Review",
         "icon": "$(clear-all)"
+      },
+      {
+        "command": "ollama-code-review.compareModels",
+        "title": "Compare Models Review",
+        "category": "Ollama Code Review",
+        "icon": "$(split-horizontal)"
       }
     ],
     "viewsContainers": {
@@ -369,6 +375,11 @@
         },
         {
           "command": "ollama-code-review.suggestVersionBump",
+          "when": "scmProvider == 'git'",
+          "group": "navigation"
+        },
+        {
+          "command": "ollama-code-review.compareModels",
           "when": "scmProvider == 'git'",
           "group": "navigation"
         }
