@@ -705,6 +705,64 @@ Build a shared knowledge base of team decisions, patterns, and conventions that 
 
 ---
 
+## Phase 7: Release Intelligence (v7.0)
+
+### F-028: Semantic Version Bump Advisor
+
+| Attribute | Value |
+|-----------|-------|
+| **ID** | F-028 |
+| **Priority** | 🟠 P1 |
+| **Effort** | Low (1 day) |
+| **Status** | ✅ Complete |
+| **Shipped** | main (2026-02-26) |
+| **Dependencies** | None |
+
+#### Description
+
+Analyzes the staged diff (or uncommitted changes) with the AI and recommends the appropriate Semantic Versioning bump type — **MAJOR**, **MINOR**, or **PATCH** — with structured reasoning, confidence score, and an option to apply the new version directly to `package.json`.
+
+#### User Problem
+
+Developers often spend time debating whether a change warrants a minor or patch bump, or accidentally ship a breaking change as a patch. This command automates the semver decision with AI reasoning, improving release consistency and reducing human error.
+
+#### Bump Classification Rules
+
+| Bump | Applied When |
+|------|-------------|
+| **MAJOR** | Breaking changes: removed/renamed APIs, changed function signatures, behavior changes that break existing consumers |
+| **MINOR** | New backwards-compatible features: new functions, new optional parameters, new exports |
+| **PATCH** | Bug fixes, performance improvements, refactoring, docs — no public API changes |
+
+#### Implementation
+
+- **Command**: `ollama-code-review.suggestVersionBump` — registered in Command Palette + SCM panel title bar (`$(tag)` icon)
+- **Diff source**: Staged diff preferred; falls back to `git diff HEAD` if nothing is staged
+- **Version detection**: Reads `version` field from the nearest `package.json` in the workspace root; `unknown` if not found
+- **AI prompt**: Structured JSON output prompt requesting `bump`, `suggestedVersion`, `confidence`, `reasons`, `breakingChanges`, `newFeatures`, `bugFixes`
+- **Response parsing**: JSON extracted via regex from AI response (handles markdown fences gracefully)
+- **Actions offered**: "Apply `<version>`" (updates `package.json`), "Copy Version" (clipboard), "View Details" (output channel)
+- **Token budget**: Diff capped at 12,000 characters before sending to AI
+- **Output channel**: Full analysis always logged to `[Ollama Code Review]` output channel
+
+#### Key Files Modified
+
+- `src/commands/index.ts` — `suggestVersionBumpCommand` registration + implementation
+- `package.json` — command declaration + SCM title bar menu entry
+
+#### Acceptance Criteria
+
+- [x] Command available from Command Palette and SCM panel
+- [x] AI returns MAJOR/MINOR/PATCH recommendation with reasoning
+- [x] Suggested version string correctly increments current package.json version
+- [x] Confidence level reported (HIGH/MEDIUM/LOW)
+- [x] "Apply version" updates package.json directly
+- [x] "Copy version" puts version string in clipboard
+- [x] Graceful fallback if AI returns non-JSON response
+- [x] Works with all 8 supported AI providers
+
+---
+
 ## Appendix
 
 ### Feature ID Reference
@@ -743,6 +801,7 @@ Build a shared knowledge base of team decisions, patterns, and conventions that 
 | F-025 | Provider Abstraction Layer | 6 | ✅ Complete | v6.0 |
 | F-026 | Rules Directory | 6 | ✅ Complete | v6.0 |
 | F-027 | extension.ts Decomposition | 6 | ✅ Complete | main (2026-02-21) |
+| F-028 | Semantic Version Bump Advisor | 7 | ✅ Complete | main (2026-02-26) |
 
 ### Effort Estimation Guide
 

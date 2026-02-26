@@ -201,6 +201,7 @@ out/                      # Compiled JavaScript output
 | `ollama-code-review.postReviewToBitbucketPR` | Post AI review as a comment to a Bitbucket PR (F-015) |
 | `ollama-code-review.indexCodebase` | Index workspace files into the RAG vector store for semantic retrieval (F-009) |
 | `ollama-code-review.clearRagIndex` | Clear the RAG codebase index from global storage (F-009) |
+| `ollama-code-review.suggestVersionBump` | Analyze staged diff with AI and recommend MAJOR/MINOR/PATCH semver bump; optionally apply to package.json (F-028) |
 
 ## Configuration Settings
 
@@ -1564,7 +1565,7 @@ See [docs/roadmap/](./docs/roadmap/) for comprehensive planning documents:
 | Document | Purpose |
 |----------|---------|
 | [README.md](./docs/roadmap/README.md) | Roadmap overview, phases, priorities |
-| [FEATURES.md](./docs/roadmap/FEATURES.md) | Detailed feature specifications (F-001 to F-027, S-001 to S-005) |
+| [FEATURES.md](./docs/roadmap/FEATURES.md) | Detailed feature specifications (F-001 to F-028, S-001 to S-005) |
 | [ARCHITECTURE.md](./docs/roadmap/ARCHITECTURE.md) | Technical architecture decisions (ADRs) |
 
 ### Shipped Features
@@ -1603,6 +1604,7 @@ See [docs/roadmap/](./docs/roadmap/) for comprehensive planning documents:
 | Rules Directory (`.ollama-review/rules/*.md`; plain-Markdown team rules; file watcher; coexists with F-012) | F-026 | v6.0 |
 | Provider Abstraction Layer (`ModelProvider` interface + `ProviderRegistry` for all 8 providers) | F-025 | v6.0 |
 | Inline Edit Mode (Ctrl+Shift+K; natural-language description; streaming side-by-side diff preview; accept/reject) | F-024 | v6.0 |
+| Semantic Version Bump Advisor (AI-powered MAJOR/MINOR/PATCH recommendation from staged diff; package.json auto-update) | F-028 | v7.0 |
 
 ### Phase 6: AI Assistant Evolution (In Progress — v6.0)
 

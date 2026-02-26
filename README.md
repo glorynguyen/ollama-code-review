@@ -927,6 +927,50 @@ Highlight any code in your editor, press `Ctrl+Shift+K` (`Cmd+Shift+K` on Mac), 
 - Accept uses VS Code's native `TextEditor.edit()` so the change is fully integrated into the undo/redo stack
 - Works with all 8 supported AI providers
 
+### 44. Semantic Version Bump Advisor (F-028)
+
+Instantly determine the right semantic version bump for your next release. The AI analyzes your staged changes (or uncommitted diff) and recommends a **MAJOR**, **MINOR**, or **PATCH** bump based on the Semantic Versioning specification — with detailed reasoning and a ready-to-apply version string.
+
+- **Command**: `Ollama Code Review: Suggest Version Bump (Semantic Versioning)` — available from the Command Palette and the Source Control panel title bar (`$(tag)` icon).
+
+**What the AI analyzes:**
+
+| Bump | When applied |
+|------|-------------|
+| **🔴 MAJOR** | Breaking changes: removed/renamed APIs, changed function signatures, behavior changes that break existing usage |
+| **🟡 MINOR** | New features added in a backwards-compatible way: new functions, new optional parameters, new exports |
+| **🟢 PATCH** | Bug fixes, performance improvements, refactoring, docs — no API changes |
+
+**Workflow:**
+1. Stage your changes (or leave them uncommitted)
+2. Run `Ollama Code Review: Suggest Version Bump` from the Command Palette or SCM panel
+3. The AI reviews the diff and responds with:
+   - The recommended bump type (MAJOR / MINOR / PATCH)
+   - The suggested new version string (e.g., `1.4.0 → 1.5.0`)
+   - Confidence level (High / Medium / Low)
+   - Lists of breaking changes, new features, and bug fixes found
+4. Choose to:
+   - **Apply version** — automatically updates `package.json` with the new version
+   - **Copy version** — copies the suggested version to your clipboard
+   - **View Details** — opens the Output Channel with the full analysis
+
+**Output example:**
+```
+🟡 MINOR bump recommended
+📦 1.4.0 → 1.5.0  (High confidence)
+
+New Features:
+• Added suggestVersionBump command with package.json auto-update
+
+Bug Fixes:
+• (none)
+
+Reasons:
+• New backwards-compatible command added to extension API
+```
+
+> Works with all supported AI providers. The diff is capped at 12,000 characters for token budget management. If no `package.json` is found in the workspace root, the "Apply version" option is hidden but the recommendation and copy actions are still available.
+
 ---
 
 ## Requirements
