@@ -1,3 +1,10 @@
+# [3.20.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.19.0...v3.20.0) (2026-02-26)
+
+
+### Features
+
+* add explain file with imports command ([e1e678f](https://github.com/glorynguyen/ollama-code-review/commit/e1e678fe8005e159e5cff172a2612f072a00dc6c))
+
 # [3.19.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.18.0...v3.19.0) (2026-02-22)
 
 
