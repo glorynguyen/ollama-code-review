@@ -906,6 +906,27 @@ Type `@` in the chat input to instantly inject rich context into your AI convers
 - Unresolved mentions (e.g., `@review` with no prior review) show a status warning and are skipped
 - Multiple @-mentions can be combined in a single message
 
+### 43. Inline Edit Mode (AI)
+
+Highlight any code in your editor, press `Ctrl+Shift+K` (`Cmd+Shift+K` on Mac), describe the change you want in plain English, and the AI streams the replacement code side-by-side before you accept or reject.
+
+**How to use:**
+1. Select code in any editor (or place your cursor on a line for single-line edits)
+2. Press `Ctrl+Shift+K` (`Cmd+Shift+K` on Mac) — or right-click and choose **Ollama Code Review: Inline Edit (AI)**
+3. Type a natural-language description of the desired change, e.g.:
+   - `"Convert to async/await with try-catch"`
+   - `"Rename the parameter to camelCase"`
+   - `"Add null checks before accessing properties"`
+4. The AI streams its response into a side-by-side diff panel — original on the left, generated on the right
+5. Click **Accept** to apply the change or **Reject** to discard it
+
+**Key behaviours:**
+- Streaming responses: tokens appear in real-time for providers that support streaming (Ollama, Claude, OpenAI-compatible)
+- Non-streaming providers generate the full replacement and display it when complete
+- Markdown fences are automatically stripped if the model accidentally wraps the output
+- Accept uses VS Code's native `TextEditor.edit()` so the change is fully integrated into the undo/redo stack
+- Works with all 8 supported AI providers
+
 ---
 
 ## Requirements

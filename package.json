@@ -113,6 +113,12 @@
         "title": "Add Documentation"
       },
       {
+        "command": "ollama-code-review.inlineEdit",
+        "category": "Ollama Code Review",
+        "title": "Inline Edit (AI)",
+        "icon": "$(edit)"
+      },
+      {
         "command": "ollama-code-review.selectProfile",
         "title": "Select Review Profile",
         "category": "Ollama Code Review"
@@ -262,12 +268,25 @@
         }
       ]
     },
+    "keybindings": [
+      {
+        "command": "ollama-code-review.inlineEdit",
+        "key": "ctrl+shift+k",
+        "mac": "cmd+shift+k",
+        "when": "editorTextFocus && !editorReadonly"
+      }
+    ],
     "menus": {
       "editor/context": [
         {
           "when": "editorHasSelection && (editorLangId == javascript || editorLangId == typescript || editorLangId == javascriptreact || editorLangId == typescriptreact || editorLangId == php)",
           "command": "ollama-code-review.suggestRefactoring",
           "group": "1_modification"
+        },
+        {
+          "when": "editorHasSelection",
+          "command": "ollama-code-review.inlineEdit",
+          "group": "1_modification@2"
         },
         {
           "when": "editorHasSelection",
