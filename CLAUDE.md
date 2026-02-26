@@ -86,6 +86,7 @@ src/
 ├── notifications/        # Notification integrations (F-018)
 │   └── index.ts          # Slack / Teams / Discord webhook delivery
 ├── reviewScore.ts        # Review quality scoring & history (F-016)
+├── reviewDecorations.ts  # Inline editor annotations for review findings (F-029)
 └── test/
     └── extension.test.ts # Mocha test suite
 
@@ -126,6 +127,7 @@ out/                      # Compiled JavaScript output
 | `src/codeActions/types.ts` | ~103 | Common types and parsing utilities |
 | `src/preCommitGuard.ts` | ~185 | Pre-commit guard: hook install/uninstall, severity assessment (F-014) |
 | `src/reviewScore.ts` | ~280 | Review quality scoring, score history store, status bar, history panel (F-016) |
+| `src/reviewDecorations.ts` | ~240 | Inline editor decorations for review findings — gutter, highlight, hover (F-029) |
 | `src/notifications/index.ts` | ~245 | Slack / Teams / Discord webhook notifications after reviews (F-018) |
 | `src/agent/index.ts` | ~15 | Barrel exports for agentic review module (F-007) |
 | `src/agent/types.ts` | ~120 | Agent step interfaces, context types, pipeline result (F-007) |
@@ -202,6 +204,8 @@ out/                      # Compiled JavaScript output
 | `ollama-code-review.indexCodebase` | Index workspace files into the RAG vector store for semantic retrieval (F-009) |
 | `ollama-code-review.clearRagIndex` | Clear the RAG codebase index from global storage (F-009) |
 | `ollama-code-review.suggestVersionBump` | Analyze staged diff with AI and recommend MAJOR/MINOR/PATCH semver bump; optionally apply to package.json (F-028) |
+| `ollama-code-review.toggleAnnotations` | Toggle inline review annotations in the editor on/off (F-029) |
+| `ollama-code-review.clearAnnotations` | Clear all inline review annotations from editors (F-029) |
 
 ## Configuration Settings
 
@@ -250,6 +254,18 @@ out/                      # Compiled JavaScript output
 | `ollama-code-review.bitbucket.username` | `""` | Bitbucket username for API authentication (F-015) |
 | `ollama-code-review.bitbucket.appPassword` | `""` | Bitbucket App Password (Pullrequests Read/Write scope) (F-015) |
 | `ollama-code-review.rag` | `{}` | RAG-Enhanced Reviews configuration (F-009) |
+| `ollama-code-review.annotations` | `{}` | Review Annotations configuration — inline editor decorations for findings (F-029) |
+
+### Annotations Settings (F-029)
+
+The `annotations` setting is an object with these properties:
+
+| Property | Default | Description |
+|----------|---------|-------------|
+| `enabled` | `true` | Enable inline review annotations in the editor after each review |
+| `showGutter` | `true` | Show severity icons in the editor gutter |
+| `showLineHighlight` | `true` | Highlight finding lines with severity-based background colors |
+| `showHover` | `true` | Show detailed finding information on hover |
 
 ### RAG Settings (F-009)
 
@@ -984,6 +1000,53 @@ Post review summaries to Slack, Microsoft Teams, or Discord via incoming webhook
 | Teams | MessageCard v1 (Adaptive Card) with facts table |
 | Discord | Embed with colored border (green ≥ 80, orange ≥ 60, red < 60) |
 
+## Review Annotations — Inline Editor Decorations (F-029)
+
+The `src/reviewDecorations.ts` module displays review findings as inline editor decorations: gutter icons, line highlights, and hover tooltips directly in source files.
+
+### How It Works
+
+1. After every review (staged, commit, PR, file, folder, selection, or agent), findings are parsed using `parseReviewIntoFindings()` from `commentMapper.ts`
+2. Findings with file and line references are mapped to open editors
+3. Each finding is rendered with severity-based styling: gutter icon, background color, inline text, and hover tooltip
+4. Decorations persist until the next review or manual clear
+5. Toggling visibility preserves the data (no re-review needed)
+
+### Configuration
+
+| Property | Default | Description |
+|----------|---------|-------------|
+| `enabled` | `true` | Enable inline annotations after each review |
+| `showGutter` | `true` | Show severity icons in the editor gutter |
+| `showLineHighlight` | `true` | Highlight finding lines with severity-based colors |
+| `showHover` | `true` | Show detailed finding information on hover |
+
+### Exported Functions (`src/reviewDecorations.ts`)
+
+- `getAnnotationsConfig()` — Read annotations settings from VS Code configuration
+- `ReviewDecorationsManager.getInstance()` — Singleton manager for editor decorations
+- `ReviewDecorationsManager.applyFromReview(reviewText, diff)` — Parse findings and apply decorations to editors
+- `ReviewDecorationsManager.toggleAnnotations()` — Toggle visibility; returns new state
+- `ReviewDecorationsManager.clearAll()` — Remove all decorations and clear state
+- `ReviewDecorationsManager.getFindingSummary()` — Get finding count by severity
+- `ReviewDecorationsManager.dispose()` — Clean up decoration types and listeners
+
+### Severity Styling
+
+| Severity | Gutter Icon | Background | Overview Ruler |
+|----------|-------------|------------|----------------|
+| Critical | `error` (ThemeIcon) | Red tint | Red (`#e51400`) |
+| High | `warning` (ThemeIcon) | Orange tint | Orange (`#e5a100`) |
+| Medium | `info` (ThemeIcon) | Blue tint | Blue (`#007acc`) |
+| Low | `lightbulb` (ThemeIcon) | Green tint | Green (`#66bb6a`) |
+| Info | `comment` (ThemeIcon) | Gray tint | Gray (`#888888`) |
+
+### Integration
+
+Decorations are applied automatically in both the streaming and non-streaming review paths in `src/commands/index.ts`, right after quality scoring (F-016). The manager listens to `onDidChangeActiveTextEditor` to re-apply decorations when the user switches files. File path matching supports both exact and partial path matching to handle workspace-relative vs diff-relative paths.
+
+---
+
 ## Review Quality Scoring & Trends (F-016)
 
 Each review produces a 0–100 quality score derived from finding severity counts. Scores are persisted in a local JSON file and surfaced in a status bar item and a history panel.
@@ -1605,6 +1668,7 @@ See [docs/roadmap/](./docs/roadmap/) for comprehensive planning documents:
 | Provider Abstraction Layer (`ModelProvider` interface + `ProviderRegistry` for all 8 providers) | F-025 | v6.0 |
 | Inline Edit Mode (Ctrl+Shift+K; natural-language description; streaming side-by-side diff preview; accept/reject) | F-024 | v6.0 |
 | Semantic Version Bump Advisor (AI-powered MAJOR/MINOR/PATCH recommendation from staged diff; package.json auto-update) | F-028 | v7.0 |
+| Review Annotations (inline editor decorations — gutter icons, line highlights, hover tooltips for review findings) | F-029 | v8.0 |
 
 ### Phase 6: AI Assistant Evolution (In Progress — v6.0)
 

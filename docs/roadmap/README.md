@@ -86,11 +86,21 @@ v6.0 (2026) ───── extension.ts Decomposition (F-027) — refactor into
 7. F-026  Rules Directory                 ← Low effort, do anytime
 ```
 
+## Phase 8: Review Experience (v8.0)
+
+```
+v8.0 (2026) ───── Review Annotations (F-029) — inline editor decorations for findings
+```
+
+| Priority | Impact | Effort | Features |
+|----------|--------|--------|----------|
+| 🟠 P1 | High | Low | F-029: Review Annotations (inline gutter/highlight/hover for findings) |
+
 ## Current Status
 
-- **Current Version:** 5.0.0
-- **Next Milestone:** v6.0.0 (AI Assistant Evolution)
-- **Theme:** Evolve from review tool to AI coding assistant while preserving review specialization
+- **Current Version:** 8.0.0
+- **Next Milestone:** v8.0.0 (Review Experience)
+- **Theme:** Bring review findings into the editor for immediate, in-context visibility
 
 ---
 

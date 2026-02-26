@@ -110,6 +110,7 @@ import {
 	DEFAULT_RAG_CONFIG,
 } from '../rag';
 import { loadRulesDirectory, clearRulesCache } from '../rules/loader';
+import { ReviewDecorationsManager, getAnnotationsConfig } from '../reviewDecorations';
 import {
 	type PerformanceMetrics,
 	checkActiveModels,
@@ -1797,6 +1798,27 @@ export async function activate(context: vscode.ExtensionContext) {
 	);
 	context.subscriptions.push(showAnalyticsDashboardCommand);
 
+	// F-029: Toggle Review Annotations command
+	const toggleAnnotationsCommand = vscode.commands.registerCommand(
+		'ollama-code-review.toggleAnnotations',
+		() => {
+			const manager = ReviewDecorationsManager.getInstance();
+			const visible = manager.toggleAnnotations();
+			vscode.window.showInformationMessage(`Review annotations ${visible ? 'shown' : 'hidden'}.`);
+		}
+	);
+	context.subscriptions.push(toggleAnnotationsCommand);
+
+	// F-029: Clear Review Annotations command
+	const clearAnnotationsCommand = vscode.commands.registerCommand(
+		'ollama-code-review.clearAnnotations',
+		() => {
+			ReviewDecorationsManager.getInstance().clearAll();
+			vscode.window.showInformationMessage('Review annotations cleared.');
+		}
+	);
+	context.subscriptions.push(clearAnnotationsCommand);
+
 	// F-019: Batch / Legacy Code Review — Review File command
 	const reviewFileCommand = vscode.commands.registerCommand(
 		'ollama-code-review.reviewFile',
@@ -2672,6 +2694,16 @@ async function runReview(diff: string, context: vscode.ExtensionContext, reviewT
 				scoreStatusBarItem.show();
 			}
 
+			// F-029: Apply inline annotations to editors
+			try {
+				const annotCfg = getAnnotationsConfig();
+				if (annotCfg.enabled) {
+					ReviewDecorationsManager.getInstance().applyFromReview(review, filteredDiff);
+				}
+			} catch (err) {
+				outputChannel.appendLine(`[Annotations] Error: ${err}`);
+			}
+
 			// F-018: Notifications
 			{
 				const notifPayload: NotificationPayload = {
@@ -2756,6 +2788,16 @@ async function runReview(diff: string, context: vscode.ExtensionContext, reviewT
 		if (scoreStatusBarItem) {
 			updateScoreStatusBar(scoreStatusBarItem, scoreResult.score);
 			scoreStatusBarItem.show();
+		}
+
+		// F-029: Apply inline annotations to editors
+		try {
+			const annotCfg = getAnnotationsConfig();
+			if (annotCfg.enabled) {
+				ReviewDecorationsManager.getInstance().applyFromReview(review, filteredDiff);
+			}
+		} catch (err) {
+			outputChannel.appendLine(`[Annotations] Error: ${err}`);
 		}
 
 		// F-018: Send notifications (non-blocking, failures are logged)
