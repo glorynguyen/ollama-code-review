@@ -254,6 +254,18 @@
         "title": "Suggest Version Bump (Semantic Versioning)",
         "category": "Ollama Code Review",
         "icon": "$(tag)"
+      },
+      {
+        "command": "ollama-code-review.toggleAnnotations",
+        "title": "Toggle Review Annotations in Editor",
+        "category": "Ollama Code Review",
+        "icon": "$(eye)"
+      },
+      {
+        "command": "ollama-code-review.clearAnnotations",
+        "title": "Clear Review Annotations",
+        "category": "Ollama Code Review",
+        "icon": "$(clear-all)"
       }
     ],
     "viewsContainers": {
@@ -881,6 +893,38 @@
           "type": "boolean",
           "default": true,
           "markdownDescription": "**F-022** — Enable streaming responses for supported providers (Ollama, Claude, OpenAI-compatible). When enabled, review text appears incrementally in the review panel as tokens are generated, providing a more responsive experience. Providers that do not support streaming (GLM, Hugging Face, Gemini, Mistral, MiniMax) always use the standard non-streaming path."
+        },
+        "ollama-code-review.annotations": {
+          "type": "object",
+          "default": {
+            "enabled": true,
+            "showGutter": true,
+            "showLineHighlight": true,
+            "showHover": true
+          },
+          "markdownDescription": "**F-029** — Review Annotations configuration. When enabled, review findings are displayed as inline editor decorations (gutter icons, line highlights, hover tooltips) directly in your source files.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true,
+              "description": "Enable inline review annotations in the editor after each review."
+            },
+            "showGutter": {
+              "type": "boolean",
+              "default": true,
+              "description": "Show severity icons in the editor gutter."
+            },
+            "showLineHighlight": {
+              "type": "boolean",
+              "default": true,
+              "description": "Highlight lines with review findings using severity-based background colors."
+            },
+            "showHover": {
+              "type": "boolean",
+              "default": true,
+              "description": "Show detailed finding information on hover."
+            }
+          }
         }
       }
     }

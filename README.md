@@ -973,6 +973,47 @@ Reasons:
 
 ---
 
+### 45. Review Annotations — Inline Editor Decorations (F-029)
+
+See review findings **directly in your source code** without switching to the review panel. After every review, findings are displayed as inline editor decorations with severity-based gutter icons, line highlights, and rich hover tooltips.
+
+- **Commands**:
+  - `Ollama Code Review: Toggle Review Annotations in Editor` — show/hide annotations
+  - `Ollama Code Review: Clear Review Annotations` — remove all annotations
+
+**How it works:**
+
+1. Run any code review (staged changes, commit, PR, file, or agent review)
+2. Findings with file and line references are automatically mapped to your open editors
+3. Each finding appears as:
+   - A **gutter icon** indicating severity (error, warning, info, lightbulb, comment)
+   - A **line highlight** with a subtle severity-based background color
+   - An **inline summary** after the line showing the finding message
+   - A **hover tooltip** with full finding details and code suggestions
+
+**Severity styling:**
+
+| Severity | Gutter Icon | Highlight Color | Overview Ruler |
+|----------|-------------|-----------------|----------------|
+| Critical | `$(error)` | Red tint | Red |
+| High | `$(warning)` | Orange tint | Orange |
+| Medium | `$(info)` | Blue tint | Blue |
+| Low | `$(lightbulb)` | Green tint | Green |
+| Info | `$(comment)` | Gray tint | Gray |
+
+**Configuration** (`ollama-code-review.annotations`):
+
+| Property | Default | Description |
+|----------|---------|-------------|
+| `enabled` | `true` | Enable inline annotations after each review |
+| `showGutter` | `true` | Show severity icons in the editor gutter |
+| `showLineHighlight` | `true` | Highlight finding lines with severity colors |
+| `showHover` | `true` | Show detailed finding information on hover |
+
+> Annotations persist until the next review or until cleared manually. Toggle visibility on/off without losing the data using the toggle command. Works with all review types: staged, commit, PR, file, folder, selection, and agent reviews.
+
+---
+
 ## Requirements
 
 You must have the following software installed and configured for this extension to work.

@@ -763,6 +763,63 @@ Developers often spend time debating whether a change warrants a minor or patch 
 
 ---
 
+## Phase 8: Review Experience (v8.0)
+
+### F-029: Review Annotations — Inline Editor Decorations
+
+| Attribute | Value |
+|-----------|-------|
+| **ID** | F-029 |
+| **Priority** | 🟠 P1 |
+| **Effort** | Low (1-2 days) |
+| **Status** | ✅ Complete |
+| **Shipped** | v8.0.0 (2026-02-26) |
+| **Dependencies** | F-004 (GitHub comment mapper for finding parsing) |
+
+#### Description
+
+Displays review findings as inline editor decorations — gutter icons, line highlights, and hover tooltips — directly in source files. After every review, findings with file and line references are automatically mapped to open editors, giving developers immediate in-context visibility without switching to the review panel.
+
+#### User Problem
+
+After running a review, users must switch to the review panel and mentally map findings back to their source code. This context-switching slows down the fix-review cycle. Inline annotations bring findings directly to the code, similar to how linters and SonarQube display issues in the editor.
+
+#### Implementation
+
+- **Singleton manager**: `ReviewDecorationsManager` in `src/reviewDecorations.ts`
+- **Decoration types**: One per severity level (critical, high, medium, low, info) with configurable gutter icons, line highlights, and hover messages
+- **Finding parsing**: Reuses `parseReviewIntoFindings()` from `src/github/commentMapper.ts`
+- **Editor tracking**: Listens to `onDidChangeActiveTextEditor` to re-apply decorations when the user switches files
+- **Path matching**: Supports both exact and partial path matching for workspace-relative vs diff-relative paths
+- **Commands**: `toggleAnnotations` (show/hide) and `clearAnnotations` (remove all)
+
+#### Configuration
+
+| Property | Default | Description |
+|----------|---------|-------------|
+| `enabled` | `true` | Enable inline annotations after each review |
+| `showGutter` | `true` | Show severity icons in the editor gutter |
+| `showLineHighlight` | `true` | Highlight finding lines with severity colors |
+| `showHover` | `true` | Show detailed finding information on hover |
+
+#### Key Files
+
+- `src/reviewDecorations.ts` — **NEW** — `ReviewDecorationsManager` singleton, decoration types, editor integration
+- `src/commands/index.ts` — Hook into streaming and non-streaming review paths; register toggle/clear commands
+- `package.json` — Command declarations and `annotations` settings object
+
+#### Acceptance Criteria
+
+- [x] Findings displayed as inline decorations in open editors after review
+- [x] Severity-based styling (gutter icons, line highlights, hover tooltips)
+- [x] Toggle command shows/hides annotations without data loss
+- [x] Clear command removes all decorations and resets state
+- [x] Decorations re-applied when switching between editor tabs
+- [x] Configuration allows disabling individual decoration components
+- [x] Works with all review types (staged, commit, PR, file, folder, selection, agent)
+
+---
+
 ## Appendix
 
 ### Feature ID Reference
@@ -802,6 +859,7 @@ Developers often spend time debating whether a change warrants a minor or patch 
 | F-026 | Rules Directory | 6 | ✅ Complete | v6.0 |
 | F-027 | extension.ts Decomposition | 6 | ✅ Complete | main (2026-02-21) |
 | F-028 | Semantic Version Bump Advisor | 7 | ✅ Complete | main (2026-02-26) |
+| F-029 | Review Annotations (Inline Editor Decorations) | 8 | ✅ Complete | v8.0.0 (2026-02-26) |
 
 ### Effort Estimation Guide
 
