@@ -186,6 +186,36 @@ Generate the documentation comment now.
 }
 
 /**
+ * Get detailed explanation for a file bundled with its local imports
+ */
+export async function getFileWithImportsExplanation(bundledContent: string, mainFileName: string, languageId: string): Promise<string> {
+	const config = vscode.workspace.getConfiguration('ollama-code-review');
+	const model = getOllamaModel(config);
+	const endpoint = config.get<string>('endpoint', 'http://localhost:11434/api/generate');
+	const temperature = config.get<number>('temperature', 0.2);
+
+	const prompt = `
+You are an expert software engineer and educator. Your task is to explain the following ${languageId} codebase starting from the main file **${mainFileName}**.
+
+The code below includes the main file and all of its locally imported dependencies (node_modules are excluded). Each file is separated by a header line.
+
+**Instructions:**
+1. Start with a high-level summary of what **${mainFileName}** does and its overall purpose (2-3 sentences).
+2. Explain how the main file uses its imports — what role each imported module plays.
+3. Walk through the key logic in the main file step by step.
+4. Highlight important patterns, data flow, and design decisions across the files.
+5. Note any potential issues, edge cases, or areas for improvement.
+
+**Code:**
+${bundledContent}
+
+Provide your explanation in clear Markdown format.
+`;
+
+	return callAIProvider(prompt, config, model, endpoint, temperature);
+}
+
+/**
  * Helper function to call the appropriate AI provider
  */
 export async function callAIProvider(prompt: string, config: vscode.WorkspaceConfiguration, model: string, endpoint: string, temperature: number): Promise<string> {

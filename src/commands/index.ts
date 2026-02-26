@@ -63,6 +63,9 @@ import {
 	formatContextForPrompt,
 	getContextGatheringConfig,
 	ContextBundle,
+	parseImports,
+	resolveImport,
+	readFileContent,
 } from '../context';
 import { sendNotifications, type NotificationPayload } from '../notifications';
 import {
@@ -130,6 +133,7 @@ import {
 import {
 	getOllamaSuggestion,
 	getExplanation,
+	getFileWithImportsExplanation,
 	generateTests,
 	generateFix,
 	generateDocumentation,
@@ -1808,6 +1812,83 @@ export async function activate(context: vscode.ExtensionContext) {
 	);
 	context.subscriptions.push(reviewFileCommand);
 
+	// Explain File with Imports — reads file + all local imports, sends to AI for explanation
+	const explainFileWithImportsCommand = vscode.commands.registerCommand(
+		'ollama-code-review.explainFileWithImports',
+		async (uri?: vscode.Uri) => {
+			const fileUri = uri ?? vscode.window.activeTextEditor?.document.uri;
+			if (!fileUri) {
+				vscode.window.showWarningMessage('Open a file or right-click a file in the Explorer to explain it.');
+				return;
+			}
+
+			const workspaceFolders = vscode.workspace.workspaceFolders;
+			if (!workspaceFolders || workspaceFolders.length === 0) {
+				vscode.window.showWarningMessage('No workspace folder open.');
+				return;
+			}
+			const workspaceRoot = workspaceFolders[0].uri;
+
+			try {
+				await vscode.window.withProgress({
+					location: vscode.ProgressLocation.Notification,
+					title: 'Ollama: Explain File with Imports',
+					cancellable: true,
+				}, async (progress, token) => {
+					progress.report({ message: 'Reading file and resolving imports...' });
+
+					// Read the main file
+					const mainContent = await readFileContent(fileUri, IMPORT_PER_FILE_LIMIT);
+					if (!mainContent) {
+						vscode.window.showWarningMessage('Could not read the file.');
+						return;
+					}
+
+					const relativePath = vscode.workspace.asRelativePath(fileUri);
+					const budget = { remaining: IMPORT_TOTAL_BUDGET - mainContent.length };
+					const visited = new Set<string>();
+
+					// Recursively resolve imports
+					const importedFiles = await resolveImportsRecursively(
+						fileUri, workspaceRoot, visited, 0, budget,
+					);
+
+					if (token.isCancellationRequested) { return; }
+
+					// Build combined content
+					let bundled = `=== Main File: ${relativePath} ===\n${mainContent}\n`;
+					for (const imp of importedFiles) {
+						bundled += `\n=== Imported: ${imp.relativePath} ===\n${imp.content}\n`;
+					}
+
+					const fileCount = importedFiles.length;
+					progress.report({
+						message: `Resolved ${fileCount} import(s). Asking AI for explanation...`,
+					});
+
+					// Detect language from file extension
+					const ext = path.extname(fileUri.fsPath).slice(1);
+					const langMap: Record<string, string> = {
+						ts: 'typescript', tsx: 'typescriptreact',
+						js: 'javascript', jsx: 'javascriptreact',
+						py: 'python', go: 'go', java: 'java',
+						php: 'php', rb: 'ruby', cs: 'csharp',
+						cpp: 'cpp', c: 'c', rs: 'rust',
+					};
+					const languageId = langMap[ext] ?? ext;
+
+					const explanation = await getFileWithImportsExplanation(bundled, relativePath, languageId);
+					if (token.isCancellationRequested) { return; }
+
+					ExplainCodePanel.createOrShow(bundled, explanation, languageId);
+				});
+			} catch (error) {
+				handleError(error, 'Failed to explain file with imports.');
+			}
+		}
+	);
+	context.subscriptions.push(explainFileWithImportsCommand);
+
 	// F-019: Batch / Legacy Code Review — Review Folder command
 	const reviewFolderCommand = vscode.commands.registerCommand(
 		'ollama-code-review.reviewFolder',
@@ -2666,6 +2747,67 @@ ${content}
 		temperature,
 	};
 	return providerRegistry.resolve(model).generate(prompt, requestContext, { captureMetrics: true });
+}
+
+const IMPORT_PER_FILE_LIMIT = 8_000;
+const IMPORT_TOTAL_BUDGET = 64_000;
+const IMPORT_MAX_DEPTH = 3;
+
+/**
+ * Recursively resolve local imports for a file, returning all imported file contents.
+ * Skips node_modules, already-visited files, and respects depth and budget limits.
+ */
+async function resolveImportsRecursively(
+	fileUri: vscode.Uri,
+	workspaceRoot: vscode.Uri,
+	visited: Set<string>,
+	depth: number,
+	budget: { remaining: number },
+): Promise<Array<{ relativePath: string; content: string }>> {
+	if (visited.has(fileUri.fsPath) || depth > IMPORT_MAX_DEPTH || budget.remaining <= 0) {
+		return [];
+	}
+	visited.add(fileUri.fsPath);
+
+	const content = await readFileContent(fileUri, IMPORT_PER_FILE_LIMIT);
+	if (!content) {
+		return [];
+	}
+
+	const imports = parseImports(content);
+	const results: Array<{ relativePath: string; content: string }> = [];
+	const relativeSrc = vscode.workspace.asRelativePath(fileUri);
+
+	for (const imp of imports) {
+		if (!imp.isRelative) {
+			continue; // skip node_modules / bare specifiers
+		}
+
+		const resolved = await resolveImport(imp.specifier, relativeSrc, workspaceRoot);
+		if (!resolved || visited.has(resolved.fsPath)) {
+			continue;
+		}
+
+		if (budget.remaining <= 0) {
+			break;
+		}
+
+		const importedContent = await readFileContent(resolved, IMPORT_PER_FILE_LIMIT);
+		if (!importedContent) {
+			continue;
+		}
+
+		const truncated = importedContent.slice(0, Math.min(importedContent.length, budget.remaining));
+		budget.remaining -= truncated.length;
+		const relPath = vscode.workspace.asRelativePath(resolved);
+		results.push({ relativePath: relPath, content: truncated });
+
+		// Recurse into this file's imports
+		const nested = await resolveImportsRecursively(resolved, workspaceRoot, visited, depth + 1, budget);
+		results.push(...nested);
+	}
+
+	return results;
 }
 
 async function getOllamaReview(diff: string, context?: vscode.ExtensionContext, contextBundle?: ContextBundle, onChunk?: (text: string) => void): Promise<string> {

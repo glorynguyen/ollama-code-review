@@ -148,6 +148,12 @@
         "icon": "$(checklist)"
       },
       {
+        "command": "ollama-code-review.explainFileWithImports",
+        "title": "Explain File with Imports",
+        "category": "Ollama Code Review",
+        "icon": "$(symbol-file)"
+      },
+      {
         "command": "ollama-code-review.reviewFile",
         "title": "Review File (No Git Required)",
         "category": "Ollama Code Review",
@@ -272,6 +278,11 @@
           "when": "editorIsOpen",
           "command": "ollama-code-review.reviewFile",
           "group": "9_ollama@2"
+        },
+        {
+          "when": "editorIsOpen",
+          "command": "ollama-code-review.explainFileWithImports",
+          "group": "9_ollama@3"
         }
       ],
       "explorer/context": [
@@ -279,6 +290,11 @@
           "command": "ollama-code-review.reviewFile",
           "when": "!explorerResourceIsFolder",
           "group": "9_ollama@1"
+        },
+        {
+          "command": "ollama-code-review.explainFileWithImports",
+          "when": "!explorerResourceIsFolder",
+          "group": "9_ollama@2"
         },
         {
           "command": "ollama-code-review.reviewFolder",
