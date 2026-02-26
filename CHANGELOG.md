@@ -1,3 +1,10 @@
+# [3.23.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.22.0...v3.23.0) (2026-02-26)
+
+
+### Features
+
+* **F-029:** implement Review Annotations — inline editor decorations ([b79a98d](https://github.com/glorynguyen/ollama-code-review/commit/b79a98d15b113c823498c493e3ea0dc7596bd59e)), closes [#45](https://github.com/glorynguyen/ollama-code-review/issues/45)
+
 # [3.22.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.21.0...v3.22.0) (2026-02-26)
 
 
