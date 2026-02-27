@@ -1,3 +1,10 @@
+# [3.24.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.23.0...v3.24.0) (2026-02-27)
+
+
+### Features
+
+* **F-030:** implement Multi-Model Review Comparison ([50fcd74](https://github.com/glorynguyen/ollama-code-review/commit/50fcd7403856d1230c3254967e43756ffec84152))
+
 # [3.23.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.22.0...v3.23.0) (2026-02-26)
 
 
