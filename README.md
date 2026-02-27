@@ -1045,6 +1045,43 @@ Run the **same code review across multiple AI models in parallel** and compare r
 
 ---
 
+### 47. Review Findings Explorer (F-031)
+
+A dedicated **tree view** in the VS Code sidebar that displays all findings from the most recent code review, organized by file and severity. Works like a "Problems Panel" specifically for AI review findings.
+
+- **Location**: Appears in the **AI Review** sidebar (same activity bar as the Chat panel)
+- **Commands**: `Ollama Code Review: Clear Findings Explorer`
+
+**How it works:**
+
+1. Run any code review (staged changes, commit, PR, file, folder, agent, or multi-model comparison)
+2. The **Findings** tree view automatically populates in the sidebar
+3. Findings are grouped by **file**, sorted by severity (critical first)
+4. Each finding shows its **severity icon**, **line number**, and a **message preview**
+5. **Click any finding** to navigate directly to the file and line in the editor
+6. Hover over a finding for the **full message and suggestion** in a tooltip
+
+**Tree structure:**
+
+| Level | Content | Icon |
+|-------|---------|------|
+| File node | File path with severity summary | Highest severity icon |
+| Finding node | `L42: message preview...` | Severity-specific icon |
+
+**Severity icons:**
+
+| Severity | Icon |
+|----------|------|
+| Critical | Error (red) |
+| High | Warning (orange) |
+| Medium | Info (blue) |
+| Low | Lightbulb (green) |
+| Info | Comment (gray) |
+
+> The Findings Explorer appears automatically when findings are available and can be cleared with the toolbar button or the "Clear Findings Explorer" command.
+
+---
+
 ## Requirements
 
 You must have the following software installed and configured for this extension to work.

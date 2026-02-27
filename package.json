@@ -272,6 +272,17 @@
         "title": "Compare Models Review",
         "category": "Ollama Code Review",
         "icon": "$(split-horizontal)"
+      },
+      {
+        "command": "ollama-code-review.goToFinding",
+        "title": "Go to Finding",
+        "category": "Ollama Code Review"
+      },
+      {
+        "command": "ollama-code-review.clearFindings",
+        "title": "Clear Findings Explorer",
+        "category": "Ollama Code Review",
+        "icon": "$(clear-all)"
       }
     ],
     "viewsContainers": {
@@ -289,6 +300,11 @@
           "type": "webview",
           "id": "ai-review.chat-sidebar",
           "name": "Chat"
+        },
+        {
+          "id": "ai-review.findings-explorer",
+          "name": "Findings",
+          "when": "ollama-code-review.hasFindings"
         }
       ]
     },
@@ -395,6 +411,13 @@
         {
           "command": "ollama-code-review.reviewCommit",
           "group": "2_review@1"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "ollama-code-review.clearFindings",
+          "when": "view == ai-review.findings-explorer",
+          "group": "navigation"
         }
       ]
     },

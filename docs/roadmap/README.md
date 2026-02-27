@@ -106,11 +106,21 @@ v9.0 (2026) ───── Multi-Model Review Comparison (F-030) — compare re
 |----------|--------|--------|----------|
 | 🟡 P2 | High | Medium | F-030: Multi-Model Review Comparison (run same review across 2-4 models; side-by-side panel) |
 
+## Phase 10: Review Navigation (v10.0)
+
+```
+v10.0 (2026) ──── Review Findings Explorer (F-031) — navigable tree view for review findings
+```
+
+| Priority | Impact | Effort | Features |
+|----------|--------|--------|----------|
+| 🟠 P1 | High | Low | F-031: Review Findings Explorer (sidebar tree view for navigating review findings by file and severity) |
+
 ## Current Status
 
-- **Current Version:** 9.0.0
-- **Next Milestone:** v9.0.0 (Review Intelligence)
-- **Theme:** Compare and cross-reference AI reviews across models for deeper insights
+- **Current Version:** 10.0.0
+- **Next Milestone:** v10.0.0 (Review Navigation)
+- **Theme:** Navigate and explore review findings directly from the sidebar
 
 ---
 
