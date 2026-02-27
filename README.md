@@ -1014,6 +1014,37 @@ See review findings **directly in your source code** without switching to the re
 
 ---
 
+### 46. Multi-Model Review Comparison (F-030)
+
+Run the **same code review across multiple AI models in parallel** and compare results side-by-side. Ideal for evaluating which model works best for your codebase, cross-referencing findings, or comparing cost/speed/quality tradeoffs.
+
+- **Command**: `Ollama Code Review: Compare Models Review`
+
+**How it works:**
+
+1. Stage your changes in Git
+2. Run the "Compare Models Review" command from the command palette or the SCM title bar
+3. Select **2-4 models** from the multi-select picker (cloud + local Ollama models)
+4. All selected models review the same diff **in parallel**
+5. Results appear in a **side-by-side comparison panel** with:
+   - A **summary table** showing score, duration, and finding counts per model
+   - **Best score** and **Fastest** badges for quick identification
+   - Full review text for each model with syntax-highlighted Markdown
+   - One-click **Copy** button per review
+
+**Summary table columns:**
+
+| Column | Description |
+|--------|-------------|
+| Model | Model name |
+| Score | Quality score (0-100) with "Best" badge |
+| Duration | Wall-clock time with "Fastest" badge |
+| Findings | Critical / High / Medium / Low counts |
+
+> All configured providers (Ollama, Claude, Gemini, Mistral, GLM, MiniMax, OpenAI-compatible) are available in the model picker. Local Ollama models are auto-discovered. Reviews use the same prompt template, profile, skills, and settings as regular reviews.
+
+---
+
 ## Requirements
 
 You must have the following software installed and configured for this extension to work.

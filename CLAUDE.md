@@ -87,6 +87,10 @@ src/
 │   └── index.ts          # Slack / Teams / Discord webhook delivery
 ├── reviewScore.ts        # Review quality scoring & history (F-016)
 ├── reviewDecorations.ts  # Inline editor annotations for review findings (F-029)
+├── compareModels/        # Multi-model review comparison (F-030)
+│   ├── index.ts          # Barrel exports
+│   ├── types.ts          # ModelComparisonEntry, ComparisonResult interfaces
+│   └── comparisonPanel.ts # Side-by-side comparison webview panel
 └── test/
     └── extension.test.ts # Mocha test suite
 
@@ -163,6 +167,9 @@ out/                      # Compiled JavaScript output
 | `packages/cli/src/github.ts` | ~80 | GitHub PR comment posting, env-based PR context (F-010) |
 | `ci-templates/github-actions.yml` | — | Production-ready GitHub Actions workflow template (F-010) |
 | `ci-templates/gitlab-ci.yml` | — | GitLab CI YAML template (F-010) |
+| `src/compareModels/index.ts` | ~5 | Barrel exports for multi-model comparison module (F-030) |
+| `src/compareModels/types.ts` | ~15 | ModelComparisonEntry, ComparisonResult interfaces (F-030) |
+| `src/compareModels/comparisonPanel.ts` | ~170 | Side-by-side comparison webview panel with summary table (F-030) |
 
 ## Commands
 
@@ -206,6 +213,7 @@ out/                      # Compiled JavaScript output
 | `ollama-code-review.suggestVersionBump` | Analyze staged diff with AI and recommend MAJOR/MINOR/PATCH semver bump; optionally apply to package.json (F-028) |
 | `ollama-code-review.toggleAnnotations` | Toggle inline review annotations in the editor on/off (F-029) |
 | `ollama-code-review.clearAnnotations` | Clear all inline review annotations from editors (F-029) |
+| `ollama-code-review.compareModels` | Run the same review across 2-4 AI models in parallel and compare results side-by-side (F-030) |
 
 ## Configuration Settings
 
@@ -1047,6 +1055,62 @@ Decorations are applied automatically in both the streaming and non-streaming re
 
 ---
 
+## Multi-Model Review Comparison (F-030)
+
+The `src/compareModels/` module enables running the same code review across multiple AI models simultaneously and displaying results in a side-by-side comparison panel.
+
+### How It Works
+
+1. The user runs the "Compare Models Review" command from the command palette or SCM title bar
+2. Staged changes are read and filtered through the existing diff filter pipeline
+3. A multi-select QuickPick shows all available models (cloud + auto-discovered local Ollama)
+4. The user selects 2–4 models to compare
+5. A single review prompt is built (same as regular reviews: template, profile, skills, frameworks)
+6. All selected models review the diff **in parallel** using `Promise.all`
+7. Each result is scored using the existing `parseFindingCounts()` + `computeScore()` pipeline
+8. A comparison webview panel displays the results side-by-side
+
+### Key Types (`src/compareModels/types.ts`)
+
+```typescript
+interface ModelComparisonEntry {
+  model: string;
+  provider: string;
+  review: string;
+  durationMs: number;
+  tokenCount?: { input?: number; output?: number };
+  score: number;
+  findingCounts: { critical: number; high: number; medium: number; low: number; info: number };
+  error?: string;
+}
+
+interface ComparisonResult {
+  diff: string;
+  entries: ModelComparisonEntry[];
+  timestamp: string;
+  commonFindings: string[];
+}
+```
+
+### Comparison Panel (`src/compareModels/comparisonPanel.ts`)
+
+- **Summary table**: Model name, quality score, duration, finding counts with "Best" and "Fastest" badges
+- **Side-by-side columns**: Each model's review rendered as Markdown with highlight.js syntax highlighting
+- **Copy button**: One-click clipboard copy per review
+- **CDN dependencies**: highlight.js v11.9.0, marked.js v11.1.1 (shared with review panel)
+- **Singleton pattern**: `ComparisonPanel.createOrShow(result)` reuses the panel
+
+### Integration
+
+The command is registered in `src/commands/index.ts` alongside the other review commands. It reuses:
+- `providerRegistry.resolve(model)` from F-025 for multi-provider routing
+- `parseFindingCounts()` and `computeScore()` from F-016 for quality scoring
+- `filterDiff()` from F-002 for diff filtering
+- `getEffectiveReviewPrompt()` from F-006 for prompt resolution
+- `buildProfilePromptContext()` from F-001 for active profile injection
+
+---
+
 ## Review Quality Scoring & Trends (F-016)
 
 Each review produces a 0–100 quality score derived from finding severity counts. Scores are persisted in a local JSON file and surfaced in a status bar item and a history panel.
@@ -1669,6 +1733,13 @@ See [docs/roadmap/](./docs/roadmap/) for comprehensive planning documents:
 | Inline Edit Mode (Ctrl+Shift+K; natural-language description; streaming side-by-side diff preview; accept/reject) | F-024 | v6.0 |
 | Semantic Version Bump Advisor (AI-powered MAJOR/MINOR/PATCH recommendation from staged diff; package.json auto-update) | F-028 | v7.0 |
 | Review Annotations (inline editor decorations — gutter icons, line highlights, hover tooltips for review findings) | F-029 | v8.0 |
+| Multi-Model Review Comparison (run same review across 2-4 models in parallel; side-by-side comparison panel) | F-030 | v9.0 |
+
+### Phase 9: Review Intelligence (In Progress — v9.0)
+
+| Feature | ID | Priority | Effort | Status | Description |
+|---------|----|----------|--------|--------|-------------|
+| Multi-Model Review Comparison | F-030 | P2 | Medium (2-3 days) | ✅ Complete | Run the same review across 2-4 AI models in parallel and display results in a side-by-side comparison panel with scores, durations, and finding counts |
 
 ### Phase 6: AI Assistant Evolution (In Progress — v6.0)
 
