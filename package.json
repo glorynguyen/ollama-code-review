@@ -208,6 +208,12 @@
         "icon": "$(book)"
       },
       {
+        "command": "ollama-code-review.reloadContentstackSchema",
+        "title": "Reload Contentstack Schema Cache",
+        "category": "Ollama Code Review",
+        "icon": "$(database)"
+      },
+      {
         "command": "ollama-code-review.reloadRules",
         "title": "Reload Rules Directory (.ollama-review/rules/)",
         "category": "Ollama Code Review",
@@ -840,6 +846,51 @@
               "minimum": 1,
               "maximum": 50,
               "description": "Maximum number of knowledge entries to inject per review"
+            }
+          }
+        },
+        "ollama-code-review.contentstack": {
+          "type": "object",
+          "description": "F-032 — Contentstack Schema Validation. When enabled, the extension fetches Content Type schemas from Contentstack and validates field names used in code during reviews.",
+          "default": {},
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false,
+              "description": "Enable Contentstack schema validation during reviews"
+            },
+            "schemaSource": {
+              "type": "string",
+              "enum": ["api", "local"],
+              "default": "local",
+              "description": "Where to load schemas: 'api' (Contentstack Management API) or 'local' (JSON export file)"
+            },
+            "apiKey": {
+              "type": "string",
+              "default": "",
+              "description": "Contentstack Stack API key (required when schemaSource is 'api')"
+            },
+            "managementToken": {
+              "type": "string",
+              "default": "",
+              "description": "Contentstack Management Token (required when schemaSource is 'api')"
+            },
+            "apiHost": {
+              "type": "string",
+              "default": "https://api.contentstack.io",
+              "description": "Contentstack API host URL (default: https://api.contentstack.io). Use region-specific URLs for EU/Azure stacks."
+            },
+            "localSchemaPath": {
+              "type": "string",
+              "default": ".contentstack/schema.json",
+              "description": "Path to local JSON schema export file, relative to workspace root"
+            },
+            "maxContentTypes": {
+              "type": "number",
+              "default": 5,
+              "minimum": 1,
+              "maximum": 20,
+              "description": "Maximum number of content type schemas to include in the review prompt"
             }
           }
         },

@@ -110,6 +110,14 @@ import {
 	DEFAULT_RAG_CONFIG,
 } from '../rag';
 import { loadRulesDirectory, clearRulesCache } from '../rules/loader';
+import {
+	loadContentstackSchemas,
+	clearSchemaCache,
+	getContentstackConfig,
+	parseContentstackAccesses,
+	validateFieldAccesses,
+	buildContentstackPromptSection,
+} from '../contentstack';
 import { ReviewDecorationsManager, getAnnotationsConfig } from '../reviewDecorations';
 import {
 	type PerformanceMetrics,
@@ -1728,6 +1736,31 @@ export async function activate(context: vscode.ExtensionContext) {
 		outputChannel.appendLine('[Ollama Code Review] .ollama-review-knowledge.yaml deleted — knowledge cache invalidated.');
 	});
 
+	// F-032: Reload Contentstack schema command
+	const reloadContentstackSchemaCommand = vscode.commands.registerCommand(
+		'ollama-code-review.reloadContentstackSchema',
+		() => {
+			clearSchemaCache();
+			vscode.window.showInformationMessage('Ollama Code Review: Contentstack schema cache cleared.');
+			outputChannel.appendLine('[Ollama Code Review] Contentstack schema cache cleared. Will re-fetch on next review.');
+		}
+	);
+
+	// F-032: Watch local Contentstack schema files for changes
+	const csSchemaWatcher = vscode.workspace.createFileSystemWatcher('**/.contentstack/schema.json');
+	csSchemaWatcher.onDidChange(() => {
+		clearSchemaCache();
+		outputChannel.appendLine('[Ollama Code Review] Contentstack schema.json changed — schema cache invalidated.');
+	});
+	csSchemaWatcher.onDidCreate(() => {
+		clearSchemaCache();
+		outputChannel.appendLine('[Ollama Code Review] Contentstack schema.json created — schema cache invalidated.');
+	});
+	csSchemaWatcher.onDidDelete(() => {
+		clearSchemaCache();
+		outputChannel.appendLine('[Ollama Code Review] Contentstack schema.json deleted — schema cache invalidated.');
+	});
+
 	// F-009: RAG-Enhanced Reviews — initialise vector store
 	ragVectorStore = new JsonVectorStore(context.globalStorageUri.fsPath);
 	outputChannel.appendLine(`[RAG] Vector store loaded: ${ragVectorStore.chunkCount} chunks`);
@@ -2850,6 +2883,8 @@ ${diff.slice(0, 12000)}
 		rulesWatcher,
 		suggestVersionBumpCommand,
 		compareModelsCommand,
+		reloadContentstackSchemaCommand,
+		csSchemaWatcher,
 	);
 }
 
@@ -3228,8 +3263,30 @@ async function getOllamaFileReview(content: string, label: string, context?: vsc
 		// Non-fatal — continue without rules directory
 	}
 
+	// F-032: Build Contentstack schema validation context for file reviews
+	let csContext = '';
+	const fileCsConfig = getContentstackConfig();
+	if (fileCsConfig.enabled) {
+		try {
+			const schemas = await loadContentstackSchemas(outputChannel);
+			if (schemas && schemas.length > 0) {
+				const parseResult = parseContentstackAccesses(content, label);
+				if (parseResult.accesses.length > 0 || parseResult.contentTypeUids.length > 0) {
+					const validation = validateFieldAccesses(parseResult, schemas);
+					csContext = buildContentstackPromptSection(validation, parseResult, fileCsConfig);
+					outputChannel.appendLine(
+						`[Contentstack] File review schema validation: ${validation.stats.totalAccesses} field access(es), `
+						+ `${validation.stats.invalidFields} potential mismatch(es).`
+					);
+				}
+			}
+		} catch {
+			// Non-fatal — continue without Contentstack validation
+		}
+	}
+
 	const prompt = `You are an expert software engineer and code reviewer with deep knowledge of **${frameworksList}**.
-${skillContext}${profileContext}${knowledgeContext}${rulesContext}
+${skillContext}${profileContext}${knowledgeContext}${rulesContext}${csContext}
 Review the following code and provide constructive, actionable feedback. This is a direct file review (no git diff context).
 ${label}
 
@@ -3435,6 +3492,30 @@ async function getOllamaReview(diff: string, context?: vscode.ExtensionContext, 
 		} catch (err) {
 			// Non-fatal — continue review without RAG context
 			outputChannel.appendLine(`[RAG] Error: ${err}`);
+		}
+	}
+
+	// F-032: Append Contentstack schema validation context if enabled
+	const csConfig = getContentstackConfig();
+	if (csConfig.enabled) {
+		try {
+			const schemas = await loadContentstackSchemas(outputChannel);
+			if (schemas && schemas.length > 0) {
+				const parseResult = parseContentstackAccesses(diff, 'review-diff');
+				if (parseResult.accesses.length > 0 || parseResult.contentTypeUids.length > 0) {
+					const validation = validateFieldAccesses(parseResult, schemas);
+					const csSection = buildContentstackPromptSection(validation, parseResult, csConfig);
+					prompt += csSection;
+					outputChannel.appendLine(
+						`[Contentstack] Schema validation: ${validation.stats.totalAccesses} field access(es), `
+						+ `${validation.stats.invalidFields} potential mismatch(es), `
+						+ `${validation.resolvedContentTypes.length} content type(s) resolved.`
+					);
+				}
+			}
+		} catch (err) {
+			// Non-fatal — continue review without Contentstack validation
+			outputChannel.appendLine(`[Contentstack] Error: ${err}`);
 		}
 	}
 
