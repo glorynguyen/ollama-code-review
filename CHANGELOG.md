@@ -1,3 +1,10 @@
+# [3.26.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.25.0...v3.26.0) (2026-02-27)
+
+
+### Features
+
+* **F-032:** add Contentstack schema validation for code reviews ([b049f6e](https://github.com/glorynguyen/ollama-code-review/commit/b049f6eafeb6fc938cf3a85799fca46311f00b7c))
+
 # [3.25.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.24.0...v3.25.0) (2026-02-27)
 
 
