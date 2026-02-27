@@ -91,6 +91,10 @@ src/
 │   ├── index.ts          # Barrel exports
 │   ├── types.ts          # ModelComparisonEntry, ComparisonResult interfaces
 │   └── comparisonPanel.ts # Side-by-side comparison webview panel
+├── reviewFindings/       # Review Findings Explorer tree view (F-031)
+│   ├── index.ts          # Barrel exports
+│   ├── types.ts          # IndexedFinding, SeverityCounts interfaces
+│   └── findingsTreeProvider.ts # TreeDataProvider for sidebar findings navigation
 └── test/
     └── extension.test.ts # Mocha test suite
 
@@ -170,6 +174,9 @@ out/                      # Compiled JavaScript output
 | `src/compareModels/index.ts` | ~5 | Barrel exports for multi-model comparison module (F-030) |
 | `src/compareModels/types.ts` | ~15 | ModelComparisonEntry, ComparisonResult interfaces (F-030) |
 | `src/compareModels/comparisonPanel.ts` | ~170 | Side-by-side comparison webview panel with summary table (F-030) |
+| `src/reviewFindings/index.ts` | ~5 | Barrel exports for findings explorer module (F-031) |
+| `src/reviewFindings/types.ts` | ~15 | IndexedFinding, SeverityCounts interfaces (F-031) |
+| `src/reviewFindings/findingsTreeProvider.ts` | ~175 | TreeDataProvider for sidebar findings navigation with severity icons (F-031) |
 
 ## Commands
 
@@ -214,6 +221,8 @@ out/                      # Compiled JavaScript output
 | `ollama-code-review.toggleAnnotations` | Toggle inline review annotations in the editor on/off (F-029) |
 | `ollama-code-review.clearAnnotations` | Clear all inline review annotations from editors (F-029) |
 | `ollama-code-review.compareModels` | Run the same review across 2-4 AI models in parallel and compare results side-by-side (F-030) |
+| `ollama-code-review.goToFinding` | Navigate to a specific finding's file and line in the editor (F-031) |
+| `ollama-code-review.clearFindings` | Clear all findings from the Findings Explorer tree view (F-031) |
 
 ## Configuration Settings
 
@@ -1111,6 +1120,56 @@ The command is registered in `src/commands/index.ts` alongside the other review 
 
 ---
 
+## Review Findings Explorer (F-031)
+
+The `src/reviewFindings/` module provides a TreeView in the VS Code sidebar that displays all findings from the most recent review, organized by file and severity. Users can click a finding to navigate directly to the relevant file and line.
+
+### How It Works
+
+1. After any review completes (staged, commit, PR, file, folder, agent, or comparison), findings are parsed using `parseReviewIntoFindings()` from `commentMapper.ts`
+2. The tree view populates with findings grouped by file path
+3. Files are sorted by highest-severity finding; findings within a file are sorted by severity then line number
+4. Clicking a finding navigates to the file:line in the editor
+5. A `when` clause (`ollama-code-review.hasFindings`) controls visibility so the panel only appears when findings exist
+
+### Tree Structure
+
+| Level | Node Type | Content |
+|-------|-----------|---------|
+| Root | `FileNode` | File path with severity count summary |
+| Child | `FindingNode` | `L42: message preview...` with severity icon |
+
+### Commands
+
+| Command | Description |
+|---------|-------------|
+| `ollama-code-review.goToFinding` | Navigate to a finding's file and line |
+| `ollama-code-review.clearFindings` | Clear all findings from the tree |
+
+### Exported Class (`src/reviewFindings/findingsTreeProvider.ts`)
+
+- `FindingsTreeProvider` — `TreeDataProvider<TreeElement>` implementation
+  - `setFindings(reviewText, diff)` — Parse review and populate tree
+  - `clear()` — Remove all findings
+  - `getFindings()` — Get current findings (readonly)
+  - `count` — Total finding count
+
+### Key Types (`src/reviewFindings/types.ts`)
+
+```typescript
+interface IndexedFinding extends ReviewFinding {
+  index: number;
+}
+
+type SeverityCounts = Record<Severity, number>;
+```
+
+### Integration
+
+The tree view is registered in `activate()` via `vscode.window.createTreeView('ai-review.findings-explorer', ...)` under the existing "AI Review" activity bar container. Findings update automatically after every review in both the streaming and non-streaming code paths in `src/commands/index.ts`.
+
+---
+
 ## Review Quality Scoring & Trends (F-016)
 
 Each review produces a 0–100 quality score derived from finding severity counts. Scores are persisted in a local JSON file and surfaced in a status bar item and a history panel.
@@ -1734,12 +1793,13 @@ See [docs/roadmap/](./docs/roadmap/) for comprehensive planning documents:
 | Semantic Version Bump Advisor (AI-powered MAJOR/MINOR/PATCH recommendation from staged diff; package.json auto-update) | F-028 | v7.0 |
 | Review Annotations (inline editor decorations — gutter icons, line highlights, hover tooltips for review findings) | F-029 | v8.0 |
 | Multi-Model Review Comparison (run same review across 2-4 models in parallel; side-by-side comparison panel) | F-030 | v9.0 |
+| Review Findings Explorer (sidebar tree view for navigating review findings by file and severity) | F-031 | v10.0 |
 
-### Phase 9: Review Intelligence (In Progress — v9.0)
+### Phase 10: Review Navigation (In Progress — v10.0)
 
 | Feature | ID | Priority | Effort | Status | Description |
 |---------|----|----------|--------|--------|-------------|
-| Multi-Model Review Comparison | F-030 | P2 | Medium (2-3 days) | ✅ Complete | Run the same review across 2-4 AI models in parallel and display results in a side-by-side comparison panel with scores, durations, and finding counts |
+| Review Findings Explorer | F-031 | P1 | Low (1-2 days) | ✅ Complete | Sidebar tree view for navigating review findings by file and severity with click-to-navigate |
 
 ### Phase 6: AI Assistant Evolution (In Progress — v6.0)
 

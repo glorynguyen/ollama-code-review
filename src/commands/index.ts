@@ -142,6 +142,7 @@ import {
 } from './aiActions';
 import { executeInlineEdit } from '../inlineEdit/inlineEditProvider';
 import { ComparisonPanel, type ModelComparisonEntry, type ComparisonResult } from '../compareModels';
+import { FindingsTreeProvider } from '../reviewFindings';
 
 export { checkActiveModels, getLastPerformanceMetrics, clearPerformanceMetrics };
 export type { PerformanceMetrics };
@@ -159,6 +160,9 @@ let skillsServiceInstance: SkillsService | null = null;
 let scoreStatusBarItem: vscode.StatusBarItem | undefined;
 // Extension context reference for score store (set in activate())
 let extensionGlobalStoragePath: string | undefined;
+
+// F-031: Findings Explorer tree provider (initialised in activate())
+let findingsTreeProvider: FindingsTreeProvider | undefined;
 
 // F-009: RAG vector store (initialised lazily in activate())
 let ragVectorStore: JsonVectorStore | undefined;
@@ -206,6 +210,71 @@ export async function activate(context: vscode.ExtensionContext) {
 	updateProfileStatusBar(profileStatusBarItem, context);
 	profileStatusBarItem.show();
 	context.subscriptions.push(profileStatusBarItem);
+
+	// F-031: Register Findings Explorer tree view
+	findingsTreeProvider = new FindingsTreeProvider();
+	const findingsTreeView = vscode.window.createTreeView('ai-review.findings-explorer', {
+		treeDataProvider: findingsTreeProvider,
+		showCollapseAll: true,
+	});
+	context.subscriptions.push(findingsTreeView);
+
+	// F-031: Go to finding command (navigates to file:line)
+	const goToFindingCommand = vscode.commands.registerCommand(
+		'ollama-code-review.goToFinding',
+		async (filePath: string, line?: number) => {
+			if (!filePath) { return; }
+			// Try to find the file in the workspace
+			const workspaceFolders = vscode.workspace.workspaceFolders;
+			let fileUri: vscode.Uri | undefined;
+
+			if (workspaceFolders) {
+				for (const folder of workspaceFolders) {
+					const candidateUri = vscode.Uri.joinPath(folder.uri, filePath);
+					try {
+						await vscode.workspace.fs.stat(candidateUri);
+						fileUri = candidateUri;
+						break;
+					} catch {
+						// File not found in this folder, try next
+					}
+				}
+			}
+
+			if (!fileUri) {
+				// Try as absolute path
+				try {
+					fileUri = vscode.Uri.file(filePath);
+					await vscode.workspace.fs.stat(fileUri);
+				} catch {
+					vscode.window.showWarningMessage(`Could not find file: ${filePath}`);
+					return;
+				}
+			}
+
+			const lineNum = line ? Math.max(0, line - 1) : 0;
+			const doc = await vscode.workspace.openTextDocument(fileUri);
+			const editor = await vscode.window.showTextDocument(doc, {
+				selection: new vscode.Range(lineNum, 0, lineNum, 0),
+				preserveFocus: false,
+			});
+			editor.revealRange(
+				new vscode.Range(lineNum, 0, lineNum, 0),
+				vscode.TextEditorRevealType.InCenter,
+			);
+		}
+	);
+	context.subscriptions.push(goToFindingCommand);
+
+	// F-031: Clear findings command
+	const clearFindingsCommand = vscode.commands.registerCommand(
+		'ollama-code-review.clearFindings',
+		() => {
+			findingsTreeProvider?.clear();
+			vscode.commands.executeCommand('setContext', 'ollama-code-review.hasFindings', false);
+		}
+	);
+	context.subscriptions.push(clearFindingsCommand);
 
 	// Register profile selection command
 	const selectProfileCommand = vscode.commands.registerCommand('ollama-code-review.selectProfile', async () => {
@@ -2897,6 +2966,16 @@ async function runReview(diff: string, context: vscode.ExtensionContext, reviewT
 				outputChannel.appendLine(`[Annotations] Error: ${err}`);
 			}
 
+			// F-031: Update Findings Explorer tree view
+			try {
+				if (findingsTreeProvider) {
+					findingsTreeProvider.setFindings(review, filteredDiff);
+					vscode.commands.executeCommand('setContext', 'ollama-code-review.hasFindings', findingsTreeProvider.count > 0);
+				}
+			} catch (err) {
+				outputChannel.appendLine(`[FindingsExplorer] Error: ${err}`);
+			}
+
 			// F-018: Notifications
 			{
 				const notifPayload: NotificationPayload = {
@@ -2991,6 +3070,16 @@ async function runReview(diff: string, context: vscode.ExtensionContext, reviewT
 			}
 		} catch (err) {
 			outputChannel.appendLine(`[Annotations] Error: ${err}`);
+		}
+
+		// F-031: Update Findings Explorer tree view
+		try {
+			if (findingsTreeProvider) {
+				findingsTreeProvider.setFindings(review, filteredDiff);
+				vscode.commands.executeCommand('setContext', 'ollama-code-review.hasFindings', findingsTreeProvider.count > 0);
+			}
+		} catch (err) {
+			outputChannel.appendLine(`[FindingsExplorer] Error: ${err}`);
 		}
 
 		// F-018: Send notifications (non-blocking, failures are logged)
