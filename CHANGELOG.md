@@ -1,3 +1,10 @@
+# [3.25.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.24.0...v3.25.0) (2026-02-27)
+
+
+### Features
+
+* **F-031:** implement Review Findings Explorer sidebar tree view ([ba39243](https://github.com/glorynguyen/ollama-code-review/commit/ba392430ff690fc5a6b60fd63746d0aca039d13b))
+
 # [3.24.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.23.0...v3.24.0) (2026-02-27)
 
 
