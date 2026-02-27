@@ -1082,6 +1082,66 @@ A dedicated **tree view** in the VS Code sidebar that displays all findings from
 
 ---
 
+### 48. Contentstack Schema Validation (F-032)
+
+Validate Contentstack CMS field names used in your source code against actual Content Type schemas. When enabled, the extension fetches schemas from the Contentstack Management API or a local JSON export, detects field accesses in code (dot access, bracket notation, destructuring, optional chaining), and flags mismatched field names — with Levenshtein-distance-based spelling suggestions — directly in the AI review.
+
+- **Command**: `Ollama Code Review: Reload Contentstack Schema Cache` — manually clear the cached schemas to force re-fetching on the next review.
+
+**How it works:**
+
+1. Configure your schema source (`api` or `local`) in settings
+2. Enable the feature: `ollama-code-review.contentstack.enabled = true`
+3. Every review automatically:
+   - Loads Content Type schemas from the configured source
+   - Parses source code for Contentstack field access patterns (dot, bracket, destructuring, optional chaining)
+   - Validates detected field names against the schema using Levenshtein-distance matching
+   - Injects a validation context section into the AI review prompt so findings include specific field-name mismatches with correction suggestions
+
+**Schema sources:**
+
+| Source | Description |
+|--------|-------------|
+| `local` | Read schemas from a local JSON export file (default: `.contentstack/schema.json`) |
+| `api` | Fetch schemas directly from the Contentstack Management API (requires API key and Management Token) |
+
+**Field access patterns detected:**
+
+- Dot notation: `entry.hero_title`
+- Bracket notation: `entry['hero_title']`
+- Destructuring: `const { hero_title } = entry`
+- Optional chaining: `entry?.hero_title`
+
+**Configuration** (under `ollama-code-review.contentstack`):
+
+| Property | Default | Description |
+|----------|---------|-------------|
+| `enabled` | `false` | Enable Contentstack schema validation during reviews |
+| `schemaSource` | `local` | Schema source: `api` or `local` |
+| `apiKey` | `""` | Contentstack Stack API key (required for `api` source) |
+| `managementToken` | `""` | Contentstack Management Token (required for `api` source) |
+| `apiHost` | `https://api.contentstack.io` | API host URL (use region-specific URLs for EU/Azure stacks) |
+| `localSchemaPath` | `.contentstack/schema.json` | Path to local JSON schema export file, relative to workspace root |
+| `maxContentTypes` | `5` | Maximum number of content type schemas to inject per review prompt (1–20) |
+
+**Getting started with a local schema:**
+
+1. Export your Content Type schemas from Contentstack (**Stack → Developer Hub → Export**)
+2. Save the export as `.contentstack/schema.json` in your workspace root
+3. Enable validation in settings: `ollama-code-review.contentstack.enabled = true`
+4. Run any review — the AI will now flag field name mismatches and include spelling suggestions
+
+**Getting started with the API:**
+
+1. Get your Stack API Key and Management Token from the Contentstack Dashboard → **Settings → Stack**
+2. Set `ollama-code-review.contentstack.apiKey` and `ollama-code-review.contentstack.managementToken`
+3. Set `ollama-code-review.contentstack.schemaSource` to `api`
+4. Enable validation: `ollama-code-review.contentstack.enabled = true`
+
+> Schema data is cached for the lifetime of the workspace session. Use the **Reload Contentstack Schema Cache** command or edit `.contentstack/schema.json` (auto-detected by file watcher) to invalidate the cache. Validation failures are non-fatal — if the schema can't be loaded, the review proceeds normally.
+
+---
+
 ## Requirements
 
 You must have the following software installed and configured for this extension to work.
@@ -1232,6 +1292,14 @@ This extension contributes the following settings to your VS Code `settings.json
 * `ollama-code-review.streaming.enabled`: Enable streaming responses for supported providers (Ollama, Claude, OpenAI-compatible). Review text appears token-by-token in the review panel as it is generated. Providers that don't support streaming automatically fall back to non-streaming mode.
     * **Type**: `boolean`
     * **Default**: `true`
+* `ollama-code-review.contentstack`: Configure Contentstack Schema Validation (F-032). When enabled, validates Contentstack CMS field names in code against actual Content Type schemas and injects findings into the AI review prompt.
+    * `enabled`: Enable Contentstack schema validation during reviews (default: `false`)
+    * `schemaSource`: Where to load schemas — `local` (JSON export file) or `api` (Contentstack Management API) (default: `local`)
+    * `apiKey`: Contentstack Stack API key (required when `schemaSource` is `api`)
+    * `managementToken`: Contentstack Management Token (required when `schemaSource` is `api`)
+    * `apiHost`: Contentstack API host URL (default: `"https://api.contentstack.io"`). Use region-specific URLs for EU/Azure stacks.
+    * `localSchemaPath`: Path to local JSON schema export file, relative to workspace root (default: `".contentstack/schema.json"`)
+    * `maxContentTypes`: Maximum number of content type schemas to inject per review prompt (default: `5`, range: 1–20)
 
 You can configure these by opening the Command Palette (`Ctrl+Shift+P`) and searching for `Preferences: Open User Settings (JSON)`.
 
