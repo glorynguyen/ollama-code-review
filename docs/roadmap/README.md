@@ -106,7 +106,7 @@ v9.0 (2026) ───── Multi-Model Review Comparison (F-030) — compare re
 |----------|--------|--------|----------|
 | 🟡 P2 | High | Medium | F-030: Multi-Model Review Comparison (run same review across 2-4 models; side-by-side panel) |
 
-## Phase 10: Review Navigation (v10.0)
+## Phase 10: Review Navigation (v10.0) ✅
 
 ```
 v10.0 (2026) ──── Review Findings Explorer (F-031) — navigable tree view for review findings
@@ -116,11 +116,21 @@ v10.0 (2026) ──── Review Findings Explorer (F-031) — navigable tree vi
 |----------|--------|--------|----------|
 | 🟠 P1 | High | Low | F-031: Review Findings Explorer (sidebar tree view for navigating review findings by file and severity) |
 
+## Phase 11: Review Actions (v11.0)
+
+```
+v11.0 (2026) ──── Quick Fix from Review Findings (F-033) — one-click AI fix from findings
+```
+
+| Priority | Impact | Effort | Features |
+|----------|--------|--------|----------|
+| 🟠 P1 | High | Low | F-033: Quick Fix from Review Findings (one-click AI fix via Findings Explorer inline button and annotation hover tooltips) |
+
 ## Current Status
 
-- **Current Version:** 10.0.0
-- **Next Milestone:** v10.0.0 (Review Navigation)
-- **Theme:** Navigate and explore review findings directly from the sidebar
+- **Current Version:** 11.0.0
+- **Next Milestone:** v11.0.0 (Review Actions)
+- **Theme:** Close the review loop — go from finding an issue to fixing it in one click
 
 ---
 

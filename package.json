@@ -289,6 +289,12 @@
         "title": "Clear Findings Explorer",
         "category": "Ollama Code Review",
         "icon": "$(clear-all)"
+      },
+      {
+        "command": "ollama-code-review.fixFinding",
+        "title": "Quick Fix Finding",
+        "category": "Ollama Code Review",
+        "icon": "$(wrench)"
       }
     ],
     "viewsContainers": {
@@ -417,6 +423,13 @@
         {
           "command": "ollama-code-review.reviewCommit",
           "group": "2_review@1"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "ollama-code-review.fixFinding",
+          "when": "view == ai-review.findings-explorer && viewItem == finding",
+          "group": "inline"
         }
       ],
       "view/title": [

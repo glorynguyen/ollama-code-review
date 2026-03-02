@@ -284,6 +284,99 @@ export async function activate(context: vscode.ExtensionContext) {
 	);
 	context.subscriptions.push(clearFindingsCommand);
 
+	// F-033: Quick Fix from Review Findings
+	const fixFindingCommand = vscode.commands.registerCommand(
+		'ollama-code-review.fixFinding',
+		async (findingOrElement?: unknown) => {
+			try {
+				// Resolve the finding from either a direct finding object, tree element, or tree provider
+				let finding: { severity: string; message: string; file?: string; line?: number; suggestion?: string } | undefined;
+
+				if (findingOrElement && typeof findingOrElement === 'object' && 'message' in findingOrElement && 'severity' in findingOrElement) {
+					// Direct finding object (from command link or programmatic call)
+					finding = findingOrElement as { severity: string; message: string; file?: string; line?: number; suggestion?: string };
+				} else if (findingOrElement && findingsTreeProvider) {
+					// Tree element from inline button — extract via provider
+					finding = findingsTreeProvider.getFindingFromElement(findingOrElement);
+				}
+
+				if (!finding || !finding.file) {
+					vscode.window.showWarningMessage('No file reference found for this finding. Cannot generate a fix.');
+					return;
+				}
+
+				// Resolve the file URI in the workspace
+				const workspaceFolders = vscode.workspace.workspaceFolders;
+				let fileUri: vscode.Uri | undefined;
+				if (workspaceFolders) {
+					for (const folder of workspaceFolders) {
+						const candidateUri = vscode.Uri.joinPath(folder.uri, finding.file);
+						try {
+							await vscode.workspace.fs.stat(candidateUri);
+							fileUri = candidateUri;
+							break;
+						} catch { /* try next folder */ }
+					}
+				}
+				if (!fileUri) {
+					try {
+						fileUri = vscode.Uri.file(finding.file);
+						await vscode.workspace.fs.stat(fileUri);
+					} catch {
+						vscode.window.showWarningMessage(`Could not find file: ${finding.file}`);
+						return;
+					}
+				}
+
+				// Open the document and extract surrounding code
+				const doc = await vscode.workspace.openTextDocument(fileUri);
+				const targetLine = finding.line ? Math.max(0, finding.line - 1) : 0;
+				const contextLines = 15; // lines of context above and below
+				const startLine = Math.max(0, targetLine - contextLines);
+				const endLine = Math.min(doc.lineCount - 1, targetLine + contextLines);
+				const codeRange = new vscode.Range(startLine, 0, endLine, doc.lineAt(endLine).text.length);
+				const codeSnippet = doc.getText(codeRange);
+				const languageId = doc.languageId;
+
+				// Build the issue description from the finding
+				const issue = `[${finding.severity.toUpperCase()}] ${finding.message}${finding.suggestion ? '\n\nSuggested fix:\n' + finding.suggestion : ''}`;
+
+				// Show the file in the editor
+				const editor = await vscode.window.showTextDocument(doc, {
+					selection: new vscode.Range(targetLine, 0, targetLine, 0),
+					preserveFocus: false,
+				});
+				editor.revealRange(
+					new vscode.Range(targetLine, 0, targetLine, 0),
+					vscode.TextEditorRevealType.InCenter,
+				);
+
+				// Call AI to generate the fix
+				await vscode.window.withProgress(
+					{ location: vscode.ProgressLocation.Notification, title: 'Generating fix for finding...', cancellable: false },
+					async () => {
+						const result = await generateFix(codeSnippet, issue, languageId);
+
+						// Show fix preview panel
+						FixPreviewPanel.createOrShow(
+							editor,
+							codeRange,
+							codeSnippet,
+							result.code,
+							result.explanation,
+							issue,
+							languageId,
+						);
+					}
+				);
+			} catch (err) {
+				vscode.window.showErrorMessage(`Failed to generate fix: ${err instanceof Error ? err.message : String(err)}`);
+				outputChannel.appendLine(`[F-033 fixFinding] Error: ${err}`);
+			}
+		}
+	);
+	context.subscriptions.push(fixFindingCommand);
+
 	// Register profile selection command
 	const selectProfileCommand = vscode.commands.registerCommand('ollama-code-review.selectProfile', async () => {
 		const profiles = getAllProfiles(context);

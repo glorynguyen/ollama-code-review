@@ -237,11 +237,23 @@ export class ReviewDecorationsManager {
 			if (config.showHover) {
 				const md = new vscode.MarkdownString();
 				md.isTrusted = true;
+				md.supportHtml = true;
 				md.appendMarkdown(`**${style.label} Finding** \n\n`);
 				md.appendMarkdown(finding.message + '\n\n');
 				if (finding.suggestion) {
 					md.appendMarkdown('**Suggestion:**\n');
 					md.appendCodeblock(finding.suggestion, 'typescript');
+				}
+				// F-033: Add "Quick Fix" command link in hover tooltip
+				if (finding.file) {
+					const findingArg = encodeURIComponent(JSON.stringify([{
+						severity: finding.severity,
+						message: finding.message,
+						file: finding.file,
+						line: finding.line,
+						suggestion: finding.suggestion,
+					}]));
+					md.appendMarkdown(`\n\n[$(wrench) Quick Fix](command:ollama-code-review.fixFinding?${findingArg} "Ask AI to fix this issue")`);
 				}
 				decoration.hoverMessage = md;
 			}

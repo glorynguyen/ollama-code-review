@@ -182,14 +182,23 @@ export class FindingsTreeProvider implements vscode.TreeDataProvider<TreeElement
 		);
 
 		item.iconPath = SEVERITY_ICONS[finding.severity];
-		item.contextValue = 'finding';
+		// F-033: contextValue includes 'finding' for inline fix action; add 'fixable' when file+line exist
+		item.contextValue = (finding.file && finding.file !== '(no file reference)') ? 'finding' : 'findingNoFile';
 		item.tooltip = new vscode.MarkdownString();
+		(item.tooltip as vscode.MarkdownString).isTrusted = true;
 		(item.tooltip as vscode.MarkdownString).appendMarkdown(
 			`**${finding.severity.charAt(0).toUpperCase() + finding.severity.slice(1)}**\n\n${finding.message}`
 		);
 		if (finding.suggestion) {
 			(item.tooltip as vscode.MarkdownString).appendMarkdown('\n\n**Suggestion:**\n');
 			(item.tooltip as vscode.MarkdownString).appendCodeblock(finding.suggestion, 'typescript');
+		}
+		// F-033: Add "Quick Fix" command link in tooltip
+		if (finding.file && finding.file !== '(no file reference)') {
+			const fixArgs = encodeURIComponent(JSON.stringify([finding]));
+			(item.tooltip as vscode.MarkdownString).appendMarkdown(
+				`\n\n[$(wrench) Quick Fix](command:ollama-code-review.fixFinding?${fixArgs} "Ask AI to fix this issue")`
+			);
 		}
 
 		// Navigate to file:line on click
@@ -202,5 +211,13 @@ export class FindingsTreeProvider implements vscode.TreeDataProvider<TreeElement
 		}
 
 		return item;
+	}
+
+	/** F-033: Get the finding associated with a FindingNode tree element. */
+	getFindingFromElement(element: unknown): IndexedFinding | undefined {
+		if (element instanceof FindingNode) {
+			return element.finding;
+		}
+		return undefined;
 	}
 }

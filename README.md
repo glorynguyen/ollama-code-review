@@ -1140,6 +1140,31 @@ Validate Contentstack CMS field names used in your source code against actual Co
 
 > Schema data is cached for the lifetime of the workspace session. Use the **Reload Contentstack Schema Cache** command or edit `.contentstack/schema.json` (auto-detected by file watcher) to invalidate the cache. Validation failures are non-fatal — if the schema can't be loaded, the review proceeds normally.
 
+### 49. Quick Fix from Review Findings (F-033)
+
+One-click AI-powered fixes for issues found during code reviews. After any review completes, findings that reference a specific file and line can be fixed directly from the **Findings Explorer** sidebar or from **inline annotation hover tooltips** — no need to manually copy issues and navigate to the Fix command.
+
+- **Findings Explorer**: Each finding with a file reference shows a wrench icon (`$(wrench)`) inline button. Click it to send the surrounding code and the finding description to the AI, which generates a fix shown in the Fix Preview panel.
+- **Annotation Hovers**: When hovering over an annotated line in the editor (F-029), a **Quick Fix** link appears at the bottom of the tooltip. Clicking it triggers the same AI-powered fix workflow.
+- **Fix Preview**: The generated fix is displayed in the existing side-by-side Fix Preview panel (from F-005) with "Apply Fix" and "Dismiss" buttons.
+
+**How it works:**
+
+1. Run any review (staged changes, commit, PR, file, agent, etc.)
+2. Findings appear in the Findings Explorer sidebar and as inline annotations
+3. Click the wrench icon on a finding in the explorer, or click "Quick Fix" in the annotation hover
+4. The AI reads ~30 lines of surrounding code and the finding details
+5. A fix is generated and shown in the Fix Preview panel
+6. Click "Apply Fix" to apply the change, or "Dismiss" to cancel
+
+**Command:**
+
+| Command | Description |
+|---------|-------------|
+| `ollama-code-review.fixFinding` | Generate an AI fix for a specific review finding |
+
+> Quick Fix requires the finding to have a file and line reference. Findings without file references (e.g., general observations) show a non-actionable context in the tree view. The fix uses the same AI provider and model as your regular reviews.
+
 ---
 
 ## Requirements

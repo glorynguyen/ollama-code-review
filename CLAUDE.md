@@ -223,6 +223,7 @@ out/                      # Compiled JavaScript output
 | `ollama-code-review.compareModels` | Run the same review across 2-4 AI models in parallel and compare results side-by-side (F-030) |
 | `ollama-code-review.goToFinding` | Navigate to a specific finding's file and line in the editor (F-031) |
 | `ollama-code-review.clearFindings` | Clear all findings from the Findings Explorer tree view (F-031) |
+| `ollama-code-review.fixFinding` | Generate an AI fix for a specific review finding (F-033) |
 
 ## Configuration Settings
 
@@ -1152,6 +1153,7 @@ The `src/reviewFindings/` module provides a TreeView in the VS Code sidebar that
   - `setFindings(reviewText, diff)` — Parse review and populate tree
   - `clear()` — Remove all findings
   - `getFindings()` — Get current findings (readonly)
+  - `getFindingFromElement(element)` — Extract finding data from a tree element (F-033)
   - `count` — Total finding count
 
 ### Key Types (`src/reviewFindings/types.ts`)
@@ -1167,6 +1169,44 @@ type SeverityCounts = Record<Severity, number>;
 ### Integration
 
 The tree view is registered in `activate()` via `vscode.window.createTreeView('ai-review.findings-explorer', ...)` under the existing "AI Review" activity bar container. Findings update automatically after every review in both the streaming and non-streaming code paths in `src/commands/index.ts`.
+
+---
+
+## Quick Fix from Review Findings (F-033)
+
+The `ollama-code-review.fixFinding` command enables one-click AI-powered fixes for issues found during code reviews. It bridges the gap between finding issues and resolving them by connecting the Findings Explorer (F-031), Review Annotations (F-029), and Fix Preview Panel (F-005).
+
+### How It Works
+
+1. After any review completes, findings with file and line references are actionable
+2. Users can trigger a fix from two entry points:
+   - **Findings Explorer**: Wrench icon (`$(wrench)`) inline button on each finding tree item
+   - **Annotation Hover**: "Quick Fix" command link at the bottom of the hover tooltip
+3. The command opens the referenced file, extracts ~30 lines of surrounding code
+4. The finding message (with severity and any suggestion) is sent as the issue description
+5. The AI generates a fix using `generateFix()` from `src/commands/aiActions.ts`
+6. The result is displayed in the existing `FixPreviewPanel` with Apply/Dismiss buttons
+
+### Command
+
+| Command | Description |
+|---------|-------------|
+| `ollama-code-review.fixFinding` | Generate an AI fix for a specific review finding |
+
+### Tree View Context Values
+
+| Context Value | Description |
+|---------------|-------------|
+| `finding` | Finding with file reference — shows inline fix button |
+| `findingNoFile` | Finding without file reference — no fix button |
+
+### Integration
+
+- Registered in `activate()` in `src/commands/index.ts` alongside F-031 commands
+- Reuses `generateFix()` from `src/commands/aiActions.ts` for AI interaction
+- Reuses `FixPreviewPanel` from `src/codeActions/fixAction.ts` for fix display
+- Review Annotations hover tooltips in `src/reviewDecorations.ts` include command URI links
+- Finding data is passed via command arguments (direct object) or via `FindingsTreeProvider.getFindingFromElement()`
 
 ---
 
@@ -1794,8 +1834,15 @@ See [docs/roadmap/](./docs/roadmap/) for comprehensive planning documents:
 | Review Annotations (inline editor decorations — gutter icons, line highlights, hover tooltips for review findings) | F-029 | v8.0 |
 | Multi-Model Review Comparison (run same review across 2-4 models in parallel; side-by-side comparison panel) | F-030 | v9.0 |
 | Review Findings Explorer (sidebar tree view for navigating review findings by file and severity) | F-031 | v10.0 |
+| Quick Fix from Review Findings (one-click AI fix from Findings Explorer inline button and annotation hover tooltips) | F-033 | v11.0 |
 
-### Phase 10: Review Navigation (In Progress — v10.0)
+### Phase 11: Review Actions (In Progress — v11.0)
+
+| Feature | ID | Priority | Effort | Status | Description |
+|---------|----|----------|--------|--------|-------------|
+| Quick Fix from Review Findings | F-033 | P1 | Low (1-2 days) | ✅ Complete | One-click AI fix for review findings via Findings Explorer inline button and annotation hover Quick Fix link |
+
+### Phase 10: Review Navigation (Complete — v10.0)
 
 | Feature | ID | Priority | Effort | Status | Description |
 |---------|----|----------|--------|--------|-------------|

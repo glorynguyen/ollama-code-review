@@ -1749,3 +1749,62 @@ With 8+ AI providers available, users have no way to objectively compare which m
 - [x] Errors from individual models displayed gracefully without blocking others
 
 ---
+
+### F-033: Quick Fix from Review Findings
+
+| Attribute | Value |
+|-----------|-------|
+| **ID** | F-033 |
+| **Priority** | 🟠 P1 |
+| **Effort** | Low (1-2 days) |
+| **Status** | ✅ Complete |
+| **Shipped** | v11.0.0 (Mar 2026) |
+| **Dependencies** | F-031 (Review Findings Explorer), F-029 (Review Annotations), F-005 (Fix Action) |
+
+#### Overview
+
+One-click AI-powered fixes for issues found during code reviews. After any review completes, findings that reference a specific file and line can be fixed directly from the Findings Explorer sidebar or from inline annotation hover tooltips.
+
+#### User Problem
+
+After running a code review, users see findings in the Findings Explorer and as inline annotations, but acting on them requires manually navigating to the file, selecting the code, and invoking the Fix command. This creates friction in the "find issue → fix issue" loop.
+
+#### User Flow
+
+```
+1. User runs any review (staged, commit, PR, file, agent, etc.)
+2. Findings appear in the Findings Explorer sidebar and as inline editor annotations
+3. User clicks the wrench icon ($(wrench)) on a finding in the explorer
+   — OR clicks "Quick Fix" link in the annotation hover tooltip
+4. Extension opens the file, extracts ~30 lines surrounding the finding
+5. AI generates a fix using the finding message and surrounding code
+6. Fix Preview panel opens with side-by-side diff view
+7. User clicks "Apply Fix" to apply or "Dismiss" to cancel
+```
+
+#### Implementation Notes
+
+1. New command `ollama-code-review.fixFinding` registered in `src/commands/index.ts`
+2. Command accepts finding data as argument (from tree element or direct object)
+3. Findings Explorer tree items use `contextValue: 'finding'` for fixable items
+4. Inline menu registered via `view/item/context` in `package.json`
+5. Annotation hover tooltips include command URI links via `MarkdownString.isTrusted`
+6. Reuses `generateFix()` from `src/commands/aiActions.ts` and `FixPreviewPanel` from `src/codeActions/fixAction.ts`
+
+#### Files Modified
+
+- `package.json` — Added `fixFinding` command definition and `view/item/context` menu entry
+- `src/commands/index.ts` — Added `fixFinding` command handler with file resolution, code extraction, and AI fix generation
+- `src/reviewFindings/findingsTreeProvider.ts` — Added `getFindingFromElement()` method, command link in tooltips, split `contextValue` into `finding`/`findingNoFile`
+- `src/reviewDecorations.ts` — Added "Quick Fix" command link in annotation hover tooltips
+
+#### Acceptance Criteria
+
+- [x] Wrench icon inline button appears on fixable findings in the Findings Explorer
+- [x] Clicking the button opens the file, generates a fix, and shows Fix Preview panel
+- [x] "Quick Fix" link appears in annotation hover tooltips for findings with file references
+- [x] Fix Preview shows side-by-side diff with Apply/Dismiss actions
+- [x] Findings without file references do not show fix actions
+- [x] Works with all AI providers via existing `generateFix()` pipeline
+
+---
