@@ -1,3 +1,10 @@
+# [3.27.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.26.0...v3.27.0) (2026-03-02)
+
+
+### Features
+
+* add Quick Fix from Review Findings (F-033) ([49b405e](https://github.com/glorynguyen/ollama-code-review/commit/49b405ebdcb259ba48da0a8b8a3d192eea2648de))
+
 # [3.26.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.25.0...v3.26.0) (2026-02-27)
 
 
