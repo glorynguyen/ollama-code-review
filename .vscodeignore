@@ -12,3 +12,9 @@ vsc-extension-quickstart.md
 .yarn/**
 pnpm-lock.yaml
 CLAUDE.md
+node_modules/**
+out/**
+src/**
+tsconfig.json
+yarn.lock
+.editorconfig
