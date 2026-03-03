@@ -10,6 +10,5 @@ vsc-extension-quickstart.md
 **/*.ts
 **/.vscode-test.*
 .yarn/**
-node_modules/**
 pnpm-lock.yaml
 CLAUDE.md
