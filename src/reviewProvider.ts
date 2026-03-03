@@ -74,6 +74,10 @@ export class OllamaReviewPanel {
           case 'discussReview':
             await this._handleDiscussReview();
             break;
+          case 'copyDiff':
+            await vscode.env.clipboard.writeText(this._originalDiff);
+            vscode.window.showInformationMessage('Original git diff copied to clipboard!');
+            break;
         }
       },
       null,
@@ -557,6 +561,7 @@ export class OllamaReviewPanel {
 <body>
     <div class="toolbar">
         <button class="export-btn" onclick="exportReview('clipboard')" title="Copy review to clipboard">📋 Copy</button>
+        <button class="export-btn" onclick="copyDiff()" title="Copy original git diff to clipboard">📄 Copy Diff</button>
         <button class="export-btn" onclick="exportReview('markdown')" title="Save as Markdown file">💾 Markdown</button>
         <button class="export-btn" onclick="exportReview('prDescription')" title="Copy as PR description">📄 PR Desc</button>
         <button class="export-btn" onclick="exportReview('gist')" title="Create GitHub Gist">🔗 Gist</button>
@@ -683,6 +688,10 @@ export class OllamaReviewPanel {
         window.toggleMetrics = function() {
             metricsExpanded = !metricsExpanded;
             renderMetrics();
+        };
+
+        window.copyDiff = function() {
+            vscode.postMessage({ command: 'copyDiff' });
         };
 
         function render() {

@@ -100,7 +100,7 @@ All feedback from Ollama is displayed in a dedicated "Ollama Code Review" output
 
 ### 10. Detailed Review Output
 All feedback from Ollama is displayed in a dedicated "Ollama Code Review" output channel... 
-- **New**: The review panel now features a **"Copy Review"** button to quickly copy the entire Markdown feedback to your clipboard for sharing in Pull Requests or Slack.
+- **New**: The review panel now features **"Copy Review"** (to copy the AI feedback) and **"Copy Diff"** (to copy the source code changes) buttons for quick sharing in Pull Requests or other LLM chats.
 
 ### 11. Dynamic Model Selection & Status Bar
 - **Command**: `Ollama Code Review: Select Ollama Model`
@@ -313,6 +313,7 @@ After a review completes, use the toolbar buttons at the top of the review panel
 - **Create GitHub Gist**: Posts a private Gist containing the review. Requires a GitHub Personal Access Token with the `gist` scope configured in settings (`ollama-code-review.github.gistToken`). After creation you can open the Gist in your browser or copy its URL.
 - **✨ Commit Msg**: Generate a conventional commit message from your currently staged changes directly from the review panel — no need to switch to the Source Control panel.
 - **💬 Discuss**: Open the current review in the [Persistent AI Review Chat Sidebar](#41-persistent-ai-review-chat-sidebar) to continue the conversation with multi-turn follow-up questions.
+- **Copy Diff**: Copies the original git diff that was analyzed to your clipboard. This is perfect for pasting into other LLM chats (like ChatGPT or Claude) if you want to provide the exact code context manually.
 
 ### 24. GitHub PR Integration
 Review GitHub Pull Requests directly from VS Code and post AI-generated reviews as PR comments:
