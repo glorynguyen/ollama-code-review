@@ -1,3 +1,10 @@
+# [3.28.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.27.0...v3.28.0) (2026-03-03)
+
+
+### Features
+
+* **review:** add copy diff button to review panel ([6c809ad](https://github.com/glorynguyen/ollama-code-review/commit/6c809ad26733ad4da214e3b1403bf4f284c996c5))
+
 # [3.27.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.26.0...v3.27.0) (2026-03-02)
 
 
