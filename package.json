@@ -27,7 +27,7 @@
     "onView:ai-review.chat-sidebar",
     "onCommand:ai-review.focusChat"
   ],
-  "main": "./out/extension.js",
+  "main": "./dist/extension.js",
   "contributes": {
     "commands": [
       {
@@ -1034,9 +1034,10 @@
     "vscode:prepublish": "yarn run compile",
     "compile": "tsc -p ./",
     "build": "yarn run lint --fix && yarn run compile",
-    "package": "yarn run build && vsce package --yarn",
+    "bundle": "yarn esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node",
+    "package": "yarn bundle -- --minify && vsce package --yarn",
     "deploy": "vsce publish --yarn",
-    "watch": "tsc -watch -p ./",
+    "watch": "yarn run bundle -- --watch",
     "pretest": "yarn run compile && yarn run lint --fix",
     "lint": "eslint src",
     "test": "vscode-test",
@@ -1060,6 +1061,7 @@
     "@vscode/test-cli": "^0.0.11",
     "@vscode/test-electron": "^2.5.2",
     "@vscode/vsce": "^3.7.1",
+    "esbuild": "^0.27.3",
     "eslint": "^9.32.0",
     "semantic-release": "^25.0.2",
     "typescript": "^5.9.2"
