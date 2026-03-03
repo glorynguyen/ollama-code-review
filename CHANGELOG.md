@@ -1,3 +1,10 @@
+## [3.28.3](https://github.com/glorynguyen/ollama-code-review/compare/v3.28.2...v3.28.3) (2026-03-03)
+
+
+### Bug Fixes
+
+* **build:** update .vscodeignore ([8b93731](https://github.com/glorynguyen/ollama-code-review/commit/8b93731cbf88e26a41f31ca802f24b4cdf4fb89c))
+
 ## [3.28.2](https://github.com/glorynguyen/ollama-code-review/compare/v3.28.1...v3.28.2) (2026-03-03)
 
 
