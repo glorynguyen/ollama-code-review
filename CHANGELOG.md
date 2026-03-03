@@ -1,3 +1,10 @@
+## [3.28.2](https://github.com/glorynguyen/ollama-code-review/compare/v3.28.1...v3.28.2) (2026-03-03)
+
+
+### Bug Fixes
+
+* **build:** add esbuild bundling ([d465373](https://github.com/glorynguyen/ollama-code-review/commit/d465373d42a0dc4a2589f8dc9892e3bc66c382fc))
+
 ## [3.28.1](https://github.com/glorynguyen/ollama-code-review/compare/v3.28.0...v3.28.1) (2026-03-03)
 
 
