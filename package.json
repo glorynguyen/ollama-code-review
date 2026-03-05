@@ -18,6 +18,9 @@
     "Linters",
     "Other"
   ],
+  "extensionDependencies": [
+      "vscode.git"
+  ],
   "activationEvents": [
     "onLanguage:javascript",
     "onLanguage:javascriptreact",
@@ -158,6 +161,12 @@
         "title": "Explain File with Imports",
         "category": "Ollama Code Review",
         "icon": "$(symbol-file)"
+      },
+      {
+        "command": "ollama-code-review.copyFileWithImports",
+        "title": "Copy File with Imports (for LLM)",
+        "category": "Ollama Code Review",
+        "icon": "$(copy)"
       },
       {
         "command": "ollama-code-review.reviewFile",
@@ -354,6 +363,11 @@
           "when": "editorIsOpen",
           "command": "ollama-code-review.explainFileWithImports",
           "group": "9_ollama@3"
+        },
+        {
+          "when": "editorIsOpen",
+          "command": "ollama-code-review.copyFileWithImports",
+          "group": "9_ollama@4" 
         }
       ],
       "explorer/context": [
@@ -366,6 +380,11 @@
           "command": "ollama-code-review.explainFileWithImports",
           "when": "!explorerResourceIsFolder",
           "group": "9_ollama@2"
+        },
+        {
+          "command": "ollama-code-review.copyFileWithImports",
+          "when": "!explorerResourceIsFolder",
+          "group": "9_ollama@3"
         },
         {
           "command": "ollama-code-review.reviewFolder",

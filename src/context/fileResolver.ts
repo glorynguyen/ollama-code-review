@@ -45,7 +45,15 @@ export async function resolveImport(
 	workspaceRoot: vscode.Uri,
 ): Promise<vscode.Uri | undefined> {
 	const sourceDir = path.posix.dirname(sourceFile);
-	const resolved = path.posix.normalize(path.posix.join(sourceDir, specifier));
+	let resolved: string;
+	if (specifier.startsWith('src/')) {
+		resolved = specifier;
+	} else if (specifier.startsWith('@/')) {
+		resolved = path.posix.join('src', specifier.substring(2));
+	} else {
+		const sourceDir = path.posix.dirname(sourceFile);
+		resolved = path.posix.normalize(path.posix.join(sourceDir, specifier));
+	}
 
 	// 1. Try exact match
 	const exactUri = vscode.Uri.joinPath(workspaceRoot, resolved);

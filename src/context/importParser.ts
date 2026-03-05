@@ -83,7 +83,7 @@ export function parseImports(content: string): ParsedImport[] {
 					seen.add(specifier);
 					imports.push({
 						specifier,
-						isRelative: specifier.startsWith('.'),
+						isRelative: specifier.startsWith('.') || specifier.startsWith('src/') || specifier.startsWith('@/'),
 						line: i + 1,
 					});
 				}

@@ -2118,6 +2118,66 @@ export async function activate(context: vscode.ExtensionContext) {
 	);
 	context.subscriptions.push(explainFileWithImportsCommand);
 
+	const copyFileWithImportsCommand = vscode.commands.registerCommand(
+		'ollama-code-review.copyFileWithImports',
+		async (uri?: vscode.Uri) => {
+			const fileUri = uri ?? vscode.window.activeTextEditor?.document.uri;
+			if (!fileUri) {
+				vscode.window.showWarningMessage('Open a file or right-click a file in the Explorer to copy it.');
+				return;
+			}
+
+			const workspaceFolders = vscode.workspace.workspaceFolders;
+			if (!workspaceFolders || workspaceFolders.length === 0) {
+				vscode.window.showWarningMessage('No workspace folder open.');
+				return;
+			}
+			const workspaceRoot = workspaceFolders[0].uri;
+
+			try {
+				await vscode.window.withProgress({
+					location: vscode.ProgressLocation.Notification,
+					title: 'Ollama: Bundling File and Imports...',
+					cancellable: true,
+				}, async (progress, token) => {
+					// 1. Read main file
+					const mainContent = await readFileContent(fileUri, IMPORT_PER_FILE_LIMIT);
+					if (!mainContent) {
+						vscode.window.showWarningMessage('Could not read the file.');
+						return;
+					}
+
+					const relativePath = vscode.workspace.asRelativePath(fileUri);
+					const budget = { remaining: IMPORT_TOTAL_BUDGET - mainContent.length };
+					const visited = new Set<string>();
+
+					// 2. Resolve imports recursively (using your existing helper)
+					const importedFiles = await resolveImportsRecursively(
+						fileUri, workspaceRoot, visited, 0, budget,
+					);
+
+					if (token.isCancellationRequested) { return; }
+
+					// 3. Format the bundle
+					let bundled = `=== Main File: ${relativePath} ===\n${mainContent}\n`;
+					for (const imp of importedFiles) {
+						bundled += `\n=== Imported: ${imp.relativePath} ===\n${imp.content}\n`;
+					}
+
+					// 4. Copy to Clipboard
+					await vscode.env.clipboard.writeText(bundled);
+					
+					vscode.window.showInformationMessage(
+						`Copied ${relativePath} and ${importedFiles.length} imports to clipboard!`
+					);
+				});
+			} catch (error) {
+				handleError(error, 'Failed to copy file with imports.');
+			}
+		}
+	);
+	context.subscriptions.push(copyFileWithImportsCommand);
+
 	// F-028: Semantic Version Bump Advisor — analyze staged diff and suggest MAJOR/MINOR/PATCH
 	const suggestVersionBumpCommand = vscode.commands.registerCommand(
 		'ollama-code-review.suggestVersionBump',
@@ -3439,7 +3499,8 @@ async function resolveImportsRecursively(
 	const relativeSrc = vscode.workspace.asRelativePath(fileUri);
 
 	for (const imp of imports) {
-		if (!imp.isRelative) {
+		const isWorkspaceImport = imp.isRelative || imp.specifier.startsWith('src/');
+		if (!isWorkspaceImport) {
 			continue; // skip node_modules / bare specifiers
 		}
 
