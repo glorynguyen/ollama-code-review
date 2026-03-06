@@ -1,3 +1,11 @@
+# [3.29.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.28.3...v3.29.0) (2026-03-06)
+
+
+### Features
+
+* **commands:** add copy file with imports command ([052de7b](https://github.com/glorynguyen/ollama-code-review/commit/052de7ba73aba142c800ac5440258b3f99fbeaff))
+* **review:** add structured review with anchor validation ([cf2838c](https://github.com/glorynguyen/ollama-code-review/commit/cf2838cb073d3fc8c87ec6d0e76f62dc1a18cff5))
+
 ## [3.28.3](https://github.com/glorynguyen/ollama-code-review/compare/v3.28.2...v3.28.3) (2026-03-03)
 
 
