@@ -1,7 +1,10 @@
 import * as vscode from 'vscode';
 
+export type ResponseFormat = 'text' | 'structured-review';
+
 export interface GenerateOptions {
 	captureMetrics?: boolean;
+	responseFormat?: ResponseFormat;
 }
 
 export interface StreamOptions extends GenerateOptions {

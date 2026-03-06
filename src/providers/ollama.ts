@@ -3,6 +3,7 @@ import {
 	setLastPerformanceMetrics,
 	streamOllamaAPI,
 } from '../commands/providerClients';
+import { buildProviderPrompt } from './promptFormats';
 import type { GenerateOptions, ModelProvider, ProviderRequestContext, StreamOptions } from './types';
 
 export class OllamaProvider implements ModelProvider {
@@ -24,7 +25,7 @@ export class OllamaProvider implements ModelProvider {
 	public async generate(prompt: string, context: ProviderRequestContext, options?: GenerateOptions): Promise<string> {
 		const response = await axios.post(context.endpoint, {
 			model: context.model,
-			prompt,
+			prompt: buildProviderPrompt(prompt, options),
 			stream: false,
 			options: { temperature: context.temperature },
 		});
@@ -54,7 +55,7 @@ export class OllamaProvider implements ModelProvider {
 
 	public async stream(prompt: string, context: ProviderRequestContext, options: StreamOptions): Promise<string> {
 		return streamOllamaAPI(
-			prompt,
+			buildProviderPrompt(prompt, options),
 			context.model,
 			context.endpoint,
 			context.temperature,

@@ -4,6 +4,7 @@ import { getOllamaModel } from './utils';
 import { PerformanceMetrics } from './extension';
 import { ChatSidebarProvider } from './chat/sidebarProvider';
 import { toModelLimitChatMessage } from './chat/modelErrorUtils';
+import type { ValidatedStructuredReviewResult } from './reviewFindings';
 
 const CLAUDE_API_ENDPOINT = 'https://api.anthropic.com/v1/messages';
 const MINIMAX_API_ENDPOINT = 'https://api.minimax.io/v1/text/chatcompletion_v2';
@@ -37,16 +38,21 @@ export class OllamaReviewPanel {
   private _conversationHistory: Array<{ role: 'user' | 'assistant' | 'system', content: string }> = [];
   private _originalDiff: string;
   private _reviewContent: string;
+  private _reviewPrompt: string | null = null;
   private _metrics: PerformanceMetrics | null = null;
+  private _structuredReview: ValidatedStructuredReviewResult | null = null;
 
-  private constructor(panel: vscode.WebviewPanel, content: string, diff: string, context: vscode.ExtensionContext, metrics: PerformanceMetrics | null = null) {
+  private constructor(panel: vscode.WebviewPanel, content: string, diff: string, context: vscode.ExtensionContext, metrics: PerformanceMetrics | null = null, structuredReview: ValidatedStructuredReviewResult | null = null, reviewPrompt: string | null = null) {
     this._panel = panel;
     this._context = context;
     this._originalDiff = diff;
     this._reviewContent = content;
+    this._reviewPrompt = reviewPrompt;
     this._metrics = metrics;
+    this._structuredReview = structuredReview;
 
     this._conversationHistory.push({ role: 'assistant', content: content });
+    ChatSidebarProvider.getInstance()?.setLastReview(content);
 
     // 1. Set the initial HTML structure
     this._panel.webview.html = this._getHtmlForWebview();
@@ -78,6 +84,9 @@ export class OllamaReviewPanel {
             await vscode.env.clipboard.writeText(this._originalDiff);
             vscode.window.showInformationMessage('Original git diff copied to clipboard!');
             break;
+          case 'copyReviewPrompt':
+            await this._handleCopyReviewPrompt();
+            break;
         }
       },
       null,
@@ -85,7 +94,7 @@ export class OllamaReviewPanel {
     );
   }
 
-  public static createOrShow(content: string, diff: string, context: vscode.ExtensionContext, metrics: PerformanceMetrics | null = null) {
+  public static createOrShow(content: string, diff: string, context: vscode.ExtensionContext, metrics: PerformanceMetrics | null = null, structuredReview: ValidatedStructuredReviewResult | null = null, reviewPrompt: string | null = null) {
     const column = vscode.window.activeTextEditor ? vscode.window.activeTextEditor.viewColumn : undefined;
 
     if (OllamaReviewPanel.currentPanel) {
@@ -94,7 +103,10 @@ export class OllamaReviewPanel {
       OllamaReviewPanel.currentPanel._conversationHistory = [{ role: 'assistant', content }];
       OllamaReviewPanel.currentPanel._originalDiff = diff;
       OllamaReviewPanel.currentPanel._reviewContent = content;
+      OllamaReviewPanel.currentPanel._reviewPrompt = reviewPrompt;
       OllamaReviewPanel.currentPanel._metrics = metrics;
+      OllamaReviewPanel.currentPanel._structuredReview = structuredReview;
+      ChatSidebarProvider.getInstance()?.setLastReview(content);
       // Refresh webview with new content and metrics
       OllamaReviewPanel.currentPanel._panel.webview.html = OllamaReviewPanel.currentPanel._getHtmlForWebview();
       return;
@@ -104,7 +116,7 @@ export class OllamaReviewPanel {
       'ollamaReview', 'Ollama Code Review', column || vscode.ViewColumn.One,
       { enableScripts: true, retainContextWhenHidden: true }
     );
-    OllamaReviewPanel.currentPanel = new OllamaReviewPanel(panel, content, diff, context, metrics);
+    OllamaReviewPanel.currentPanel = new OllamaReviewPanel(panel, content, diff, context, metrics, structuredReview, reviewPrompt);
   }
 
   /**
@@ -120,7 +132,9 @@ export class OllamaReviewPanel {
       OllamaReviewPanel.currentPanel._conversationHistory = [];
       OllamaReviewPanel.currentPanel._originalDiff = diff;
       OllamaReviewPanel.currentPanel._reviewContent = '';
+      OllamaReviewPanel.currentPanel._reviewPrompt = null;
       OllamaReviewPanel.currentPanel._metrics = null;
+      OllamaReviewPanel.currentPanel._structuredReview = null;
       OllamaReviewPanel.currentPanel._panel.webview.html = OllamaReviewPanel.currentPanel._getHtmlForWebview();
       OllamaReviewPanel.currentPanel._panel.webview.postMessage({ command: 'streamStart' });
       return OllamaReviewPanel.currentPanel;
@@ -150,6 +164,7 @@ export class OllamaReviewPanel {
   public finalizeStream(metrics: PerformanceMetrics | null): void {
     this._conversationHistory = [{ role: 'assistant', content: this._reviewContent }];
     this._metrics = metrics;
+    ChatSidebarProvider.getInstance()?.setLastReview(this._reviewContent);
     this._panel.webview.postMessage({ command: 'streamEnd', metrics });
   }
 
@@ -165,6 +180,14 @@ export class OllamaReviewPanel {
    */
   public getOriginalDiff(): string {
     return this._originalDiff;
+  }
+
+  public getStructuredReview(): ValidatedStructuredReviewResult | null {
+    return this._structuredReview;
+  }
+
+  public getReviewPrompt(): string | null {
+    return this._reviewPrompt;
   }
 
   private _syncMessages() {
@@ -183,6 +206,16 @@ export class OllamaReviewPanel {
 
     const context = `Review:\n${this._reviewContent}\n\nDiff:\n${this._originalDiff}`;
     await provider.handleDiscussReview(context);
+  }
+
+  private async _handleCopyReviewPrompt(): Promise<void> {
+    if (!this._reviewPrompt || !this._reviewPrompt.trim()) {
+      vscode.window.showWarningMessage('The original review prompt is not available for this review.');
+      return;
+    }
+
+    await vscode.env.clipboard.writeText(this._reviewPrompt);
+    vscode.window.showInformationMessage('Review prompt copied to clipboard!');
   }
 
   private async _handleUserMessage(userMessage: string) {
@@ -562,6 +595,7 @@ export class OllamaReviewPanel {
     <div class="toolbar">
         <button class="export-btn" onclick="exportReview('clipboard')" title="Copy review to clipboard">📋 Copy</button>
         <button class="export-btn" onclick="copyDiff()" title="Copy original git diff to clipboard">📄 Copy Diff</button>
+        <button class="export-btn" onclick="copyReviewPrompt()" title="Copy the exact review prompt, including diff and active skills">🧠 Copy Prompt</button>
         <button class="export-btn" onclick="exportReview('markdown')" title="Save as Markdown file">💾 Markdown</button>
         <button class="export-btn" onclick="exportReview('prDescription')" title="Copy as PR description">📄 PR Desc</button>
         <button class="export-btn" onclick="exportReview('gist')" title="Create GitHub Gist">🔗 Gist</button>
@@ -692,6 +726,10 @@ export class OllamaReviewPanel {
 
         window.copyDiff = function() {
             vscode.postMessage({ command: 'copyDiff' });
+        };
+
+        window.copyReviewPrompt = function() {
+            vscode.postMessage({ command: 'copyReviewPrompt' });
         };
 
         function render() {

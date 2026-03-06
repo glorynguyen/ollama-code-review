@@ -47,7 +47,6 @@ import {
 	PRReference
 } from '../github/prReview';
 import { getGitHubAuth, showAuthSetupGuide } from '../github/auth';
-import { parseReviewIntoFindings } from '../github/commentMapper';
 import {
 	getPreCommitGuardConfig,
 	isHookInstalled,
@@ -150,7 +149,13 @@ import {
 } from './aiActions';
 import { executeInlineEdit } from '../inlineEdit/inlineEditProvider';
 import { ComparisonPanel, type ModelComparisonEntry, type ComparisonResult } from '../compareModels';
-import { FindingsTreeProvider } from '../reviewFindings';
+import {
+	FindingsTreeProvider,
+	normalizeReviewResult,
+	renderValidatedReviewMarkdown,
+	toLegacyReviewFinding,
+	type ValidatedStructuredReviewResult,
+} from '../reviewFindings';
 
 export { checkActiveModels, getLastPerformanceMetrics, clearPerformanceMetrics };
 export type { PerformanceMetrics };
@@ -187,6 +192,13 @@ interface GitCommitDetails {
 
 interface CommitQuickPickItem extends vscode.QuickPickItem {
 	hash: string;
+}
+
+interface ReviewGenerationResult {
+	reviewText: string;
+	rawResponse: string;
+	reviewPrompt: string;
+	structuredReview: ValidatedStructuredReviewResult;
 }
 
 /**
@@ -1509,16 +1521,20 @@ export async function activate(context: vscode.ExtensionContext) {
 					progress.report({ message: 'Posting summary comment...' });
 					commentUrl = await postPRSummaryComment(ref, auth, reviewContent, model);
 				} else {
-					// 'inline' or 'both' — parse findings and create a proper review
-					progress.report({ message: 'Parsing review findings...' });
+					// 'inline' or 'both' — normalize findings and only inline-comment validated anchors
+					progress.report({ message: 'Validating review findings against diff...' });
 					const originalDiff = panel.getOriginalDiff();
-					const findings = parseReviewIntoFindings(reviewContent, originalDiff);
+					const structuredReview = panel.getStructuredReview() ?? normalizeReviewResult(reviewContent, originalDiff);
+					const findings = structuredReview.findings.map(toLegacyReviewFinding);
+					const inlineFindings = findings.filter(f => f.file && f.line);
 
-					progress.report({ message: `Posting review with ${findings.length} findings...` });
+					progress.report({
+						message: `Posting review with ${findings.length} findings (${inlineFindings.length} inline anchor${inlineFindings.length === 1 ? '' : 's'} validated)...`
+					});
 					commentUrl = await postPRReview(
 						ref,
 						auth,
-						commentStyle === 'both' ? findings : findings.filter(f => f.file && f.line),
+						commentStyle === 'both' ? findings : inlineFindings,
 						reviewContent,
 						model
 					);
@@ -2492,13 +2508,14 @@ ${diff.slice(0, 12000)}
 						);
 						return undefined;
 					}
-					return result as string;
+					return result as ReviewGenerationResult;
 				});
 
 				if (!review) { return; } // Cancelled or timed out
+				const reviewText = review.reviewText;
 
 				// Assess severity
-				const assessment = assessSeverity(review, diffResult, guardConfig.severityThreshold);
+				const assessment = assessSeverity(reviewText, diffResult, guardConfig.severityThreshold);
 				const summary = formatAssessmentSummary(assessment);
 
 				if (assessment.pass) {
@@ -2517,7 +2534,7 @@ ${diff.slice(0, 12000)}
 						await performCommit(repo, repoPath);
 					} else if (action === 'View Review') {
 						const metrics = getLastPerformanceMetrics();
-						OllamaReviewPanel.createOrShow(review, diffResult, context, metrics);
+						OllamaReviewPanel.createOrShow(reviewText, diffResult, context, metrics, review.structuredReview, review.reviewPrompt);
 					}
 				} else {
 					// Above threshold — show findings, offer options
@@ -2535,7 +2552,7 @@ ${diff.slice(0, 12000)}
 						await performCommit(repo, repoPath);
 					} else if (action === 'View Review') {
 						const metrics = getLastPerformanceMetrics();
-						OllamaReviewPanel.createOrShow(review, diffResult, context, metrics);
+						OllamaReviewPanel.createOrShow(reviewText, diffResult, context, metrics, review.structuredReview, review.reviewPrompt);
 					}
 				}
 			} catch (error) {
@@ -3080,7 +3097,8 @@ async function runReview(diff: string, context: vscode.ExtensionContext, reviewT
 	const streamingConfig = vscode.workspace.getConfiguration('ollama-code-review');
 	const streamingEnabled = streamingConfig.get<boolean>('streaming.enabled', true);
 	const activeModel = getOllamaModel(streamingConfig);
-	const supportsStreaming = streamingEnabled && providerRegistry.resolve(activeModel).supportsStreaming();
+	const structuredReviewMode = true;
+	const supportsStreaming = !structuredReviewMode && streamingEnabled && providerRegistry.resolve(activeModel).supportsStreaming();
 
 	// Gather context (always, regardless of streaming)
 	let contextBundle: ContextBundle | undefined;
@@ -3098,9 +3116,10 @@ async function runReview(diff: string, context: vscode.ExtensionContext, reviewT
 		const reviewPanel = OllamaReviewPanel.startStreaming(filteredDiff, context);
 
 		try {
-			const review = await getOllamaReview(filteredDiff, context, contextBundle, (chunk) => {
+			const reviewResult = await getOllamaReview(filteredDiff, context, contextBundle, (chunk) => {
 				reviewPanel.pushChunk(chunk);
 			});
+			const review = reviewResult.reviewText;
 
 			const metrics = getLastPerformanceMetrics();
 			const cfg = vscode.workspace.getConfiguration('ollama-code-review');
@@ -3193,8 +3212,9 @@ async function runReview(diff: string, context: vscode.ExtensionContext, reviewT
 		title: "Ollama Code Review",
 		cancellable: false
 	}, async (progress) => {
-		progress.report({ message: `Asking AI for a review (${filterResult.stats.includedFiles} files)...` });
-		const review = await getOllamaReview(filteredDiff, context, contextBundle);
+		progress.report({ message: `Asking AI for a structured review (${filterResult.stats.includedFiles} files)...` });
+		const reviewResult = await getOllamaReview(filteredDiff, context, contextBundle);
+		const review = reviewResult.reviewText;
 
 		// Get performance metrics and check for active model
 		const metrics = getLastPerformanceMetrics();
@@ -3293,7 +3313,7 @@ async function runReview(diff: string, context: vscode.ExtensionContext, reviewT
 		}
 
 		progress.report({ message: "Displaying review..." });
-		OllamaReviewPanel.createOrShow(review, filteredDiff, context, metrics);
+		OllamaReviewPanel.createOrShow(review, filteredDiff, context, metrics, reviewResult.structuredReview, reviewResult.reviewPrompt);
 	});
 }
 
@@ -3531,7 +3551,7 @@ async function resolveImportsRecursively(
 	return results;
 }
 
-async function getOllamaReview(diff: string, context?: vscode.ExtensionContext, contextBundle?: ContextBundle, onChunk?: (text: string) => void): Promise<string> {
+async function getOllamaReview(diff: string, context?: vscode.ExtensionContext, contextBundle?: ContextBundle, _onChunk?: (text: string) => void): Promise<ReviewGenerationResult> {
 	const config = vscode.workspace.getConfiguration('ollama-code-review');
 	const model = getOllamaModel(config);
 	const endpoint = config.get<string>('endpoint', 'http://localhost:11434/api/generate');
@@ -3682,12 +3702,22 @@ async function getOllamaReview(diff: string, context?: vscode.ExtensionContext, 
 		endpoint,
 		temperature,
 	};
-
-	if (onChunk && provider.supportsStreaming()) {
-		return provider.stream(prompt, requestContext, { onChunk, captureMetrics: true });
+	const rawResponse = await provider.generate(prompt, requestContext, {
+		captureMetrics: true,
+		responseFormat: 'structured-review',
+	});
+	const structuredReview = normalizeReviewResult(rawResponse, diff);
+	const reviewText = renderValidatedReviewMarkdown(structuredReview);
+	if (_onChunk) {
+		_onChunk(reviewText);
 	}
 
-	return provider.generate(prompt, requestContext, { captureMetrics: true });
+	return {
+		reviewText,
+		rawResponse,
+		reviewPrompt: prompt,
+		structuredReview,
+	};
 }
 
 async function getOllamaCommitMessage(diff: string, existingMessage?: string): Promise<string> {

@@ -1,4 +1,5 @@
 import { callGlmAPI, isGlmModel } from '../commands/providerClients';
+import { buildProviderPrompt } from './promptFormats';
 import type { GenerateOptions, ModelProvider, ProviderRequestContext, StreamOptions } from './types';
 
 export class GlmProvider implements ModelProvider {
@@ -17,7 +18,7 @@ export class GlmProvider implements ModelProvider {
 	}
 
 	public async generate(prompt: string, context: ProviderRequestContext, options?: GenerateOptions): Promise<string> {
-		return callGlmAPI(prompt, context.config, !!options?.captureMetrics);
+		return callGlmAPI(buildProviderPrompt(prompt, options), context.config, !!options?.captureMetrics);
 	}
 
 	public async stream(prompt: string, context: ProviderRequestContext, options: StreamOptions): Promise<string> {

@@ -1,4 +1,5 @@
 import { callMistralAPI, isMistralModel } from '../commands/providerClients';
+import { buildProviderPrompt } from './promptFormats';
 import type { GenerateOptions, ModelProvider, ProviderRequestContext, StreamOptions } from './types';
 
 export class MistralProvider implements ModelProvider {
@@ -17,7 +18,7 @@ export class MistralProvider implements ModelProvider {
 	}
 
 	public async generate(prompt: string, context: ProviderRequestContext, options?: GenerateOptions): Promise<string> {
-		return callMistralAPI(prompt, context.config, !!options?.captureMetrics);
+		return callMistralAPI(buildProviderPrompt(prompt, options), context.config, !!options?.captureMetrics);
 	}
 
 	public async stream(prompt: string, context: ProviderRequestContext, options: StreamOptions): Promise<string> {
