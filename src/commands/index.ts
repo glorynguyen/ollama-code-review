@@ -201,6 +201,27 @@ interface ReviewGenerationResult {
 	structuredReview: ValidatedStructuredReviewResult;
 }
 
+function showScoreStatusBar(score: number): void {
+	if (!scoreStatusBarItem) {
+		return;
+	}
+
+	updateScoreStatusBar(scoreStatusBarItem, score);
+	scoreStatusBarItem.show();
+}
+
+function restoreScoreStatusBar(globalStoragePath: string | undefined): void {
+    if (!globalStoragePath) { return; }
+    try {
+        const lastScore = ReviewScoreStore.getInstance(globalStoragePath).getLastScore();
+        if (lastScore?.score !== undefined) {
+            showScoreStatusBar(lastScore.score);
+        }
+    } catch (err) {
+        console.error('Failed to restore score status bar:', err);
+    }
+}
+
 /**
  * Selects a Git repository from the workspace.
  * - If only one repo, returns it.
@@ -1985,10 +2006,11 @@ export async function activate(context: vscode.ExtensionContext) {
 	scoreStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 97);
 	scoreStatusBarItem.command = 'ollama-code-review.showReviewHistory';
 	scoreStatusBarItem.tooltip = 'Review Quality Score — click to view history';
-	// Don't show until first review completes
+	// Restore the last known score if one has already been persisted.
 
 	// Set global storage path for score persistence
 	extensionGlobalStoragePath = context.globalStorageUri.fsPath;
+	restoreScoreStatusBar(extensionGlobalStoragePath);
 
 	// F-016: Show Review History command
 	const showReviewHistoryCommand = vscode.commands.registerCommand(
@@ -2717,10 +2739,7 @@ ${diff.slice(0, 12000)}
 						};
 						store.addScore(scoreEntry);
 					}
-					if (scoreStatusBarItem) {
-						updateScoreStatusBar(scoreStatusBarItem, scoreResult.score);
-						scoreStatusBarItem.show();
-					}
+					showScoreStatusBar(scoreResult.score);
 
 					// F-018: Notifications
 					const notifPayload: NotificationPayload = {
@@ -3016,9 +3035,42 @@ ${diff.slice(0, 12000)}
 						commonFindings: [],
 					};
 
+					const successfulEntries = entries.filter(entry => !entry.error && entry.review.trim());
+					if (successfulEntries.length > 0) {
+						const bestEntry = successfulEntries.reduce((best, current) =>
+							current.score > best.score ? current : best
+						);
+						if (extensionGlobalStoragePath) {
+							const bestScoreResult = computeScore(bestEntry.findingCounts);
+							const store = ReviewScoreStore.getInstance(extensionGlobalStoragePath);
+							const repoName = repo.rootUri
+								? vscode.workspace.asRelativePath(repo.rootUri)
+								: 'unknown';
+							let branch = 'unknown';
+							try { branch = repo.state.HEAD?.name ?? 'unknown'; } catch { /* ignore */ }
+							const scoreEntry: ReviewScore = {
+								id: Date.now().toString(),
+								timestamp: new Date().toISOString(),
+								repo: repoName,
+								branch,
+								model: bestEntry.model,
+								profile: getActiveProfileName(context) ?? 'general',
+								label: `[Compare Models] Best of ${successfulEntries.length}: ${bestEntry.model}`,
+								...bestScoreResult,
+								findingCounts: bestEntry.findingCounts,
+								durationMs: bestEntry.durationMs,
+								reviewType: 'staged',
+								filesReviewed: extractFilesFromDiff(filteredDiff),
+								categories: parseIssueCategories(bestEntry.review),
+							};
+							store.addScore(scoreEntry);
+						}
+						showScoreStatusBar(bestEntry.score);
+					}
+
 					ComparisonPanel.createOrShow(comparisonResult);
 					outputChannel.appendLine(`[Compare Models] Comparison complete. ${entries.filter(e => !e.error).length}/${entries.length} succeeded.`);
-				});
+					});
 			} catch (error) {
 				handleError(error, 'Failed to compare models.');
 			}
@@ -3158,10 +3210,7 @@ async function runReview(diff: string, context: vscode.ExtensionContext, reviewT
 				store.addScore(scoreEntry);
 				outputChannel.appendLine(`[Score] Quality score: ${scoreResult.score}/100 (${findingCounts.critical}C ${findingCounts.high}H ${findingCounts.medium}M ${findingCounts.low}L)`);
 			}
-			if (scoreStatusBarItem) {
-				updateScoreStatusBar(scoreStatusBarItem, scoreResult.score);
-				scoreStatusBarItem.show();
-			}
+			showScoreStatusBar(scoreResult.score);
 
 			// F-029: Apply inline annotations to editors
 			try {
@@ -3265,10 +3314,7 @@ async function runReview(diff: string, context: vscode.ExtensionContext, reviewT
 		}
 
 		// F-016: Update score status bar
-		if (scoreStatusBarItem) {
-			updateScoreStatusBar(scoreStatusBarItem, scoreResult.score);
-			scoreStatusBarItem.show();
-		}
+		showScoreStatusBar(scoreResult.score);
 
 		// F-029: Apply inline annotations to editors
 		try {
@@ -3363,10 +3409,7 @@ async function runFileReview(content: string, label: string, context: vscode.Ext
 			};
 			store.addScore(scoreEntry);
 		}
-		if (scoreStatusBarItem) {
-			updateScoreStatusBar(scoreStatusBarItem, scoreResult.score);
-			scoreStatusBarItem.show();
-		}
+		showScoreStatusBar(scoreResult.score);
 
 		// F-018: Notifications
 		const notifPayload: NotificationPayload = {
