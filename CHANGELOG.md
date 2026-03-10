@@ -1,3 +1,10 @@
+# [3.30.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.29.0...v3.30.0) (2026-03-10)
+
+
+### Features
+
+* **score:** restore score on startup and compare best ([9aadba3](https://github.com/glorynguyen/ollama-code-review/commit/9aadba3f2cf2715757cab65719372773ff265efb))
+
 # [3.29.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.28.3...v3.29.0) (2026-03-06)
 
 
