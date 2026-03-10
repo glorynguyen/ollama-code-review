@@ -587,6 +587,11 @@
           "maximum": 1,
           "description": "The temperature for the Ollama model (e.g., 0.0-1.0). Higher values are more creative, lower values are more deterministic."
         },
+        "ollama-code-review.projectCode": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Jira project code prefix for commit messages (e.g., `HWWW`). When set, generated commit messages follow the format `<type>(<scope>): [PROJECT-XXX] <summary>`. The ticket number is extracted from the current branch name if it matches `PROJECT-\\d+`; otherwise `PROJECT-XXX` is used as a placeholder."
+        },
         "ollama-code-review.frameworks": {
           "type": "array",
           "items": {

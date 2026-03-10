@@ -182,6 +182,59 @@ let ragVectorStore: JsonVectorStore | undefined;
 // Whether the Ollama embedding model is reachable (checked lazily)
 let ragUseOllamaEmbeddings: boolean | undefined;
 
+// ---------------------------------------------------------------------------
+// Project Code helpers (Jira ticket prefix for commit messages)
+// ---------------------------------------------------------------------------
+
+/**
+ * Ensure the projectCode setting is configured. If empty, prompt the user
+ * to enter their Jira project code and persist it to global settings.
+ * Returns the project code string, or `undefined` if the user cancels.
+ */
+async function ensureProjectCode(): Promise<string | undefined> {
+	const config = vscode.workspace.getConfiguration('ollama-code-review');
+	let code = config.get<string>('projectCode', '').trim();
+	if (code) {
+		return code;
+	}
+
+	const input = await vscode.window.showInputBox({
+		prompt: 'Enter your Jira Project Code (e.g., HWWW)',
+		placeHolder: 'HWWW',
+		ignoreFocusOut: true,
+		validateInput: (v) => /^[A-Z][A-Z0-9_-]*$/i.test(v.trim()) ? null : 'Project code must start with a letter and contain only letters, digits, hyphens, or underscores',
+	});
+	code = input?.trim() ?? '';
+
+	if (!code) {
+		vscode.window.showWarningMessage('No project code entered — commit messages will not include a Jira ticket prefix.');
+		return undefined;
+	}
+
+	// Persist to global (user-level) settings so the user is never asked again
+	await config.update('projectCode', code.toUpperCase(), vscode.ConfigurationTarget.Global);
+	return code.toUpperCase();
+}
+
+/**
+ * Try to extract a Jira ticket ID (e.g. HWWW-123) from the current branch name.
+ * Falls back to `PROJECT-XXX` if no match is found.
+ */
+async function resolveTicketId(repoPath: string, projectCode: string): Promise<string> {
+	try {
+		const branch = (await runGitCommand(repoPath, ['rev-parse', '--abbrev-ref', 'HEAD'])).trim();
+		const upper = projectCode.toUpperCase();
+		const pattern = new RegExp(`(${upper}-\\d+)`, 'i');
+		const match = branch.match(pattern);
+		if (match) {
+			return match[1].toUpperCase();
+		}
+	} catch {
+		// ignore — fall through to placeholder
+	}
+	return `${projectCode.toUpperCase()}-XXX`;
+}
+
 interface GitCommitDetails {
 	hash: string;
 	message: string;
@@ -1331,6 +1384,13 @@ export async function activate(context: vscode.ExtensionContext) {
 				return;
 			}
 
+			// Resolve Jira project code (prompts on first use)
+			const projectCode = await ensureProjectCode();
+			let ticketId: string | undefined;
+			if (projectCode) {
+				ticketId = await resolveTicketId(repoPath, projectCode);
+			}
+
 			await vscode.window.withProgress({
 				location: vscode.ProgressLocation.Notification,
 				title: "Ollama",
@@ -1338,7 +1398,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			}, async (progress, token) => {
 				progress.report({ message: "Generating commit message..." });
 
-				const commitMessage = await getOllamaCommitMessage(diffResult, repo.inputBox.value?.trim());
+				const commitMessage = await getOllamaCommitMessage(diffResult, repo.inputBox.value?.trim(), ticketId);
 				if (token.isCancellationRequested) { return; }
 
 				if (commitMessage) {
@@ -3763,7 +3823,7 @@ async function getOllamaReview(diff: string, context?: vscode.ExtensionContext, 
 	};
 }
 
-async function getOllamaCommitMessage(diff: string, existingMessage?: string): Promise<string> {
+async function getOllamaCommitMessage(diff: string, existingMessage?: string, ticketId?: string): Promise<string> {
 	const config = vscode.workspace.getConfiguration('ollama-code-review');
 	const model = getOllamaModel(config);
 	const endpoint = config.get<string>('endpoint', 'http://localhost:11434/api/generate');
@@ -3777,7 +3837,12 @@ async function getOllamaCommitMessage(diff: string, existingMessage?: string): P
 		draftMessage: existingMessage && existingMessage.trim() ? existingMessage : '(none provided)',
 	};
 
-	const prompt = resolvePrompt(promptTemplate, variables);
+	let prompt = resolvePrompt(promptTemplate, variables);
+
+	// Inject Jira ticket ID formatting rule into the prompt
+	if (ticketId) {
+		prompt += `\n\n### Jira Ticket Convention:\nThe subject line MUST include the ticket ID in square brackets immediately after the colon and space.\nFormat: <type>(<scope>): [${ticketId}] <short description>\nExample: feat(ui): [${ticketId}] add login button\nThis is mandatory — every commit message must include [${ticketId}] in the subject line.`;
+	}
 
 	try {
 		let message = await providerRegistry.resolve(model).generate(prompt, {
@@ -3794,6 +3859,16 @@ async function getOllamaCommitMessage(diff: string, existingMessage?: string): P
 		if ((message.startsWith('"') && message.endsWith('"')) || (message.startsWith("'") && message.endsWith("'"))) {
 			message = message.substring(1, message.length - 1);
 		}
+
+		// Ensure the ticket ID is present in the subject line even if the model forgot
+		if (ticketId && !message.includes(`[${ticketId}]`)) {
+			// Insert after the first ": " (type(scope): ...)
+			const colonIdx = message.indexOf(': ');
+			if (colonIdx !== -1) {
+				message = message.slice(0, colonIdx + 2) + `[${ticketId}] ` + message.slice(colonIdx + 2);
+			}
+		}
+
 		return message;
 	} catch (error) {
 		throw error;

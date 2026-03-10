@@ -244,6 +244,7 @@ out/                      # Compiled JavaScript output
 | `ollama-code-review.openaiCompatible.model` | `""` | Model name to request from the OpenAI-compatible endpoint |
 | `ollama-code-review.endpoint` | `http://localhost:11434/api/generate` | Ollama API endpoint |
 | `ollama-code-review.temperature` | `0` | Model temperature (0-1) |
+| `ollama-code-review.projectCode` | `""` | Jira project code prefix for commit messages (e.g., `HWWW`). Ticket number extracted from branch name. |
 | `ollama-code-review.frameworks` | `["React"]` | Target frameworks for context |
 | `ollama-code-review.diffFilter` | `{}` | Diff filtering configuration (see Diff Filtering section) |
 | `ollama-code-review.contextGathering` | `{}` | Multi-file context gathering configuration (see Context Gathering section) |
