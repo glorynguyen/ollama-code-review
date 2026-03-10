@@ -1,3 +1,10 @@
+# [3.31.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.30.0...v3.31.0) (2026-03-10)
+
+
+### Features
+
+* add Jira ticket integration for commit messages ([287cf2e](https://github.com/glorynguyen/ollama-code-review/commit/287cf2eb2416b31fc39996841964331086eab6ec))
+
 # [3.30.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.29.0...v3.30.0) (2026-03-10)
 
 
