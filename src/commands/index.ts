@@ -188,11 +188,22 @@ let ragUseOllamaEmbeddings: boolean | undefined;
 
 /**
  * Ensure the projectCode setting is configured. If empty, prompt the user
- * to enter their Jira project code and persist it to global settings.
+ * to enter their Jira project code and persist it at the most specific level
+ * available: WorkspaceFolder (per-repo) when a folder URI is known, otherwise
+ * Global (user-level) as a fallback.
+ *
+ * @param repoUri - URI of the git repository root (e.g. `repo.rootUri`). When
+ *   provided the setting is read from and written to that specific workspace
+ *   folder, enabling different project codes across multi-root workspaces.
  * Returns the project code string, or `undefined` if the user cancels.
  */
-async function ensureProjectCode(): Promise<string | undefined> {
-	const config = vscode.workspace.getConfiguration('ollama-code-review');
+async function ensureProjectCode(repoUri?: vscode.Uri): Promise<string | undefined> {
+	// Scope config resolution to the folder when we know which repo we're in.
+	// VS Code resolves: Folder → Workspace → User, so folder settings always win.
+	const config = repoUri
+		? vscode.workspace.getConfiguration('ollama-code-review', repoUri)
+		: vscode.workspace.getConfiguration('ollama-code-review');
+
 	let code = config.get<string>('projectCode', '').trim();
 	if (code) {
 		return code;
@@ -211,8 +222,18 @@ async function ensureProjectCode(): Promise<string | undefined> {
 		return undefined;
 	}
 
-	// Persist to global (user-level) settings so the user is never asked again
-	await config.update('projectCode', code.toUpperCase(), vscode.ConfigurationTarget.Global);
+	// Persist at the most specific level available.
+	// If we can resolve a WorkspaceFolder for this repo, write into that folder's
+	// .vscode/settings.json so the code is scoped to this project only.
+	const folder = repoUri ? vscode.workspace.getWorkspaceFolder(repoUri) : undefined;
+	if (folder) {
+		const folderConfig = vscode.workspace.getConfiguration('ollama-code-review', folder.uri);
+		await folderConfig.update('projectCode', code.toUpperCase(), vscode.ConfigurationTarget.WorkspaceFolder);
+	} else {
+		// Fall back to global (user-level) for single-root or detached-folder scenarios.
+		await config.update('projectCode', code.toUpperCase(), vscode.ConfigurationTarget.Global);
+	}
+
 	return code.toUpperCase();
 }
 
@@ -1384,8 +1405,12 @@ export async function activate(context: vscode.ExtensionContext) {
 				return;
 			}
 
-			// Resolve Jira project code (prompts on first use)
-			const projectCode = await ensureProjectCode();
+			// Resolve Jira project code scoped to this specific repo folder.
+			// Passing repo.rootUri allows ensureProjectCode to read/write the
+			// per-folder .vscode/settings.json, enabling different codes across
+			// multi-root workspaces. Falls back to global if the URI isn't part
+			// of a known WorkspaceFolder.
+			const projectCode = await ensureProjectCode(repo.rootUri);
 			let ticketId: string | undefined;
 			if (projectCode) {
 				ticketId = await resolveTicketId(repoPath, projectCode);
