@@ -1,3 +1,10 @@
+# [3.32.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.31.0...v3.32.0) (2026-03-11)
+
+
+### Features
+
+* **config:** [HWWW-XXX] add per-folder project code support ([5200c44](https://github.com/glorynguyen/ollama-code-review/commit/5200c4474a699c913dc47f5a3ccc7cde29029c55))
+
 # [3.31.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.30.0...v3.31.0) (2026-03-10)
 
 
