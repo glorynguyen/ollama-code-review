@@ -57,6 +57,7 @@ import {
 	assessSeverity,
 	formatAssessmentSummary
 } from '../preCommitGuard';
+import type { SeverityAssessment } from '../preCommitGuard';
 import {
 	gatherContext,
 	formatContextForPrompt,
@@ -151,11 +152,13 @@ import { executeInlineEdit } from '../inlineEdit/inlineEditProvider';
 import { ComparisonPanel, type ModelComparisonEntry, type ComparisonResult } from '../compareModels';
 import {
 	FindingsTreeProvider,
+	STRUCTURED_REVIEW_SCHEMA_VERSION,
 	normalizeReviewResult,
 	renderValidatedReviewMarkdown,
 	toLegacyReviewFinding,
 	type ValidatedStructuredReviewResult,
 } from '../reviewFindings';
+import { scanDiffForSecrets, toStructuredFindings, type SecretFinding } from '../secretScanner';
 
 export { checkActiveModels, getLastPerformanceMetrics, clearPerformanceMetrics };
 export type { PerformanceMetrics };
@@ -1136,6 +1139,88 @@ export async function activate(context: vscode.ExtensionContext) {
 			await runReview(diffResult, context, 'staged');
 		} catch (error) {
 			handleError(error, "Failed to review staged changes.");
+		}
+	});
+
+	// F-042: Standalone command for scanning secrets in staged files
+	const scanSecretsCommand = vscode.commands.registerCommand('ollama-code-review.scanSecrets', async () => {
+		try {
+			const gitAPI = getGitAPI();
+			if (!gitAPI) { return; }
+			const repo = await selectRepository(gitAPI);
+			if (!repo) {
+				vscode.window.showInformationMessage('No Git repository found.');
+				return;
+			}
+			const repoPath = repo.rootUri.fsPath;
+			const diffResult = await runGitCommand(repoPath, ['diff', '--staged']);
+			
+			if (!diffResult || !diffResult.trim()) {
+				vscode.window.showInformationMessage('No staged changes found to scan.');
+				return;
+			}
+
+			const secrets = scanDiffForSecrets(diffResult);
+
+			if (secrets.length === 0) {
+				vscode.window.showInformationMessage('✅ No secrets found in the staged changes.');
+				return;
+			}
+
+			// Surface secrets in the findings tree
+			if (findingsTreeProvider) {
+				// Inject the secrets into the findings tree, clearing any existing ones
+				const secretsStructured = toStructuredFindings(secrets);
+
+				const mockStructuredReview = {
+					schemaVersion: STRUCTURED_REVIEW_SCHEMA_VERSION,
+					summary: 'Secret Scanner Results',
+					findings: secretsStructured
+				} satisfies ValidatedStructuredReviewResult;
+
+				const secretsMarkdown = renderSecretScannerMarkdown(secrets);
+
+				// We overwrite whatever was there
+				findingsTreeProvider.setFindings(secretsMarkdown, diffResult);
+
+				// Show the review panel as well
+				const metrics = getLastPerformanceMetrics();
+				try {
+					OllamaReviewPanel.createOrShow(
+						secretsMarkdown,
+						diffResult,
+						context,
+						metrics,
+						mockStructuredReview,
+						'Secret Scan'
+					);
+				} catch (err) {
+					outputChannel.appendLine(`[Secret Scanner] Failed to open review panel: ${err}`);
+					vscode.window.showWarningMessage('Secrets found, but failed to open the review panel. See the output channel for details.');
+				}
+
+				// Ensure tree UI is visible even if the panel fails to render
+				try {
+					await vscode.commands.executeCommand('setContext', 'ollama-code-review.hasFindings', true);
+					await vscode.commands.executeCommand('ollama-code-review.findingsView.focus');
+				} catch (err) {
+					outputChannel.appendLine(`[Secret Scanner] Failed to update UI context: ${err}`);
+				}
+			} else {
+				const details = secrets.map((secret) => `${secret.file}:${secret.line} — ${secret.message}`).join('\n');
+				outputChannel.appendLine(`[Secret Scanner] Found ${secrets.length} critical secret(s) in staging:\n${details}`);
+
+				const action = await vscode.window.showWarningMessage(
+					`Found ${secrets.length} critical secret(s) in staging.`,
+					'Show Details',
+				);
+				if (action === 'Show Details') {
+					outputChannel.show(true);
+				}
+			}
+
+		} catch (error) {
+			handleError(error, 'Failed to scan for secrets.');
 		}
 	});
 
@@ -2573,6 +2658,44 @@ ${diff.slice(0, 12000)}
 				}
 
 				const guardConfig = getPreCommitGuardConfig();
+				const scannerEnabled = vscode.workspace.getConfiguration('ollama-code-review').get<boolean>('secretScanner.enabled', true);
+
+				// F-042: Run Secret Scanner before AI review
+				if (scannerEnabled) {
+					const secrets = scanDiffForSecrets(diffResult);
+					if (secrets.length > 0) {
+						outputChannel.appendLine(`[Pre-Commit Guard] Blocked by Secret Scanner — ${secrets.length} secret(s) found.`);
+						
+						// Map secret findings directly into an assessment-like object to trigger the block modal
+						const assessment: SeverityAssessment = {
+							pass: false,
+							threshold: guardConfig.severityThreshold,
+							findings: secrets,
+							counts: { critical: secrets.length, high: 0, medium: 0, low: 0, info: 0 },
+							blockingFindings: secrets
+						};
+
+						const action = await vscode.window.showWarningMessage(
+							`Pre-commit review BLOCKED (threshold: ${assessment.threshold}).\nFound ${secrets.length} critical secret(s).`,
+							{ modal: true },
+							'View Review',
+							'Bypass & Commit',
+							'Cancel'
+						);
+
+						if (action === 'Bypass & Commit') {
+							createBypassFile(repoPath);
+							await performCommit(repo, repoPath);
+						} else if (action === 'View Review') {
+							// Show the dummy review panel displaying the secrets
+							const dummyReviewText = '## 🔴 Secret Scanner Block\n\n' + secrets.map(s => `- **Critical**: ${s.message}\n  - Location: \`${s.file}:${s.line}\`\n  - Suggestion: ${s.suggestion}`).join('\n\n');
+							const metrics = getLastPerformanceMetrics();
+							OllamaReviewPanel.createOrShow(dummyReviewText, diffResult, context, metrics, undefined, 'Secret Scan');
+						}
+						
+						return; // Stop the flow
+					}
+				}
 
 				// Run AI review with progress and timeout
 				const review = await vscode.window.withProgress({
@@ -3164,6 +3287,7 @@ ${diff.slice(0, 12000)}
 
 	context.subscriptions.push(
 		reviewStagedChangesCommand,
+		scanSecretsCommand,
 		reviewCommitRangeCommand,
 		reviewChangesBetweenTwoBranchesCommand,
 		generateCommitMessageCommand,
@@ -3204,6 +3328,38 @@ function getGitAPI() {
 	return gitExtension.getAPI(1);
 }
 
+function renderSecretScannerMarkdown(secrets: SecretFinding[], title = '## 🔴 Secret Scanner Findings'): string {
+	return `${title}\n\n` + secrets.map((secret) => {
+		const suggestion = secret.suggestion ? `\n  - Suggestion: ${secret.suggestion}` : '';
+		return `- **Critical**: ${secret.message}\n  - Location: \`${secret.file}:${secret.line}\`${suggestion}`;
+	}).join('\n\n') + '\n\n---\n\n';
+}
+
+function mergeSecretFindingsIntoReview(
+	structuredReview: ValidatedStructuredReviewResult | undefined,
+	reviewText: string,
+	secretFindings: SecretFinding[],
+): { combinedReviewText: string; structuredReview: ValidatedStructuredReviewResult | undefined } {
+	if (secretFindings.length === 0) {
+		return { combinedReviewText: reviewText, structuredReview };
+	}
+
+	const baseReview = structuredReview ?? {
+			schemaVersion: STRUCTURED_REVIEW_SCHEMA_VERSION,
+			summary: 'Secret Scanner Results',
+			findings: [],
+		} satisfies ValidatedStructuredReviewResult;
+
+	const secretsStructured = toStructuredFindings(secretFindings);
+	const mergedReview: ValidatedStructuredReviewResult = {
+		...baseReview,
+		findings: [...secretsStructured, ...baseReview.findings],
+	};
+
+	const secretsMarkdown = renderSecretScannerMarkdown(secretFindings);
+	return { combinedReviewText: secretsMarkdown + reviewText, structuredReview: mergedReview };
+}
+
 async function runReview(diff: string, context: vscode.ExtensionContext, reviewType: import('../reviewScore').ReviewType = 'staged') {
 	if (!diff || !diff.trim()) {
 		vscode.window.showInformationMessage('No code changes found to review in the selected range.');
@@ -3230,6 +3386,16 @@ async function runReview(diff: string, context: vscode.ExtensionContext, reviewT
 		outputChannel.appendLine(`Reviewing ${filterResult.stats.includedFiles} of ${filterResult.stats.totalFiles} files`);
 	}
 
+	// F-042: Run Secret Scanner on the filtered diff
+	const scannerEnabled = vscode.workspace.getConfiguration('ollama-code-review').get<boolean>('secretScanner.enabled', true);
+	let secretFindings: SecretFinding[] = [];
+	if (scannerEnabled) {
+		secretFindings = scanDiffForSecrets(filteredDiff);
+		if (secretFindings.length > 0) {
+			outputChannel.appendLine(`[Secret Scanner] Found ${secretFindings.length} hardcoded secret(s) in the staged diff.`);
+		}
+	}
+
 	// F-022: Determine whether streaming is enabled and supported for the active model
 	const streamingConfig = vscode.workspace.getConfiguration('ollama-code-review');
 	const streamingEnabled = streamingConfig.get<boolean>('streaming.enabled', true);
@@ -3253,10 +3419,18 @@ async function runReview(diff: string, context: vscode.ExtensionContext, reviewT
 		const reviewPanel = OllamaReviewPanel.startStreaming(filteredDiff, context);
 
 		try {
+			let injectedSecrets = false;
 			const reviewResult = await getOllamaReview(filteredDiff, context, contextBundle, (chunk) => {
+				if (!injectedSecrets && secretFindings.length > 0) {
+					reviewPanel.pushChunk(renderSecretScannerMarkdown(secretFindings));
+					injectedSecrets = true;
+				}
 				reviewPanel.pushChunk(chunk);
 			});
-			const review = reviewResult.reviewText;
+
+			const merged = mergeSecretFindingsIntoReview(reviewResult.structuredReview, reviewResult.reviewText, secretFindings);
+			const review = merged.combinedReviewText;
+			const structuredReview = merged.structuredReview ?? reviewResult.structuredReview;
 
 			const metrics = getLastPerformanceMetrics();
 			const cfg = vscode.workspace.getConfiguration('ollama-code-review');
@@ -3309,9 +3483,12 @@ async function runReview(diff: string, context: vscode.ExtensionContext, reviewT
 
 			// F-031: Update Findings Explorer tree view
 			try {
-				if (findingsTreeProvider) {
+				if (findingsTreeProvider && (structuredReview?.findings || secretFindings.length > 0)) {
 					findingsTreeProvider.setFindings(review, filteredDiff);
-					vscode.commands.executeCommand('setContext', 'ollama-code-review.hasFindings', findingsTreeProvider.count > 0);
+					void vscode.commands.executeCommand('setContext', 'ollama-code-review.hasFindings', findingsTreeProvider.count > 0)
+						.then(undefined, (err: unknown) => {
+							outputChannel.appendLine(`[FindingsExplorer] Failed to set context: ${String(err)}`);
+						});
 				}
 			} catch (err) {
 				outputChannel.appendLine(`[FindingsExplorer] Error: ${err}`);
@@ -3348,7 +3525,9 @@ async function runReview(diff: string, context: vscode.ExtensionContext, reviewT
 	}, async (progress) => {
 		progress.report({ message: `Asking AI for a structured review (${filterResult.stats.includedFiles} files)...` });
 		const reviewResult = await getOllamaReview(filteredDiff, context, contextBundle);
-		const review = reviewResult.reviewText;
+		const merged = mergeSecretFindingsIntoReview(reviewResult.structuredReview, reviewResult.reviewText, secretFindings);
+		const review = merged.combinedReviewText;
+		const structuredReview = merged.structuredReview ?? reviewResult.structuredReview;
 
 		// Get performance metrics and check for active model
 		const metrics = getLastPerformanceMetrics();
@@ -3413,9 +3592,12 @@ async function runReview(diff: string, context: vscode.ExtensionContext, reviewT
 
 		// F-031: Update Findings Explorer tree view
 		try {
-			if (findingsTreeProvider) {
+			if (findingsTreeProvider && (structuredReview?.findings || secretFindings.length > 0)) {
 				findingsTreeProvider.setFindings(review, filteredDiff);
-				vscode.commands.executeCommand('setContext', 'ollama-code-review.hasFindings', findingsTreeProvider.count > 0);
+				void vscode.commands.executeCommand('setContext', 'ollama-code-review.hasFindings', findingsTreeProvider.count > 0)
+					.then(undefined, (err: unknown) => {
+						outputChannel.appendLine(`[FindingsExplorer] Failed to set context: ${String(err)}`);
+					});
 			}
 		} catch (err) {
 			outputChannel.appendLine(`[FindingsExplorer] Error: ${err}`);
@@ -3444,7 +3626,7 @@ async function runReview(diff: string, context: vscode.ExtensionContext, reviewT
 		}
 
 		progress.report({ message: "Displaying review..." });
-		OllamaReviewPanel.createOrShow(review, filteredDiff, context, metrics, reviewResult.structuredReview, reviewResult.reviewPrompt);
+		OllamaReviewPanel.createOrShow(review, filteredDiff, context, metrics, structuredReview, reviewResult.reviewPrompt);
 	});
 }
 

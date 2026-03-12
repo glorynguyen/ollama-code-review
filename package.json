@@ -139,6 +139,12 @@
         "icon": "$(comment-discussion)"
       },
       {
+        "command": "ollama-code-review.scanSecrets",
+        "title": "Scan for Secrets",
+        "category": "Ollama Code Review",
+        "icon": "$(shield)"
+      },
+      {
         "command": "ollama-code-review.reloadProjectConfig",
         "title": "Reload Project Config (.ollama-review.yaml)",
         "category": "Ollama Code Review",

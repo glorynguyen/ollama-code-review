@@ -102,7 +102,7 @@ export async function isEmbeddingModelAvailable(
 function djb2Hash(str: string): number {
   let hash = 5381;
   for (let i = 0; i < str.length; i++) {
-    // eslint-disable-next-line no-bitwise
+     
     hash = ((hash << 5) + hash) ^ str.charCodeAt(i);
   }
   return hash;
