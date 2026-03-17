@@ -121,6 +121,30 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 		this.sendMessageToWebview({ type: 'contextInjected', context });
 	}
 
+	public async handleDiscussFinding(context: string, title = 'Finding Follow-up'): Promise<void> {
+		if (!context || !context.trim()) {
+			vscode.window.showErrorMessage('No finding context provided.');
+			return;
+		}
+
+		const config = vscode.workspace.getConfiguration('ollama-code-review');
+		const activeModel = getOllamaModel(config);
+		const conversation = this.conversationManager.createConversation(activeModel, title);
+
+		const injected: ChatMessage = {
+			role: 'system',
+			content: `Discuss this finding:\n\n${context}`,
+			timestamp: Date.now(),
+			model: activeModel,
+		};
+		this.conversationManager.addMessage(conversation.id, injected);
+		this.lastInjectedContext = context;
+
+		await vscode.commands.executeCommand('ai-review.focusChat');
+		this.hydrate();
+		this.sendMessageToWebview({ type: 'contextInjected', context });
+	}
+
 	private async handleUserMessage(content: string): Promise<void> {
 		const trimmedContent = content.trim();
 		if (!trimmedContent) {
@@ -276,8 +300,8 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 			.map((message) => `${message.role.toUpperCase()}: ${message.content}`)
 			.join('\n\n');
 
-		const reviewContext = this.lastInjectedContext
-			? `\n\nReview Context:\n${this.lastInjectedContext}\n`
+		const injectedContext = this.lastInjectedContext
+			? `\n\nContext:\n${this.lastInjectedContext}\n`
 			: '';
 
 		const contextSection = contexts.length > 0
@@ -290,7 +314,7 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 
 		return [
 			'You are an expert software engineer helping with code review follow-ups.',
-			reviewContext,
+			injectedContext,
 			contextSection,
 			stagedSection,
 			'Conversation history:',
@@ -1063,7 +1087,7 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 					renderHistory();
 					break;
 				case 'contextInjected':
-					statusEl.textContent = 'Review context added to this conversation.';
+					statusEl.textContent = 'Context added to this conversation.';
 					setTimeout(() => {
 						if (!isStreaming) { statusEl.textContent = ''; }
 					}, 2500);

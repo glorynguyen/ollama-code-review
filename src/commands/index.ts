@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import axios from 'axios';
 import * as path from 'path';
 import { OllamaReviewPanel } from '../reviewProvider';
+import { ChatSidebarProvider } from '../chat/sidebarProvider';
 import { SkillsService } from '../skillsService';
 import { SkillsBrowserPanel } from '../skillsBrowserPanel';
 import { getOllamaModel, resolvePrompt } from '../utils';
@@ -159,6 +160,8 @@ import {
 	type ValidatedStructuredReviewResult,
 } from '../reviewFindings';
 import { scanDiffForSecrets, toStructuredFindings, type SecretFinding } from '../secretScanner';
+import { getModelRecommendation, extractLanguagesFromDiff, bucketDiffSize } from '../modelAdvisor';
+import type { ModelAdvisorInput } from '../modelAdvisor';
 
 export { checkActiveModels, getLastPerformanceMetrics, clearPerformanceMetrics };
 export type { PerformanceMetrics };
@@ -487,6 +490,95 @@ export async function activate(context: vscode.ExtensionContext) {
 	);
 	context.subscriptions.push(fixFindingCommand);
 
+	// F-038: Conversational follow-up for a finding (Ask AI)
+	const askFindingCommand = vscode.commands.registerCommand(
+		'ollama-code-review.askFinding',
+		async (findingOrElement?: unknown) => {
+			try {
+				const provider = ChatSidebarProvider.getInstance();
+				if (!provider) {
+					vscode.window.showErrorMessage('Chat sidebar is not available yet. Please reopen the extension.');
+					return;
+				}
+
+				// Resolve the finding from either a direct finding object or tree element
+				let finding: { severity: string; message: string; file?: string; line?: number; suggestion?: string } | undefined;
+				if (findingOrElement && typeof findingOrElement === 'object' && 'message' in findingOrElement && 'severity' in findingOrElement) {
+					finding = findingOrElement as { severity: string; message: string; file?: string; line?: number; suggestion?: string };
+				} else if (findingOrElement && findingsTreeProvider) {
+					finding = findingsTreeProvider.getFindingFromElement(findingOrElement);
+				}
+
+				if (!finding) {
+					vscode.window.showWarningMessage('No finding selected.');
+					return;
+				}
+
+				const detailLines = [
+					'Finding Details:',
+					`Severity: ${finding.severity}`,
+					`Message: ${finding.message}`,
+					finding.file && finding.file !== '(no file reference)' ? `File: ${finding.file}` : '',
+					finding.line ? `Line: ${finding.line}` : '',
+					finding.suggestion ? `Suggestion: ${finding.suggestion}` : '',
+				].filter(Boolean);
+
+				let context = detailLines.join('\n');
+
+				if (finding.file && finding.file !== '(no file reference)') {
+					const workspaceFolders = vscode.workspace.workspaceFolders;
+					let fileUri: vscode.Uri | undefined;
+					if (workspaceFolders) {
+						for (const folder of workspaceFolders) {
+							const candidateUri = vscode.Uri.joinPath(folder.uri, finding.file);
+							try {
+								await vscode.workspace.fs.stat(candidateUri);
+								fileUri = candidateUri;
+								break;
+							} catch { /* try next folder */ }
+						}
+					}
+					if (!fileUri) {
+						try {
+							fileUri = vscode.Uri.file(finding.file);
+							await vscode.workspace.fs.stat(fileUri);
+						} catch {
+							vscode.window.showWarningMessage(`Could not find file: ${finding.file}. Starting chat without code snippet.`);
+						}
+					}
+
+					if (fileUri) {
+						const doc = await vscode.workspace.openTextDocument(fileUri);
+						if (doc.lineCount > 0) {
+							const contextLines = 8;
+							const targetLine = finding.line && finding.line >= 1 && finding.line <= doc.lineCount
+								? finding.line - 1
+								: 0;
+							const startLine = Math.max(0, targetLine - contextLines);
+							const endLine = Math.min(doc.lineCount - 1, targetLine + contextLines);
+							const codeRange = new vscode.Range(startLine, 0, endLine, doc.lineAt(endLine).text.length);
+							const codeSnippet = doc.getText(codeRange);
+							if (codeSnippet.trim()) {
+								const rangeLabel = `${finding.file}:${startLine + 1}-${endLine + 1}`;
+								context += `\n\nCode Snippet (${rangeLabel}):\n\`\`\`${doc.languageId}\n${codeSnippet}\n\`\`\``;
+							}
+						}
+					}
+				}
+
+				const titleBase = finding.message.replace(/\s+/g, ' ').trim();
+				const titleSuffix = titleBase.length > 48 ? `${titleBase.slice(0, 45)}...` : titleBase;
+				const title = titleSuffix ? `Finding (${finding.severity}): ${titleSuffix}` : 'Finding Follow-up';
+
+				await provider.handleDiscussFinding(context, title);
+			} catch (err) {
+				vscode.window.showErrorMessage(`Failed to open chat for finding: ${err instanceof Error ? err.message : String(err)}`);
+				outputChannel.appendLine(`[F-038 askFinding] Error: ${err}`);
+			}
+		}
+	);
+	context.subscriptions.push(askFindingCommand);
+
 	// Register profile selection command
 	const selectProfileCommand = vscode.commands.registerCommand('ollama-code-review.selectProfile', async () => {
 		const profiles = getAllProfiles(context);
@@ -688,12 +780,31 @@ export async function activate(context: vscode.ExtensionContext) {
 			// Sort alphabetically
 			localModels.sort((a, b) => a.label.localeCompare(b.label));
 
+			// F-037: Get model recommendation
+			let recommendedItem: { label: string; description: string; detail?: string } | undefined;
+			try {
+				const advisorInput: ModelAdvisorInput = { taskType: 'review', languages: [], contentLength: 0 };
+				const advice = await getModelRecommendation(advisorInput, config);
+				recommendedItem = {
+					label: advice.recommended.modelId,
+					description: `⭐ Recommended — ${advice.recommended.reason}`,
+					detail: `Score: ${Math.round(advice.recommended.score * 100)}%`,
+				};
+			} catch {
+				// Non-fatal: skip recommendation
+			}
+
 			// Combine cloud + local + custom
-			const models = distinctByProperty([
+			const allItems = [
 				...cloudModels,
 				...localModels,
 				{ label: 'custom', description: 'Use custom model from settings' }
-			], 'label');
+			];
+			// Prepend recommended item (if it's not a duplicate)
+			if (recommendedItem && !allItems.find(m => m.label === recommendedItem!.label && m.description?.startsWith('⭐'))) {
+				allItems.unshift(recommendedItem);
+			}
+			const models = distinctByProperty(allItems, 'label');
 
 			const currentItem = models.find(m => m.label === currentModel);
 			const selected = await vscode.window.showQuickPick(models, {
@@ -3399,7 +3510,33 @@ async function runReview(diff: string, context: vscode.ExtensionContext, reviewT
 	// F-022: Determine whether streaming is enabled and supported for the active model
 	const streamingConfig = vscode.workspace.getConfiguration('ollama-code-review');
 	const streamingEnabled = streamingConfig.get<boolean>('streaming.enabled', true);
-	const activeModel = getOllamaModel(streamingConfig);
+	let activeModel = getOllamaModel(streamingConfig);
+
+	// F-037: Auto-select best model if enabled
+	if (streamingConfig.get<boolean>('autoSelectModel', false)) {
+		try {
+			const languages = extractLanguagesFromDiff(filteredDiff);
+			const reviewTypeToTask: Record<string, import('../modelAdvisor').TaskType> = {
+				staged: 'review', commit: 'review', 'commit-range': 'review', 'branch-compare': 'review',
+				pr: 'review', file: 'file-review', folder: 'file-review', selection: 'file-review', agent: 'agent-review',
+			};
+			const advisorInput: ModelAdvisorInput = {
+				taskType: reviewTypeToTask[reviewType] ?? 'review',
+				languages,
+				contentLength: filteredDiff.length,
+				activeProfile: getActiveProfileName(context) ?? undefined,
+			};
+			const advice = await getModelRecommendation(advisorInput, streamingConfig);
+			if (advice.recommended.modelId !== activeModel) {
+				outputChannel.appendLine(`[Model Advisor] Auto-selected: ${advice.recommended.modelId} (${advice.recommended.reason}, score ${Math.round(advice.recommended.score * 100)}%)`);
+				await streamingConfig.update('model', advice.recommended.modelId, vscode.ConfigurationTarget.Global);
+				activeModel = advice.recommended.modelId;
+				vscode.window.setStatusBarMessage(`⭐ Auto-selected model: ${activeModel}`, 5000);
+			}
+		} catch (err) {
+			outputChannel.appendLine(`[Model Advisor] Auto-select failed, using current model: ${err}`);
+		}
+	}
 	const structuredReviewMode = true;
 	const supportsStreaming = !structuredReviewMode && streamingEnabled && providerRegistry.resolve(activeModel).supportsStreaming();
 

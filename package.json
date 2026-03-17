@@ -310,6 +310,12 @@
         "title": "Quick Fix Finding",
         "category": "Ollama Code Review",
         "icon": "$(wrench)"
+      },
+      {
+        "command": "ollama-code-review.askFinding",
+        "title": "Ask AI About Finding",
+        "category": "Ollama Code Review",
+        "icon": "$(comment-discussion)"
       }
     ],
     "viewsContainers": {
@@ -455,6 +461,11 @@
           "command": "ollama-code-review.fixFinding",
           "when": "view == ai-review.findings-explorer && viewItem == finding",
           "group": "inline"
+        },
+        {
+          "command": "ollama-code-review.askFinding",
+          "when": "view == ai-review.findings-explorer && (viewItem == finding || viewItem == findingNoFile)",
+          "group": "inline"
         }
       ],
       "view/title": [
@@ -468,6 +479,11 @@
     "configuration": {
       "title": "Ollama Code Review",
       "properties": {
+        "ollama-code-review.autoSelectModel": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically select the best model based on task type and diff size."
+        },
         "ollama-code-review.skills.defaultRepository": {
           "type": "string",
           "default": "vercel-labs/agent-skills",
