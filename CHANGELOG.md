@@ -1,3 +1,11 @@
+# [3.33.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.32.0...v3.33.0) (2026-03-17)
+
+
+### Features
+
+* [F-037] add model advisor for auto-selection ([e642ed2](https://github.com/glorynguyen/ollama-code-review/commit/e642ed2d2b49135cf46e6b5446352d9c7078c3e6))
+* **security:** [F-042] add AI-powered secret scanner with regex detection ([636c776](https://github.com/glorynguyen/ollama-code-review/commit/636c776ab5823ce5ef738721045bce27f15fd7df))
+
 # [3.32.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.31.0...v3.32.0) (2026-03-11)
 
 
