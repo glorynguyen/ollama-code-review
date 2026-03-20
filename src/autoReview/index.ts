@@ -36,6 +36,7 @@ import * as path from 'path';
 import { parseFindingCounts } from '../reviewScore';
 import { getGitDiff } from './gitDiff';
 import { buildSmartContext } from './smartContext';
+import { MonorepoResolver } from './monorepo';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -114,12 +115,19 @@ export class AutoReviewManager implements vscode.Disposable {
 
 	private readonly _statusBarItem: vscode.StatusBarItem;
 
+	/**
+	 * Monorepo-aware resolver for following cross-package definitions.
+	 * Lazily created on first use and shared across all reviews.
+	 */
+	private readonly _resolver: MonorepoResolver;
+
 	private constructor(
 		private readonly _context: vscode.ExtensionContext,
 		private readonly _reviewFn: ReviewFn,
 		private readonly _applyAnnotations: ApplyAnnotationsFn | undefined,
 		private readonly _outputChannel: vscode.OutputChannel | undefined,
 	) {
+		this._resolver = new MonorepoResolver();
 		// Status bar item — always visible so the user knows the feature exists.
 		this._statusBarItem = vscode.window.createStatusBarItem(
 			vscode.StatusBarAlignment.Left,
@@ -171,6 +179,13 @@ export class AutoReviewManager implements vscode.Disposable {
 	// ---------------------------------------------------------------------------
 	// Public API
 	// ---------------------------------------------------------------------------
+
+	/**
+	 * The monorepo resolver used by the smart-context builder.
+	 * Call `resolver.registerStrategy(...)` to add support for custom monorepo
+	 * layouts (Nx, Lerna, Rush, etc.) beyond the built-in strategies.
+	 */
+	get resolver(): MonorepoResolver { return this._resolver; }
 
 	/** Read the current configuration from VS Code settings. */
 	getConfig(): AutoReviewConfig {
@@ -299,7 +314,12 @@ export class AutoReviewManager implements vscode.Disposable {
 
 				if (cfg.useSmartContext) {
 					// Smart context: wrapping function + call graph + imports.
-					const smartCtx = await buildSmartContext(doc.uri, diff);
+					// Pass the monorepo resolver so cross-package definitions
+					// (e.g. @myapp/shared via node_modules symlinks) are followed.
+					const smartCtx = await buildSmartContext(doc.uri, diff, {
+						resolver: this._resolver,
+						workspaceRoot: cwd,
+					});
 
 					if (smartCtx.functionCount > 0) {
 						payload =
