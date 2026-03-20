@@ -316,6 +316,12 @@
         "title": "Ask AI About Finding",
         "category": "Ollama Code Review",
         "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "ollama-code-review.toggleAutoReview",
+        "title": "Toggle Auto-Review on Save",
+        "category": "Ollama Code Review",
+        "icon": "$(eye)"
       }
     ],
     "viewsContainers": {
@@ -1071,6 +1077,72 @@
               "type": "boolean",
               "default": true,
               "description": "Show detailed finding information on hover."
+            }
+          }
+        },
+        "ollama-code-review.autoReview": {
+          "type": "object",
+          "default": {
+            "enabled": false,
+            "debounceMs": 3000,
+            "minSeverity": "high",
+            "excludePatterns": [
+              "**/node_modules/**",
+              "**/*.test.*",
+              "**/*.spec.*",
+              "**/__tests__/**",
+              "**/dist/**",
+              "**/build/**",
+              "**/out/**",
+              "**/.next/**"
+            ],
+            "showAnnotations": true,
+            "notifyOnFindings": true
+          },
+          "markdownDescription": "**F-043** — Auto-Review on Save configuration. When enabled, files are silently reviewed by the AI in the background after each save. Results appear as inline annotations and optional notifications.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false,
+              "description": "Enable background AI review on every file save. Disabled by default to avoid unexpected API calls."
+            },
+            "debounceMs": {
+              "type": "number",
+              "default": 3000,
+              "minimum": 500,
+              "maximum": 30000,
+              "description": "Milliseconds to wait after the last save before triggering the review. Increase if you save frequently mid-edit."
+            },
+            "minSeverity": {
+              "type": "string",
+              "enum": ["critical", "high", "medium", "low"],
+              "default": "high",
+              "description": "Only show a notification when findings at or above this severity are found."
+            },
+            "excludePatterns": {
+              "type": "array",
+              "items": { "type": "string" },
+              "default": [
+                "**/node_modules/**",
+                "**/*.test.*",
+                "**/*.spec.*",
+                "**/__tests__/**",
+                "**/dist/**",
+                "**/build/**",
+                "**/out/**",
+                "**/.next/**"
+              ],
+              "description": "Glob patterns for files to skip during auto-review."
+            },
+            "showAnnotations": {
+              "type": "boolean",
+              "default": true,
+              "description": "Apply inline editor annotations (gutter icons, highlights, hovers) after each auto-review. Requires annotations.enabled to be true."
+            },
+            "notifyOnFindings": {
+              "type": "boolean",
+              "default": true,
+              "description": "Show a notification when findings above minSeverity are found. Clicking 'View Review' opens the full review panel."
             }
           }
         }
