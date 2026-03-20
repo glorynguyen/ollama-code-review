@@ -22,6 +22,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { parseChangedLineNumbers } from './gitDiff';
+import type { MonorepoResolver } from './monorepo';
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -45,6 +46,26 @@ export interface SmartContextResult {
 	budgetExhausted: boolean;
 }
 
+/**
+ * Options for {@link buildSmartContext}.
+ * All fields are optional — existing callers are unaffected.
+ */
+export interface SmartContextOptions {
+	/**
+	 * When provided, the BFS call-graph traversal will follow definitions into
+	 * monorepo workspace packages even when they resolve through `node_modules`
+	 * symlinks or `dist/` directories.
+	 */
+	resolver?: MonorepoResolver;
+
+	/**
+	 * Absolute path of the workspace root.  Required when `resolver` is set so
+	 * that package discovery can locate `package.json` / `pnpm-workspace.yaml`.
+	 * Falls back to the file's parent directory when omitted.
+	 */
+	workspaceRoot?: string;
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -54,10 +75,13 @@ export interface SmartContextResult {
  *
  * @param fileUri  The URI of the saved file.
  * @param diff     The unified diff string (from getGitDiff).
+ * @param options  Optional settings — pass a {@link MonorepoResolver} to follow
+ *                 cross-package definitions in monorepo workspaces.
  */
 export async function buildSmartContext(
 	fileUri: vscode.Uri,
 	diff: string,
+	options?: SmartContextOptions,
 ): Promise<SmartContextResult> {
 	const changedLines = parseChangedLineNumbers(diff);
 	if (changedLines.length === 0) {
@@ -145,8 +169,9 @@ export async function buildSmartContext(
 				const defLocations = await _getDefinition(uri, callPos);
 				for (const loc of defLocations) {
 					const defUri = loc.uri;
-					// Skip node_modules and type-declaration files.
-					if (_shouldSkipUri(defUri)) { continue; }
+					// Skip node_modules and type-declaration files — unless the
+					// monorepo resolver recognises the path as a local workspace package.
+					if (await _shouldSkip(defUri, options)) { continue; }
 
 					// Load the definition document and find the symbol at that location.
 					let defDoc: vscode.TextDocument;
@@ -368,6 +393,26 @@ function _shouldSkipUri(uri: vscode.Uri): boolean {
 		p.includes('/build/') ||
 		p.includes('/out/')
 	);
+}
+
+/**
+ * Async wrapper around {@link _shouldSkipUri} that gives the monorepo resolver
+ * a chance to override the decision for workspace-local packages.
+ *
+ * When no resolver is provided the behaviour is identical to the original
+ * synchronous check — existing callers are unaffected.
+ */
+async function _shouldSkip(uri: vscode.Uri, options?: SmartContextOptions): Promise<boolean> {
+	if (!_shouldSkipUri(uri)) { return false; }
+
+	// URI would normally be skipped — let the resolver check for workspace packages.
+	if (options?.resolver) {
+		const wsRoot = options.workspaceRoot ?? path.dirname(uri.fsPath);
+		const isLocal = await options.resolver.isWorkspacePath(uri.fsPath, wsRoot);
+		if (isLocal) { return false; }
+	}
+
+	return true;
 }
 
 /** Extract import statements from a source file. */
