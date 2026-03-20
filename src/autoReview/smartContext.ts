@@ -264,7 +264,6 @@ const FN_KINDS = new Set([
 	vscode.SymbolKind.Function,
 	vscode.SymbolKind.Method,
 	vscode.SymbolKind.Constructor,
-	vscode.SymbolKind.ArrowFunction,
 ]);
 
 /**
