@@ -45,6 +45,14 @@ export interface AutoReviewConfig {
 	showAnnotations: boolean;
 	/** Show a pop-up notification when findings are found above minSeverity. Default: true */
 	notifyOnFindings: boolean;
+	/**
+	 * Ask before running the AI review.
+	 * When true, a prompt appears after each debounce showing the file name and
+	 * changed-line count so you can choose to review or skip.
+	 * When false (default), the review runs silently in the background.
+	 * Default: false
+	 */
+	confirmBeforeReview: boolean;
 }
 
 /** Callback that runs an AI review of `content` (or a unified diff) and returns the review markdown. */
@@ -421,6 +429,7 @@ export class AutoReviewManager implements vscode.Disposable {
 			]),
 			showAnnotations: cfg.get<boolean>('showAnnotations', true),
 			notifyOnFindings: cfg.get<boolean>('notifyOnFindings', true),
+			confirmBeforeReview: cfg.get<boolean>('confirmBeforeReview', false),
 		};
 	}
 
@@ -545,6 +554,38 @@ export class AutoReviewManager implements vscode.Disposable {
 				this._outputChannel?.appendLine(
 					`[Auto-Review] First review — sending full file for ${relPath}`,
 				);
+			}
+
+			// ---------------------------------------------------------------
+			// Confirmation prompt (when confirmBeforeReview is enabled).
+			// Shown after the diff is computed so we can report how many lines
+			// changed — the user can then decide whether a review call is worth it.
+			// ---------------------------------------------------------------
+			if (cfg.confirmBeforeReview) {
+				// Count only added/removed lines (exclude diff headers and context lines).
+				const changedLines = (payload === currentContent)
+					? currentContent.split('\n').length
+					: payload.split('\n').filter(
+						l => (l.startsWith('+') || l.startsWith('-')) &&
+							!l.startsWith('+++') && !l.startsWith('---'),
+					).length;
+
+				const basename = path.basename(relPath);
+				const lineLabel = changedLines === 1 ? '1 line changed' : `${changedLines} lines changed`;
+
+				const answer = await vscode.window.showInformationMessage(
+					`Auto-Review: ${basename} saved (${lineLabel}). Review now?`,
+					{ modal: false },
+					'Review',
+					'Skip',
+				);
+
+				if (answer !== 'Review') {
+					this._outputChannel?.appendLine(
+						`[Auto-Review] User skipped review for ${relPath}.`,
+					);
+					return;
+				}
 			}
 
 			// ---------------------------------------------------------------

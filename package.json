@@ -1143,6 +1143,11 @@
               "type": "boolean",
               "default": true,
               "description": "Show a notification when findings above minSeverity are found. Clicking 'View Review' opens the full review panel."
+            },
+            "confirmBeforeReview": {
+              "type": "boolean",
+              "default": false,
+              "description": "Ask before running the AI review after each save. A prompt shows the file name and number of changed lines so you can choose 'Review' or 'Skip'. When false (default), the review runs silently in the background."
             }
           }
         }
