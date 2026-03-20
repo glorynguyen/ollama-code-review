@@ -322,6 +322,54 @@
         "title": "Toggle Auto-Review on Save",
         "category": "Ollama Code Review",
         "icon": "$(eye)"
+      },
+      {
+        "command": "ollama-code-review.openSetupGuide",
+        "title": "Open Setup Guide",
+        "category": "Ollama Code Review",
+        "icon": "$(book)"
+      }
+    ],
+    "walkthroughs": [
+      {
+        "id": "ollama-code-review.gettingStarted",
+        "title": "Get Started with Ollama Code Review",
+        "description": "Set up AI-powered code reviews using local Ollama models or cloud providers.",
+        "steps": [
+          {
+            "id": "installOllama",
+            "title": "Install Ollama",
+            "description": "Ollama runs AI models locally — your code never leaves your machine.\n\n[Download Ollama](https://ollama.com/download)\n\nAfter installing, run ``ollama serve`` in your terminal.",
+            "media": {
+              "markdown": "### Why Ollama?\n- **Private**: Code stays on your machine\n- **Free**: No API keys or subscriptions\n- **Fast**: No network latency"
+            },
+            "completionEvents": [
+              "onCommand:ollama-code-review.openSetupGuide"
+            ]
+          },
+          {
+            "id": "chooseModel",
+            "title": "Choose an AI Model",
+            "description": "Pull a coding model with Ollama, or pick a cloud provider.\n\n[Open Setup Guide](command:ollama-code-review.openSetupGuide)\n\nRecommended: ``ollama pull qwen2.5-coder:7b``",
+            "media": {
+              "markdown": "### Recommended Models\n| Model | Size | Best for |\n|-------|------|----------|\n| qwen2.5-coder:7b | 4.7 GB | Fast reviews |\n| qwen2.5-coder:14b | 9 GB | Quality + speed |\n| codellama:7b | 3.8 GB | Lightweight |"
+            },
+            "completionEvents": [
+              "onCommand:ollama-code-review.selectModel"
+            ]
+          },
+          {
+            "id": "reviewCode",
+            "title": "Review Your First Code",
+            "description": "Stage some changes in Git, then click the review icon in the Source Control panel — or run the command below.\n\n[Review Staged Changes](command:ollama-code-review.reviewChanges)",
+            "media": {
+              "markdown": "### Quick Commands\n- **Review Staged Changes** — AI reviews your diff\n- **Generate Commit Message** — AI writes a commit message\n- **Explain Code** — Select code → lightbulb → Explain"
+            },
+            "completionEvents": [
+              "onCommand:ollama-code-review.reviewChanges"
+            ]
+          }
+        ]
       }
     ],
     "viewsContainers": {
