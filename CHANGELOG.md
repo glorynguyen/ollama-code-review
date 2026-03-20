@@ -1,3 +1,10 @@
+# [3.35.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.34.0...v3.35.0) (2026-03-20)
+
+
+### Features
+
+* add Ollama setup guide for first-time users ([979bd2c](https://github.com/glorynguyen/ollama-code-review/commit/979bd2cb75ae81b10ab42afd7660d0e33ecac0e7))
+
 # [3.34.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.33.0...v3.34.0) (2026-03-20)
 
 
