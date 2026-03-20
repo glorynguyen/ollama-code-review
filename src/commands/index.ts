@@ -7,6 +7,7 @@ import { SkillsService } from '../skillsService';
 import { SkillsBrowserPanel } from '../skillsBrowserPanel';
 import { getOllamaModel, resolvePrompt } from '../utils';
 import { filterDiff, getFilterSummary, getDiffFilterConfigWithYaml } from '../diffFilter';
+import { maybeShowSetupGuide, showSetupGuide } from '../setupGuide';
 import {
 	getEffectiveReviewPrompt,
 	getEffectiveCommitPrompt,
@@ -894,6 +895,16 @@ export async function activate(context: vscode.ExtensionContext) {
 	});
 
 	context.subscriptions.push(selectModelCommand);
+
+	// Register setup guide command
+	const setupGuideCommand = vscode.commands.registerCommand(
+		'ollama-code-review.openSetupGuide',
+		() => showSetupGuide(context),
+	);
+	context.subscriptions.push(setupGuideCommand);
+
+	// Show first-run setup guide (non-blocking)
+	maybeShowSetupGuide(context);
 
 	// Listen for configuration changes to update status bar
 	context.subscriptions.push(
