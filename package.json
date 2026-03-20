@@ -1148,6 +1148,11 @@
               "type": "boolean",
               "default": false,
               "description": "Ask before running the AI review after each save. A prompt shows the file name and number of changed lines so you can choose 'Review' or 'Skip'. When false (default), the review runs silently in the background."
+            },
+            "useSmartContext": {
+              "type": "boolean",
+              "default": true,
+              "description": "Build smart context for reviews: instead of sending only the raw diff, the extension resolves the wrapping function body, called functions (BFS depth 2, max 8), and relevant imports. Requires an active language server for the file. Disable if you experience slow reviews or want minimal payloads."
             }
           }
         }
