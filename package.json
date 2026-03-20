@@ -2,7 +2,7 @@
   "name": "ollama-code-review",
   "displayName": "Ollama Code Review",
   "description": "Get AI code reviews and generate commit messages from a local Ollama instance before you commit.",
-  "version": "3.33.0",
+  "version": "3.34.0",
   "sponsor": {
     "url": "https://ko-fi.com/nguyenbavinh"
   },
@@ -1115,13 +1115,20 @@
             },
             "minSeverity": {
               "type": "string",
-              "enum": ["critical", "high", "medium", "low"],
+              "enum": [
+                "critical",
+                "high",
+                "medium",
+                "low"
+              ],
               "default": "high",
               "description": "Only show a notification when findings at or above this severity are found."
             },
             "excludePatterns": {
               "type": "array",
-              "items": { "type": "string" },
+              "items": {
+                "type": "string"
+              },
               "default": [
                 "**/node_modules/**",
                 "**/*.test.*",

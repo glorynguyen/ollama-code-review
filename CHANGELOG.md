@@ -1,3 +1,14 @@
+# [3.34.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.33.0...v3.34.0) (2026-03-20)
+
+
+### Features
+
+* [F-043] add auto-review on save — background code quality monitor ([ff58ef8](https://github.com/glorynguyen/ollama-code-review/commit/ff58ef8b683e165e510b506df5e49d35414fa38b))
+* [F-043] add confirmBeforeReview prompt to auto-review on save ([4197659](https://github.com/glorynguyen/ollama-code-review/commit/419765942ae8a588e3d80c330c195e7863d0f2f8))
+* [F-043] add content cache and LCS diff to auto-review to reduce token usage ([c070cc8](https://github.com/glorynguyen/ollama-code-review/commit/c070cc85b37bc8cec4a23819cffc6bb906887fcc))
+* [F-043] add monorepo-aware import resolution for smart context ([bda2923](https://github.com/glorynguyen/ollama-code-review/commit/bda2923f640c27a7af7af315c8bfade36dcea707))
+* [F-043] replace LCS diff with git diff + smart context builder ([4fa5892](https://github.com/glorynguyen/ollama-code-review/commit/4fa589270a450c18fd66a0ec82283c567742ef48))
+
 # [3.33.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.32.0...v3.33.0) (2026-03-17)
 
 
