@@ -6,6 +6,16 @@
  * threshold are found the user gets a non-blocking status-bar update and an
  * optional pop-up notification.
  *
+ * TOKEN EFFICIENCY — two-level cache:
+ *
+ *   1. Content cache  — if the file has not changed since the last review,
+ *      the API call is skipped entirely (0 tokens).
+ *
+ *   2. Diff mode      — if the file HAS changed but we have a previous version
+ *      cached, only the unified diff (changed lines + context) is sent to the
+ *      AI instead of the full file.  For a 300-line file with a 10-line edit,
+ *      this typically reduces the payload by ~90 %.
+ *
  * The manager is a singleton created once in `commands/index.ts` → `activate()`
  * and passed two thin callbacks so it does not need to import the heavyweight
  * AI pipeline directly:
@@ -37,11 +47,22 @@ export interface AutoReviewConfig {
 	notifyOnFindings: boolean;
 }
 
-/** Callback that runs an AI review of `content` and returns the review markdown. */
+/** Callback that runs an AI review of `content` (or a unified diff) and returns the review markdown. */
 export type ReviewFn = (content: string, label: string) => Promise<string>;
 
 /** Callback that applies inline annotations for the file. */
 export type ApplyAnnotationsFn = (reviewText: string, pseudoDiff: string) => void;
+
+// ---------------------------------------------------------------------------
+// Internal cache entry
+// ---------------------------------------------------------------------------
+
+interface CacheEntry {
+	/** The full content that was last sent to the AI for this file. */
+	content: string;
+	/** Unix timestamp (ms) of when this entry was created. */
+	reviewedAt: number;
+}
 
 // ---------------------------------------------------------------------------
 // Severity helpers
@@ -66,6 +87,234 @@ const SUPPORTED_LANGUAGES = new Set([
 	'swift', 'kotlin',
 ]);
 
+/** Max file lines before we fall back to sending the full new content (LCS is O(n*m)). */
+const LCS_LINE_LIMIT = 500;
+
+/** Number of unchanged lines to include above and below each changed hunk. */
+const DIFF_CONTEXT_LINES = 3;
+
+// ---------------------------------------------------------------------------
+// Diff helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Compute a compact unified diff between `oldContent` and `newContent`.
+ *
+ * Returns:
+ *   - `null`   — files are identical; no API call needed.
+ *   - a diff string — only the changed hunks with context lines.
+ *
+ * Falls back to returning `newContent` unchanged when:
+ *   - either file exceeds LCS_LINE_LIMIT lines (LCS would be too slow), or
+ *   - the diff is larger than half the new file (large refactor — full file is
+ *     more useful context than a giant diff).
+ */
+function computeDiff(
+	oldContent: string,
+	newContent: string,
+	filePath: string,
+): string | null {
+	if (oldContent === newContent) { return null; }
+
+	const oldLines = oldContent.split('\n');
+	const newLines = newContent.split('\n');
+
+	// For very large files use the full new content (LCS is too slow).
+	if (oldLines.length > LCS_LINE_LIMIT || newLines.length > LCS_LINE_LIMIT) {
+		return newContent;
+	}
+
+	const editScript = _lcsEditScript(oldLines, newLines);
+	const hunks = _buildHunks(editScript, oldLines, newLines, DIFF_CONTEXT_LINES);
+
+	if (hunks.length === 0) { return null; }
+
+	// Count changed lines across all hunks.
+	const changedLines = hunks.reduce(
+		(sum, h) => sum + h.lines.filter(l => l[0] !== ' ').length,
+		0,
+	);
+
+	// If more than 50 % of the new file changed, it's a large refactor —
+	// send the full file so the AI has complete context.
+	if (changedLines > newLines.length * 0.5) {
+		return newContent;
+	}
+
+	const header = `--- a/${filePath}\n+++ b/${filePath}\n`;
+	const body = hunks.map(_formatHunk).join('\n');
+	return header + body;
+}
+
+// ---------------------------------------------------------------------------
+// LCS-based diff internals
+// ---------------------------------------------------------------------------
+
+type EditOp = { op: 'eq' | 'ins' | 'del'; line: string };
+
+/**
+ * Compute a minimal edit script (delete/insert/equal operations) between two
+ * line arrays using the standard LCS dynamic-programming algorithm.
+ * Complexity: O(m * n) time and space — only called when both arrays are
+ * within LCS_LINE_LIMIT lines.
+ */
+function _lcsEditScript(oldLines: string[], newLines: string[]): EditOp[] {
+	const m = oldLines.length;
+	const n = newLines.length;
+
+	// Build DP table.
+	const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+	for (let i = 1; i <= m; i++) {
+		for (let j = 1; j <= n; j++) {
+			if (oldLines[i - 1] === newLines[j - 1]) {
+				dp[i][j] = dp[i - 1][j - 1] + 1;
+			} else {
+				dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+			}
+		}
+	}
+
+	// Backtrack to reconstruct the edit script.
+	const result: EditOp[] = [];
+	let i = m;
+	let j = n;
+	while (i > 0 || j > 0) {
+		if (i > 0 && j > 0 && oldLines[i - 1] === newLines[j - 1]) {
+			result.unshift({ op: 'eq', line: oldLines[i - 1] });
+			i--;
+			j--;
+		} else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+			result.unshift({ op: 'ins', line: newLines[j - 1] });
+			j--;
+		} else {
+			result.unshift({ op: 'del', line: oldLines[i - 1] });
+			i--;
+		}
+	}
+
+	return result;
+}
+
+interface Hunk {
+	/** Starting line number in the old file (1-based). */
+	oldStart: number;
+	/** Number of lines from old file in this hunk. */
+	oldCount: number;
+	/** Starting line number in the new file (1-based). */
+	newStart: number;
+	/** Number of lines from new file in this hunk. */
+	newCount: number;
+	/** Lines with prefix: ' ' (context), '+' (added), '-' (deleted). */
+	lines: string[];
+}
+
+/**
+ * Group an edit script into unified-diff hunks with `contextLines` unchanged
+ * lines before and after each changed region.
+ */
+function _buildHunks(
+	editScript: EditOp[],
+	_oldLines: string[],
+	_newLines: string[],
+	contextLines: number,
+): Hunk[] {
+	const hunks: Hunk[] = [];
+
+	// Compute position counters for the formatted lines.
+	let oldLine = 1;
+	let newLine = 1;
+
+	// Mark which indices in editScript are "changed" (ins or del).
+	const isChanged = editScript.map(op => op.op !== 'eq');
+
+	let i = 0;
+	while (i < editScript.length) {
+		// Skip equal lines that are not near any change.
+		if (!isChanged[i]) {
+			const nearChange = editScript
+				.slice(Math.max(0, i - contextLines), i + contextLines + 1)
+				.some(op => op.op !== 'eq');
+			if (!nearChange) {
+				if (editScript[i].op === 'eq') { oldLine++; newLine++; }
+				i++;
+				continue;
+			}
+		}
+
+		// Start of a new hunk — collect context before + changed + context after.
+		const hunkStart = i;
+		const hunkStartOld = oldLine;
+		const hunkStartNew = newLine;
+		const hunkLines: string[] = [];
+
+		// Find the end of the changed region (with trailing context).
+		let end = i;
+		while (end < editScript.length) {
+			// Find next changed line from `end`.
+			let nextChange = end;
+			while (nextChange < editScript.length && !isChanged[nextChange]) {
+				nextChange++;
+			}
+			if (nextChange === editScript.length) { break; }
+			// Include up to contextLines equal lines after the last change.
+			end = Math.min(nextChange + contextLines, editScript.length);
+			// Is there another changed line within this context window?
+			const nextChangeAfter = editScript
+				.slice(nextChange + 1, end + contextLines + 1)
+				.findIndex(op => op.op !== 'eq');
+			if (nextChangeAfter === -1) {
+				// No more changes within context — stop here.
+				break;
+			}
+			end = nextChange + 1 + nextChangeAfter + contextLines;
+			if (end >= editScript.length) { break; }
+		}
+		end = Math.min(end, editScript.length);
+
+		// Collect lines for the hunk.
+		let hunkOld = 0;
+		let hunkNew = 0;
+		for (let k = hunkStart; k < end; k++) {
+			const op = editScript[k];
+			if (op.op === 'eq') {
+				hunkLines.push(` ${op.line}`);
+				hunkOld++;
+				hunkNew++;
+			} else if (op.op === 'del') {
+				hunkLines.push(`-${op.line}`);
+				hunkOld++;
+			} else {
+				hunkLines.push(`+${op.line}`);
+				hunkNew++;
+			}
+		}
+
+		// Advance global line counters to end of hunk.
+		for (let k = hunkStart; k < end; k++) {
+			const op = editScript[k];
+			if (op.op !== 'ins') { oldLine++; }
+			if (op.op !== 'del') { newLine++; }
+		}
+
+		hunks.push({
+			oldStart: hunkStartOld,
+			oldCount: hunkOld,
+			newStart: hunkStartNew,
+			newCount: hunkNew,
+			lines: hunkLines,
+		});
+
+		i = end;
+	}
+
+	return hunks;
+}
+
+function _formatHunk(hunk: Hunk): string {
+	const header = `@@ -${hunk.oldStart},${hunk.oldCount} +${hunk.newStart},${hunk.newCount} @@`;
+	return [header, ...hunk.lines].join('\n');
+}
+
 // ---------------------------------------------------------------------------
 // AutoReviewManager
 // ---------------------------------------------------------------------------
@@ -78,6 +327,13 @@ export class AutoReviewManager implements vscode.Disposable {
 	private readonly _timers = new Map<string, ReturnType<typeof setTimeout>>();
 	/** Files currently being reviewed (to avoid overlapping runs on the same file). */
 	private readonly _activeReviews = new Set<string>();
+	/**
+	 * Content cache — stores the full text that was last sent to the AI for
+	 * each file.  Used to:
+	 *   (a) skip the API call entirely when nothing has changed, and
+	 *   (b) compute a diff instead of re-sending the whole file.
+	 */
+	private readonly _contentCache = new Map<string, CacheEntry>();
 
 	private readonly _statusBarItem: vscode.StatusBarItem;
 
@@ -101,6 +357,13 @@ export class AutoReviewManager implements vscode.Disposable {
 		// Always register the save listener; enabled check happens inside _onSave.
 		this._disposables.push(
 			vscode.workspace.onDidSaveTextDocument(doc => this._onSave(doc)),
+		);
+
+		// Evict cache when a file is closed (to free memory).
+		this._disposables.push(
+			vscode.workspace.onDidCloseTextDocument(doc => {
+				this._contentCache.delete(doc.uri.toString());
+			}),
 		);
 
 		// React to config changes (user toggles the setting manually).
@@ -194,7 +457,7 @@ export class AutoReviewManager implements vscode.Disposable {
 		const relPath = vscode.workspace.asRelativePath(doc.uri);
 		if (this._isExcluded(relPath, cfg.excludePatterns)) { return; }
 
-		// Skip very large files (> 200 KB — the file review command already has a 100 KB cap).
+		// Skip very large files (> 200 KB).
 		if (doc.getText().length > 200 * 1024) { return; }
 
 		// Debounce: cancel any existing timer for this file, then set a new one.
@@ -223,14 +486,74 @@ export class AutoReviewManager implements vscode.Disposable {
 		this._updateStatusBar();
 
 		const relPath = vscode.workspace.asRelativePath(doc.uri);
-		const label = `[Auto-Review: ${relPath}]`;
-		this._outputChannel?.appendLine(`[Auto-Review] Reviewing ${relPath}…`);
+		this._outputChannel?.appendLine(`[Auto-Review] Processing ${relPath}…`);
 
 		try {
-			const content = doc.getText();
+			const currentContent = doc.getText();
 			const cfg = this.getConfig();
+			const cached = this._contentCache.get(key);
 
-			const review = await this._reviewFn(content, label);
+			// ---------------------------------------------------------------
+			// Level 1: skip if nothing changed since the last review.
+			// ---------------------------------------------------------------
+			if (cached && cached.content === currentContent) {
+				this._outputChannel?.appendLine(
+					`[Auto-Review] Skipped ${relPath} — no changes since last review.`,
+				);
+				return;
+			}
+
+			// ---------------------------------------------------------------
+			// Level 2: send only the diff if we have a previous version.
+			// ---------------------------------------------------------------
+			let payload: string;
+			let label: string;
+
+			if (cached) {
+				const diff = computeDiff(cached.content, currentContent, relPath);
+
+				if (diff === null) {
+					// computeDiff found no semantic changes (e.g. only blank lines).
+					this._outputChannel?.appendLine(
+						`[Auto-Review] Skipped ${relPath} — diff is empty.`,
+					);
+					// Update cache so we don't keep trying.
+					this._contentCache.set(key, { content: currentContent, reviewedAt: Date.now() });
+					return;
+				}
+
+				if (diff === currentContent) {
+					// Fell back to full content (large file / large refactor).
+					payload = currentContent;
+					label = `[Auto-Review: ${relPath}]`;
+					this._outputChannel?.appendLine(
+						`[Auto-Review] Sending full file (large diff) for ${relPath}`,
+					);
+				} else {
+					payload = diff;
+					label = `[Auto-Review diff: ${relPath}]`;
+					const diffLines = diff.split('\n').length;
+					const fullLines = currentContent.split('\n').length;
+					this._outputChannel?.appendLine(
+						`[Auto-Review] Sending diff (${diffLines} lines vs ${fullLines} full) for ${relPath}`,
+					);
+				}
+			} else {
+				// First review of this file in this session — send full content.
+				payload = currentContent;
+				label = `[Auto-Review: ${relPath}]`;
+				this._outputChannel?.appendLine(
+					`[Auto-Review] First review — sending full file for ${relPath}`,
+				);
+			}
+
+			// ---------------------------------------------------------------
+			// Run the AI review.
+			// ---------------------------------------------------------------
+			const review = await this._reviewFn(payload, label);
+
+			// Update the cache with the content we just reviewed.
+			this._contentCache.set(key, { content: currentContent, reviewedAt: Date.now() });
 
 			// Apply inline annotations (non-fatal if applyAnnotations is not provided).
 			if (cfg.showAnnotations && this._applyAnnotations) {
@@ -340,6 +663,7 @@ export class AutoReviewManager implements vscode.Disposable {
 	dispose(): void {
 		for (const timer of this._timers.values()) { clearTimeout(timer); }
 		this._timers.clear();
+		this._contentCache.clear();
 		this._disposables.forEach(d => d.dispose());
 		AutoReviewManager._instance = undefined;
 	}
