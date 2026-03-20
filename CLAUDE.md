@@ -95,6 +95,8 @@ src/
 │   ├── index.ts          # Barrel exports
 │   ├── types.ts          # IndexedFinding, SeverityCounts interfaces
 │   └── findingsTreeProvider.ts # TreeDataProvider for sidebar findings navigation
+├── autoReview/           # Auto-Review on Save — background code quality monitor (F-043)
+│   └── index.ts          # AutoReviewManager singleton: save listener, debounce, exclusions, annotations
 └── test/
     └── extension.test.ts # Mocha test suite
 
@@ -177,6 +179,7 @@ out/                      # Compiled JavaScript output
 | `src/reviewFindings/index.ts` | ~5 | Barrel exports for findings explorer module (F-031) |
 | `src/reviewFindings/types.ts` | ~15 | IndexedFinding, SeverityCounts interfaces (F-031) |
 | `src/reviewFindings/findingsTreeProvider.ts` | ~175 | TreeDataProvider for sidebar findings navigation with severity icons (F-031) |
+| `src/autoReview/index.ts` | ~250 | AutoReviewManager singleton: save event listener, per-file debounce, glob exclusion, AI review callback, annotation integration, status bar (F-043) |
 
 ## Commands
 
@@ -224,6 +227,7 @@ out/                      # Compiled JavaScript output
 | `ollama-code-review.goToFinding` | Navigate to a specific finding's file and line in the editor (F-031) |
 | `ollama-code-review.clearFindings` | Clear all findings from the Findings Explorer tree view (F-031) |
 | `ollama-code-review.fixFinding` | Generate an AI fix for a specific review finding (F-033) |
+| `ollama-code-review.toggleAutoReview` | Toggle Auto-Review on Save (background code quality monitor) on/off (F-043) |
 
 ## Configuration Settings
 
@@ -274,6 +278,7 @@ out/                      # Compiled JavaScript output
 | `ollama-code-review.bitbucket.appPassword` | `""` | Bitbucket App Password (Pullrequests Read/Write scope) (F-015) |
 | `ollama-code-review.rag` | `{}` | RAG-Enhanced Reviews configuration (F-009) |
 | `ollama-code-review.annotations` | `{}` | Review Annotations configuration — inline editor decorations for findings (F-029) |
+| `ollama-code-review.autoReview` | `{}` | Auto-Review on Save configuration — background code quality monitor (F-043) |
 
 ### Annotations Settings (F-029)
 
@@ -285,6 +290,19 @@ The `annotations` setting is an object with these properties:
 | `showGutter` | `true` | Show severity icons in the editor gutter |
 | `showLineHighlight` | `true` | Highlight finding lines with severity-based background colors |
 | `showHover` | `true` | Show detailed finding information on hover |
+
+### Auto-Review Settings (F-043)
+
+The `autoReview` setting is an object with these properties:
+
+| Property | Default | Description |
+|----------|---------|-------------|
+| `enabled` | `false` | Enable background AI review on every file save (disabled by default to avoid unexpected API calls) |
+| `debounceMs` | `3000` | ms to wait after the last save before triggering (min 500, max 30000) |
+| `minSeverity` | `"high"` | Only show a notification for findings at or above this level (`critical`/`high`/`medium`/`low`) |
+| `excludePatterns` | `["**/node_modules/**", …]` | Glob patterns for files/directories to skip |
+| `showAnnotations` | `true` | Apply inline editor annotations after each auto-review (requires `annotations.enabled`) |
+| `notifyOnFindings` | `true` | Show a non-blocking notification when relevant findings are found |
 
 ### RAG Settings (F-009)
 
@@ -1211,6 +1229,67 @@ The `ollama-code-review.fixFinding` command enables one-click AI-powered fixes f
 
 ---
 
+## Auto-Review on Save — Background Code Quality Monitor (F-043)
+
+The `src/autoReview/index.ts` module provides passive, always-on code quality monitoring. When enabled, every file save triggers a silent AI review in the background. Results appear as inline annotations and optional notifications without requiring any manual command invocation.
+
+### How It Works
+
+1. `AutoReviewManager` listens to `vscode.workspace.onDidSaveTextDocument`
+2. Each save is debounced per-file (default 3 s) to avoid excessive API calls during rapid edits
+3. Files matching configured exclusion patterns (node_modules, tests, dist, etc.) are silently skipped
+4. The AI review runs via the `reviewFn` callback (provided by `commands/index.ts` as `getOllamaFileReview`)
+5. After the review, `parseFindingCounts()` counts findings by severity
+6. If `showAnnotations` is enabled, inline decorations are applied via `ReviewDecorationsManager`
+7. If `notifyOnFindings` is enabled and findings exceed `minSeverity`, a pop-up notification appears
+8. "View Review" in the notification re-runs `reviewFile` to show the full panel
+
+### Command
+
+| Command | Description |
+|---------|-------------|
+| `ollama-code-review.toggleAutoReview` | Toggle Auto-Review on Save on or off (persists to global settings) |
+
+### Status Bar
+
+A dedicated status bar item at priority 96 (between score at 97 and pre-commit guard) shows:
+- `$(eye-closed) Auto` — disabled (click to enable)
+- `$(eye) Auto` — enabled, idle (click to disable)
+- `$(sync~spin) Auto (N)` — N reviews in progress
+
+### Key Types (`src/autoReview/index.ts`)
+
+```typescript
+interface AutoReviewConfig {
+  enabled: boolean;
+  debounceMs: number;
+  minSeverity: 'critical' | 'high' | 'medium' | 'low';
+  excludePatterns: string[];
+  showAnnotations: boolean;
+  notifyOnFindings: boolean;
+}
+
+type ReviewFn = (content: string, label: string) => Promise<string>;
+type ApplyAnnotationsFn = (reviewText: string, pseudoDiff: string) => void;
+
+class AutoReviewManager implements vscode.Disposable {
+  static create(context, reviewFn, applyAnnotations?, outputChannel?): AutoReviewManager;
+  static getInstance(): AutoReviewManager | undefined;
+  getConfig(): AutoReviewConfig;
+  toggle(): boolean;  // Returns new enabled state
+  dispose(): void;
+}
+```
+
+### Integration (commands/index.ts)
+
+The manager is created in `activate()` with:
+- `reviewFn` → `getOllamaFileReview(content, label, context)` — uses the full AI pipeline
+- `applyAnnotations` → `ReviewDecorationsManager.getInstance().applyFromReview(reviewText, pseudoDiff)` (guarded by `getAnnotationsConfig().enabled`)
+- `outputChannel` → the shared extension output channel
+
+---
+
 ## Review Quality Scoring & Trends (F-016)
 
 Each review produces a 0–100 quality score derived from finding severity counts. Scores are persisted in a local JSON file and surfaced in a status bar item and a history panel.
@@ -1836,6 +1915,13 @@ See [docs/roadmap/](./docs/roadmap/) for comprehensive planning documents:
 | Multi-Model Review Comparison (run same review across 2-4 models in parallel; side-by-side comparison panel) | F-030 | v9.0 |
 | Review Findings Explorer (sidebar tree view for navigating review findings by file and severity) | F-031 | v10.0 |
 | Quick Fix from Review Findings (one-click AI fix from Findings Explorer inline button and annotation hover tooltips) | F-033 | v11.0 |
+| Auto-Review on Save (background code quality monitor; debounced per-file reviews on every save) | F-043 | v3.34.0 |
+
+### Phase 12: Passive Code Quality (Complete — v3.34.0)
+
+| Feature | ID | Priority | Effort | Status | Description |
+|---------|----|----------|--------|--------|-------------|
+| Auto-Review on Save | F-043 | P1 | Low (1-2 days) | ✅ Complete | Background AI review on file save; debounced, non-blocking, with annotations and optional notifications |
 
 ### Phase 11: Review Actions (In Progress — v11.0)
 

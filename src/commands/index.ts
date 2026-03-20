@@ -162,6 +162,7 @@ import {
 import { scanDiffForSecrets, toStructuredFindings, type SecretFinding } from '../secretScanner';
 import { getModelRecommendation, extractLanguagesFromDiff, bucketDiffSize } from '../modelAdvisor';
 import type { ModelAdvisorInput } from '../modelAdvisor';
+import { AutoReviewManager } from '../autoReview';
 
 export { checkActiveModels, getLastPerformanceMetrics, clearPerformanceMetrics };
 export type { PerformanceMetrics };
@@ -2312,6 +2313,34 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 	);
 	context.subscriptions.push(showAnalyticsDashboardCommand);
+
+	// F-043: Auto-Review on Save — Background Code Quality Monitor
+	const autoReviewManager = AutoReviewManager.create(
+		context,
+		// Review callback: reuse the existing file review pipeline (no UI panel).
+		(content: string, label: string) => getOllamaFileReview(content, label, context),
+		// Annotations callback: apply inline decorations for the file's findings.
+		(reviewText: string, pseudoDiff: string) => {
+			const annotCfg = getAnnotationsConfig();
+			if (annotCfg.enabled) {
+				ReviewDecorationsManager.getInstance().applyFromReview(reviewText, pseudoDiff);
+			}
+		},
+		outputChannel,
+	);
+
+	const toggleAutoReviewCommand = vscode.commands.registerCommand(
+		'ollama-code-review.toggleAutoReview',
+		() => {
+			const newState = autoReviewManager.toggle();
+			vscode.window.showInformationMessage(
+				newState
+					? 'Auto-Review on Save: ON — files will be reviewed silently after each save.'
+					: 'Auto-Review on Save: OFF.',
+			);
+		},
+	);
+	context.subscriptions.push(toggleAutoReviewCommand, autoReviewManager);
 
 	// F-029: Toggle Review Annotations command
 	const toggleAnnotationsCommand = vscode.commands.registerCommand(

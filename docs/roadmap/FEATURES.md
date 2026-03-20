@@ -1808,3 +1808,91 @@ After running a code review, users see findings in the Findings Explorer and as 
 - [x] Works with all AI providers via existing `generateFix()` pipeline
 
 ---
+
+### F-043: Auto-Review on Save — Background Code Quality Monitor
+
+| Attribute | Value |
+|-----------|-------|
+| **ID** | F-043 |
+| **Priority** | 🟠 P1 |
+| **Effort** | Low (1-2 days) |
+| **Status** | ✅ Complete |
+| **Shipped** | v3.34.0 (Mar 2026) |
+| **Dependencies** | F-029 (Review Annotations), F-019 (File Review), S-001 (Multi-Provider) |
+
+#### Overview
+
+Passive, always-on code quality monitoring. When enabled, every file save triggers a silent AI review in the background. Developers get continuous feedback without manually invoking any command — like a spell checker, but for code quality.
+
+#### User Problem
+
+All existing review commands require deliberate invocation. Developers often forget to run a review before committing or switch context away and lose the habit. A background monitor provides a safety net without disrupting the flow.
+
+#### Architecture
+
+```
+File Save Event
+      │
+      ▼
+AutoReviewManager._onSave()
+  ├── Enabled? Language supported? Not excluded?
+  │       └── No → return (no-op)
+  ▼
+Per-file debounce timer (default 3 s)
+      │ (reset on each save within the window)
+      ▼
+AutoReviewManager._runReview()
+  ├── Call reviewFn callback → getOllamaFileReview()
+  ├── parseFindingCounts() → count by severity
+  ├── applyAnnotations callback → ReviewDecorationsManager
+  └── notifyOnFindings → vscode.window.showWarningMessage()
+            └── "View Review" → reviewFile command
+```
+
+#### Configuration (`ollama-code-review.autoReview`)
+
+| Property | Default | Description |
+|----------|---------|-------------|
+| `enabled` | `false` | Enable background AI review on every file save |
+| `debounceMs` | `3000` | ms to wait after last save before triggering (min 500) |
+| `minSeverity` | `"high"` | Only notify for findings at or above this level |
+| `excludePatterns` | `["**/node_modules/**", "**/*.test.*", …]` | Glob patterns for files to skip |
+| `showAnnotations` | `true` | Apply inline editor annotations after auto-review |
+| `notifyOnFindings` | `true` | Show pop-up notification when relevant findings found |
+
+#### Status Bar
+
+A dedicated status bar item (priority 96, between score and guard items) always visible:
+
+| State | Display | Tooltip |
+|-------|---------|---------|
+| Disabled | `$(eye-closed) Auto` | Auto-Review on Save: OFF — click to enable |
+| Enabled, idle | `$(eye) Auto` | Auto-Review on Save: ON — click to disable |
+| Reviewing | `$(sync~spin) Auto (N)` | Auto-Review: reviewing N file(s)… |
+
+#### Commands
+
+| Command | Description |
+|---------|-------------|
+| `ollama-code-review.toggleAutoReview` | Toggle Auto-Review on Save on or off |
+
+#### Files Created / Modified
+
+- **New:** `src/autoReview/index.ts` — `AutoReviewManager` singleton class with save listener, per-file debounce, glob-pattern exclusion, review callback, annotation integration, and status bar management
+- `package.json` — Added `toggleAutoReview` command and `ollama-code-review.autoReview` settings object
+- `src/commands/index.ts` — Import `AutoReviewManager`; create singleton in `activate()`; pass `getOllamaFileReview` and `ReviewDecorationsManager.applyFromReview` as callbacks; register `toggleAutoReview` command
+
+#### Acceptance Criteria
+
+- [x] Status bar item always visible; shows ON/OFF/reviewing states
+- [x] Toggle command flips enabled state and persists to global settings
+- [x] Files saved while disabled are silently ignored
+- [x] Excluded patterns (node_modules, tests, dist, etc.) are skipped
+- [x] Debounce prevents excessive API calls on rapid saves
+- [x] Parallel reviews of the same file are prevented
+- [x] Inline annotations applied after each auto-review when `showAnnotations` is true
+- [x] Non-blocking notification shown when findings above `minSeverity` are found
+- [x] "View Review" in notification opens full review panel for the file
+- [x] Output channel logs review start, completion, and errors
+
+---

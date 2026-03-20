@@ -1168,6 +1168,68 @@ One-click AI-powered fixes for issues found during code reviews. After any revie
 
 ---
 
+### 50. Auto-Review on Save — Background Code Quality Monitor (F-043)
+
+Passive, always-on code quality feedback without interrupting your workflow. When enabled, every file save triggers a silent AI review in the background. Findings appear as inline annotations and an optional notification — no need to manually invoke a review command.
+
+> **Disabled by default** to avoid unexpected API calls. Enable it in settings or via the command palette when you want continuous feedback.
+
+**How it works:**
+
+1. Enable via **Command Palette** → `Ollama Code Review: Toggle Auto-Review on Save`, or set `ollama-code-review.autoReview.enabled: true` in your settings.
+2. The status bar shows an `$(eye) Auto` badge when active, `$(eye-closed) Auto` when off, and `$(sync~spin) Auto (N)` while reviewing.
+3. Each time you save a supported file (TypeScript, JavaScript, Python, Rust, Go, Java, PHP, and more), a debounced review starts in the background.
+4. When findings above your configured **minSeverity** threshold are detected, a non-blocking notification appears: click **"View Review"** to open the full review panel, or **"Dismiss"** to ignore.
+5. Inline annotations (gutter icons, line highlights, hover tooltips) are applied to the saved file so you can see issues without leaving the editor.
+
+**Features:**
+
+- **Debounced saves** — configurable delay (default 3 s) prevents excessive API calls when saving rapidly.
+- **Smart exclusions** — `node_modules`, test files, `dist/`, and other noisy paths are skipped by default; fully configurable.
+- **Severity filter** — only notify for `critical` / `high` / `medium` / `low` findings; defaults to `high`.
+- **Annotation integration** — reuses the F-029 inline decoration system; respects your `annotations.enabled` setting.
+- **Non-blocking** — runs in a background promise; never blocks typing or saving.
+- **Status bar indicator** — always visible, click to toggle on/off.
+
+**Commands:**
+
+| Command | Description |
+|---------|-------------|
+| `ollama-code-review.toggleAutoReview` | Toggle Auto-Review on Save on or off |
+
+**Settings (`ollama-code-review.autoReview`):**
+
+| Property | Default | Description |
+|----------|---------|-------------|
+| `enabled` | `false` | Enable background AI review on every file save |
+| `debounceMs` | `3000` | Milliseconds to wait after the last save before triggering a review (min 500) |
+| `minSeverity` | `"high"` | Only notify when findings at or above this level are found (`critical` / `high` / `medium` / `low`) |
+| `excludePatterns` | `["**/node_modules/**", "**/*.test.*", …]` | Glob patterns for files to skip |
+| `showAnnotations` | `true` | Apply inline editor annotations after each auto-review |
+| `notifyOnFindings` | `true` | Show a pop-up notification when relevant findings are found |
+
+**Example settings.json configuration:**
+
+```json
+"ollama-code-review.autoReview": {
+  "enabled": true,
+  "debounceMs": 2000,
+  "minSeverity": "high",
+  "excludePatterns": [
+    "**/node_modules/**",
+    "**/*.test.*",
+    "**/*.spec.*",
+    "**/dist/**"
+  ],
+  "showAnnotations": true,
+  "notifyOnFindings": true
+}
+```
+
+> **Tip:** Pair Auto-Review with a fast model (e.g., `gemini-2.5-flash` or a local Ollama `qwen2.5-coder:7b`) and set `minSeverity` to `critical` for near-zero noise during development.
+
+---
+
 ## Requirements
 
 You must have the following software installed and configured for this extension to work.
@@ -1326,6 +1388,14 @@ This extension contributes the following settings to your VS Code `settings.json
     * `apiHost`: Contentstack API host URL (default: `"https://api.contentstack.io"`). Use region-specific URLs for EU/Azure stacks.
     * `localSchemaPath`: Path to local JSON schema export file, relative to workspace root (default: `".contentstack/schema.json"`)
     * `maxContentTypes`: Maximum number of content type schemas to inject per review prompt (default: `5`, range: 1–20)
+
+* `ollama-code-review.autoReview`: Configure Auto-Review on Save (F-043). When enabled, files are silently reviewed by the AI in the background after each save.
+    * `enabled`: Enable background AI review on every file save (default: `false`)
+    * `debounceMs`: Milliseconds to wait after the last save before triggering a review (default: `3000`, min: `500`)
+    * `minSeverity`: Only notify for findings at or above this severity level — `critical`, `high`, `medium`, or `low` (default: `"high"`)
+    * `excludePatterns`: Array of glob patterns for files to skip (default: node_modules, test files, dist, build)
+    * `showAnnotations`: Apply inline editor annotations after each auto-review (default: `true`)
+    * `notifyOnFindings`: Show a pop-up notification when relevant findings are found (default: `true`)
 
 You can configure these by opening the Command Palette (`Ctrl+Shift+P`) and searching for `Preferences: Open User Settings (JSON)`.
 
