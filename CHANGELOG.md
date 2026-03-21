@@ -1,3 +1,10 @@
+# [3.36.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.35.0...v3.36.0) (2026-03-21)
+
+
+### Features
+
+* add copy function with imports ([53b63d4](https://github.com/glorynguyen/ollama-code-review/commit/53b63d420918298bd205fa5e1d9399533533c048))
+
 # [3.35.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.34.0...v3.35.0) (2026-03-20)
 
 
