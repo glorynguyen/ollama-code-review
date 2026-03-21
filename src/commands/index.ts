@@ -164,6 +164,8 @@ import { scanDiffForSecrets, toStructuredFindings, type SecretFinding } from '..
 import { getModelRecommendation, extractLanguagesFromDiff, bucketDiffSize } from '../modelAdvisor';
 import type { ModelAdvisorInput } from '../modelAdvisor';
 import { AutoReviewManager } from '../autoReview';
+import { MonorepoResolver } from '../autoReview/monorepo';
+import { buildFunctionContext, type FunctionContextEntry } from '../autoReview/smartContext';
 
 export { checkActiveModels, getLastPerformanceMetrics, clearPerformanceMetrics };
 export type { PerformanceMetrics };
@@ -2536,6 +2538,85 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 	);
 	context.subscriptions.push(copyFileWithImportsCommand);
+
+	// Copy Function with Imports — uses smart context BFS call-graph traversal + monorepo resolver
+	const copyFunctionWithImportsCommand = vscode.commands.registerCommand(
+		'ollama-code-review.copyFunctionWithImports',
+		async () => {
+			const editor = vscode.window.activeTextEditor;
+			if (!editor) {
+				vscode.window.showWarningMessage('Open a file and place cursor inside a function to copy it.');
+				return;
+			}
+
+			const workspaceFolders = vscode.workspace.workspaceFolders;
+			if (!workspaceFolders || workspaceFolders.length === 0) {
+				vscode.window.showWarningMessage('No workspace folder open.');
+				return;
+			}
+			const workspaceRoot = workspaceFolders[0].uri;
+			const position = editor.selection.active;
+
+			try {
+				await vscode.window.withProgress({
+					location: vscode.ProgressLocation.Notification,
+					title: 'Ollama: Bundling Function and Imports...',
+					cancellable: true,
+				}, async (progress, token) => {
+					progress.report({ message: 'Detecting function and traversing call graph...' });
+
+					if (token.isCancellationRequested) { return; }
+
+					// Use the monorepo resolver from AutoReviewManager if available,
+					// otherwise create a fresh one for this operation.
+					const existingManager = AutoReviewManager.getInstance();
+					const resolver = existingManager?.resolver ?? new MonorepoResolver();
+
+					const result = await buildFunctionContext(
+						editor.document.uri,
+						position,
+						{ resolver, workspaceRoot: workspaceRoot.fsPath },
+					);
+
+					if (token.isCancellationRequested) { return; }
+
+					if (!result.target) {
+						vscode.window.showWarningMessage('No function found at cursor position. Place your cursor inside a function.');
+						return;
+					}
+
+					// Format the bundle for clipboard.
+					const target = result.target;
+					const deps = result.entries.filter(e => e.depth > 0);
+
+					let bundled = `=== Function: ${target.name} (from ${target.relativePath}) ===\n`;
+
+					if (result.imports.length > 0) {
+						bundled += `\n// Imports:\n${result.imports.join('\n')}\n\n`;
+					}
+
+					bundled += `${target.body}\n`;
+
+					for (const dep of deps) {
+						bundled += `\n=== Called: ${dep.name} (from ${dep.relativePath}, depth ${dep.depth}) ===\n${dep.body}\n`;
+					}
+
+					if (result.budgetExhausted) {
+						bundled += '\n// … additional called functions omitted (budget reached)\n';
+					}
+
+					await vscode.env.clipboard.writeText(bundled);
+
+					vscode.window.showInformationMessage(
+						`Copied function "${target.name}" and ${deps.length} dependency function(s) to clipboard!`
+					);
+				});
+			} catch (error) {
+				handleError(error, 'Failed to copy function with imports.');
+			}
+		}
+	);
+	context.subscriptions.push(copyFunctionWithImportsCommand);
 
 	// F-028: Semantic Version Bump Advisor — analyze staged diff and suggest MAJOR/MINOR/PATCH
 	const suggestVersionBumpCommand = vscode.commands.registerCommand(

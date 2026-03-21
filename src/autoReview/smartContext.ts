@@ -117,7 +117,7 @@ export async function buildSmartContext(
 	let totalChars = 0;
 	let budgetExhausted = false;
 
-	// visited key: `${absoluteFilePath}::${fnName}`
+	// visited key: `${absoluteFilePath}::${fnName}::${startLine}`
 	const visited = new Set<string>();
 	// Queue entries: { uri, symbol, depth }
 	type QueueEntry = { uri: vscode.Uri; symbol: vscode.DocumentSymbol; depth: number };
@@ -126,7 +126,7 @@ export async function buildSmartContext(
 	while (queue.length > 0 && sections.length < MAX_FUNCTIONS) {
 		const entry = queue.shift()!;
 		const { uri, symbol, depth } = entry;
-		const visitedKey = `${uri.fsPath}::${symbol.name}`;
+		const visitedKey = `${uri.fsPath}::${symbol.name}::${symbol.range.start.line}`;
 		if (visited.has(visitedKey)) { continue; }
 		visited.add(visitedKey);
 
@@ -185,7 +185,7 @@ export async function buildSmartContext(
 					const defSym = _findSymbolAtLine(defSymbols, loc.range.start.line);
 					if (!defSym) { continue; }
 
-					const defKey = `${defUri.fsPath}::${defSym.name}`;
+					const defKey = `${defUri.fsPath}::${defSym.name}::${defSym.range.start.line}`;
 					if (!visited.has(defKey)) {
 						queue.push({ uri: defUri, symbol: defSym, depth: depth + 1 });
 					}
@@ -225,6 +225,149 @@ export async function buildSmartContext(
 	return {
 		context: lines.join('\n'),
 		functionCount: sections.length,
+		budgetExhausted,
+	};
+}
+
+/**
+ * Build a context bundle for the function at a specific cursor position.
+ *
+ * Unlike {@link buildSmartContext} which derives context from a diff, this
+ * function takes a file URI and cursor position, finds the enclosing function,
+ * and BFS-expands its call graph — returning each function body with its
+ * file location.  Designed for "Copy Function with Imports" and similar
+ * interactive commands.
+ *
+ * @param fileUri   The document URI.
+ * @param position  The cursor position (must be inside a function).
+ * @param options   Optional monorepo resolver for cross-package traversal.
+ * @returns Array of collected function sections, or empty if no function found.
+ */
+export interface FunctionContextEntry {
+	/** Workspace-relative file path. */
+	relativePath: string;
+	/** Function/method name. */
+	name: string;
+	/** Full function body text. */
+	body: string;
+	/** BFS depth (0 = the target function). */
+	depth: number;
+}
+
+export interface FunctionContextResult {
+	/** The target function at depth 0. */
+	target: FunctionContextEntry | undefined;
+	/** All collected functions (including target). */
+	entries: FunctionContextEntry[];
+	/** Import lines from the file containing the target function. */
+	imports: string[];
+	/** Whether the budget was exhausted. */
+	budgetExhausted: boolean;
+}
+
+export async function buildFunctionContext(
+	fileUri: vscode.Uri,
+	position: vscode.Position,
+	options?: SmartContextOptions,
+): Promise<FunctionContextResult> {
+	const empty: FunctionContextResult = { target: undefined, entries: [], imports: [], budgetExhausted: false };
+
+	let doc: vscode.TextDocument;
+	try {
+		doc = await vscode.workspace.openTextDocument(fileUri);
+	} catch {
+		return empty;
+	}
+
+	const symbols = await _getDocumentSymbols(fileUri);
+	const flat = _flattenSymbols(symbols).filter(s => FN_KINDS.has(s.kind));
+
+	// Find the innermost function containing the cursor.
+	const candidates = flat.filter(
+		s => s.range.start.line <= position.line && s.range.end.line >= position.line,
+	);
+	if (candidates.length === 0) { return empty; }
+
+	candidates.sort(
+		(a, b) => (a.range.end.line - a.range.start.line) - (b.range.end.line - b.range.start.line),
+	);
+	const targetSymbol = candidates[0];
+
+	// Collect imports from the file.
+	const imports = _extractImports(doc.getText());
+
+	// BFS call-graph expansion (same algorithm as buildSmartContext).
+	const COPY_MAX_DEPTH = 3;
+	const COPY_MAX_FUNCTIONS = 15;
+	const COPY_CHAR_BUDGET = 64_000;
+	const COPY_PER_FN = 8_000;
+
+	const entries: FunctionContextEntry[] = [];
+	let totalChars = 0;
+	let budgetExhausted = false;
+
+	const visited = new Set<string>();
+	type QueueEntry = { uri: vscode.Uri; symbol: vscode.DocumentSymbol; depth: number };
+	const queue: QueueEntry[] = [{ uri: fileUri, symbol: targetSymbol, depth: 0 }];
+
+	while (queue.length > 0 && entries.length < COPY_MAX_FUNCTIONS) {
+		const entry = queue.shift()!;
+		const { uri, symbol, depth } = entry;
+		const visitedKey = `${uri.fsPath}::${symbol.name}::${symbol.range.start.line}`;
+		if (visited.has(visitedKey)) { continue; }
+		visited.add(visitedKey);
+
+		if (totalChars >= COPY_CHAR_BUDGET) {
+			budgetExhausted = true;
+			break;
+		}
+
+		let fnDoc: vscode.TextDocument;
+		try {
+			fnDoc = await vscode.workspace.openTextDocument(uri);
+		} catch {
+			continue;
+		}
+
+		const rawBody = fnDoc.getText(symbol.range);
+		const body = rawBody.length > COPY_PER_FN
+			? rawBody.slice(0, COPY_PER_FN) + '\n// … truncated'
+			: rawBody;
+
+		const relPath = vscode.workspace.asRelativePath(uri);
+		entries.push({ relativePath: relPath, name: symbol.name, body, depth });
+		totalChars += body.length;
+
+		// BFS-expand call graph.
+		if (depth < COPY_MAX_DEPTH) {
+			const callNames = _extractCallNames(rawBody);
+			for (const callName of callNames) {
+				if (entries.length + queue.length >= COPY_MAX_FUNCTIONS) { break; }
+
+				const callPos = _findCallPosition(fnDoc, symbol.range, callName);
+				if (!callPos) { continue; }
+
+				const defLocations = await _getDefinition(uri, callPos);
+				for (const loc of defLocations) {
+					if (await _shouldSkip(loc.uri, options)) { continue; }
+
+					const defSymbols = await _getDocumentSymbols(loc.uri);
+					const defSym = _findSymbolAtLine(defSymbols, loc.range.start.line);
+					if (!defSym) { continue; }
+
+					const defKey = `${loc.uri.fsPath}::${defSym.name}::${defSym.range.start.line}`;
+					if (!visited.has(defKey)) {
+						queue.push({ uri: loc.uri, symbol: defSym, depth: depth + 1 });
+					}
+				}
+			}
+		}
+	}
+
+	return {
+		target: entries.find(e => e.depth === 0),
+		entries,
+		imports,
 		budgetExhausted,
 	};
 }

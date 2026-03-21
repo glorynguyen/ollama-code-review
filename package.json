@@ -175,6 +175,12 @@
         "icon": "$(copy)"
       },
       {
+        "command": "ollama-code-review.copyFunctionWithImports",
+        "title": "Copy Function with Imports (for LLM)",
+        "category": "Ollama Code Review",
+        "icon": "$(symbol-method)"
+      },
+      {
         "command": "ollama-code-review.reviewFile",
         "title": "Review File (No Git Required)",
         "category": "Ollama Code Review",
@@ -434,6 +440,11 @@
           "when": "editorIsOpen",
           "command": "ollama-code-review.copyFileWithImports",
           "group": "9_ollama@4"
+        },
+        {
+          "when": "editorIsOpen",
+          "command": "ollama-code-review.copyFunctionWithImports",
+          "group": "9_ollama@5"
         }
       ],
       "explorer/context": [
