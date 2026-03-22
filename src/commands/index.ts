@@ -583,6 +583,113 @@ export async function activate(context: vscode.ExtensionContext) {
 	);
 	context.subscriptions.push(askFindingCommand);
 
+	// F-044: View Diff for a finding — opens VS Code's native diff editor
+	let lastDiffBeforeUri: vscode.Uri | undefined;
+	const viewFindingDiffCommand = vscode.commands.registerCommand(
+		'ollama-code-review.viewFindingDiff',
+		async (findingOrElement?: unknown) => {
+			try {
+				// Resolve the finding from direct object, FindingNode, or FileNode
+				let finding: { severity: string; message: string; file?: string; line?: number } | undefined;
+				let filePath: string | undefined;
+
+				if (findingOrElement && typeof findingOrElement === 'object' && 'message' in findingOrElement && 'severity' in findingOrElement) {
+					finding = findingOrElement as { severity: string; message: string; file?: string; line?: number };
+					filePath = finding.file;
+				} else if (findingOrElement && findingsTreeProvider) {
+					finding = findingsTreeProvider.getFindingFromElement(findingOrElement);
+					if (finding) {
+						filePath = finding.file;
+					} else {
+						// FileNode: get file path and first finding for scroll target
+						filePath = findingsTreeProvider.getFilePathFromElement(findingOrElement);
+						finding = findingsTreeProvider.getFirstFindingForFile(findingOrElement);
+					}
+				}
+
+				if (!filePath || filePath === '(no file reference)') {
+					vscode.window.showWarningMessage('No file reference found for this finding.');
+					return;
+				}
+
+				// Resolve the file URI in the workspace
+				const workspaceFolders = vscode.workspace.workspaceFolders;
+				let fileUri: vscode.Uri | undefined;
+				if (workspaceFolders) {
+					for (const folder of workspaceFolders) {
+						const candidateUri = vscode.Uri.joinPath(folder.uri, filePath);
+						try {
+							await vscode.workspace.fs.stat(candidateUri);
+							fileUri = candidateUri;
+							break;
+						} catch { /* try next folder */ }
+					}
+				}
+				if (!fileUri) {
+					try {
+						fileUri = vscode.Uri.file(filePath);
+						await vscode.workspace.fs.stat(fileUri);
+					} catch {
+						vscode.window.showWarningMessage(`Could not find file: ${filePath}`);
+						return;
+					}
+				}
+
+				// Determine repo root and relative path
+				const workspaceFolder = vscode.workspace.getWorkspaceFolder(fileUri);
+				const repoRoot = workspaceFolder?.uri.fsPath;
+				if (!repoRoot) {
+					vscode.window.showWarningMessage('Could not determine workspace root.');
+					return;
+				}
+				const relativePath = path.relative(repoRoot, fileUri.fsPath).replace(/\\/g, '/');
+
+				// Get "before" content from git HEAD
+				let beforeContent = '';
+				try {
+					beforeContent = await runGitCommand(repoRoot, ['show', `HEAD:${relativePath}`]);
+				} catch {
+					// File is new/untracked — empty "before" shows all lines as additions
+					beforeContent = '';
+				}
+
+				// Clean up previous virtual document
+				if (lastDiffBeforeUri) {
+					suggestionProvider.deleteContent(lastDiffBeforeUri);
+				}
+
+				// Create virtual URI for "before" content using existing provider
+				const ts = Date.now();
+				const beforeUri = vscode.Uri.parse(`ollama-suggestion:diff-before/${path.basename(filePath)}?ts=${ts}`);
+				suggestionProvider.setContent(beforeUri, beforeContent);
+				lastDiffBeforeUri = beforeUri;
+
+				// Open the native diff editor
+				const severity = finding?.severity ? ` [${finding.severity.toUpperCase()}]` : '';
+				const diffTitle = `${filePath}${severity} — Review Diff`;
+				await vscode.commands.executeCommand('vscode.diff', beforeUri, fileUri, diffTitle, {
+					preview: true,
+				});
+
+				// Scroll to the finding's line after the diff editor opens
+				if (finding?.line) {
+					setTimeout(() => {
+						const editor = vscode.window.activeTextEditor;
+						if (editor) {
+							const lineNum = Math.max(0, finding!.line! - 1);
+							const range = new vscode.Range(lineNum, 0, lineNum, 0);
+							editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
+						}
+					}, 300);
+				}
+			} catch (err) {
+				vscode.window.showErrorMessage(`Failed to open diff viewer: ${err instanceof Error ? err.message : String(err)}`);
+				outputChannel.appendLine(`[F-044 viewFindingDiff] Error: ${err}`);
+			}
+		}
+	);
+	context.subscriptions.push(viewFindingDiffCommand);
+
 	// Register profile selection command
 	const selectProfileCommand = vscode.commands.registerCommand('ollama-code-review.selectProfile', async () => {
 		const profiles = getAllProfiles(context);

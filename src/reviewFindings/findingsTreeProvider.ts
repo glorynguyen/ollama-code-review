@@ -220,4 +220,20 @@ export class FindingsTreeProvider implements vscode.TreeDataProvider<TreeElement
 		}
 		return undefined;
 	}
+
+	/** F-044: Get the file path from a FileNode element. */
+	getFilePathFromElement(element: unknown): string | undefined {
+		if (element instanceof FileNode && element.filePath !== '(no file reference)') {
+			return element.filePath;
+		}
+		return undefined;
+	}
+
+	/** F-044: Get the first finding for a FileNode (for scroll target). */
+	getFirstFindingForFile(element: unknown): IndexedFinding | undefined {
+		if (element instanceof FileNode && element.findings.length > 0) {
+			return element.findings[0];
+		}
+		return undefined;
+	}
 }

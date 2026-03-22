@@ -64,7 +64,7 @@ export const MODEL_PROFILES: ModelProfile[] = [
 /** Classify an Ollama model name into a tier */
 export function classifyOllamaModel(name: string): ModelTier {
 	const lower = name.toLowerCase();
-	if (lower.includes('coder') || lower.includes('code')) return 'code-specialist';
+	if (lower.includes('coder') || lower.includes('code')) {return 'code-specialist';}
 	if (lower.includes('70b') || lower.includes('405b') || lower.includes('llama3') || lower.includes('dolphin')) {
 		return 'flagship';
 	}
@@ -167,6 +167,6 @@ const DEFAULT_PROFILE_AFFINITY: Record<ModelTier, number> = {
 
 /** Get profile affinity for a tier, with default fallback */
 export function getProfileAffinity(profileName: string | undefined, tier: ModelTier): number {
-	if (!profileName) return DEFAULT_PROFILE_AFFINITY[tier];
+	if (!profileName) {return DEFAULT_PROFILE_AFFINITY[tier];}
 	return PROFILE_TIER_AFFINITY[profileName]?.[tier] ?? DEFAULT_PROFILE_AFFINITY[tier];
 }

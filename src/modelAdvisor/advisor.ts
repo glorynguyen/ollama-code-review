@@ -10,8 +10,8 @@ import type { ModelProfile } from './types';
 
 /** Bucket a diff by character count: <2KB small, <20KB medium, >=20KB large */
 export function bucketDiffSize(charCount: number): DiffSizeBucket {
-	if (charCount < 2000) return 'small';
-	if (charCount < 20000) return 'medium';
+	if (charCount < 2000) {return 'small';}
+	if (charCount < 20000) {return 'medium';}
 	return 'large';
 }
 
@@ -112,7 +112,7 @@ export function extractLanguagesFromDiff(diff: string): string[] {
 	const filePattern = /^(?:diff --git a\/.*?\.(\w+)|[-+]{3} [ab]\/.*?\.(\w+))/gm;
 	const exts = new Set<string>();
 	let match: RegExpExecArray | null;
-	// eslint-disable-next-line no-cond-assign
+	 
 	while ((match = filePattern.exec(diff)) !== null) {
 		const ext = match[1] || match[2];
 		if (ext) {
@@ -167,7 +167,7 @@ export async function getModelRecommendation(
 			available = true;
 		}
 
-		if (!available) continue;
+		if (!available) {continue;}
 
 		const { score, reason } = scoreModel(profile, input);
 		candidates.push({ ...profile, score, reason });

@@ -324,6 +324,12 @@
         "icon": "$(comment-discussion)"
       },
       {
+        "command": "ollama-code-review.viewFindingDiff",
+        "title": "View Diff",
+        "category": "Ollama Code Review",
+        "icon": "$(diff)"
+      },
+      {
         "command": "ollama-code-review.toggleAutoReview",
         "title": "Toggle Auto-Review on Save",
         "category": "Ollama Code Review",
@@ -531,6 +537,16 @@
           "command": "ollama-code-review.askFinding",
           "when": "view == ai-review.findings-explorer && (viewItem == finding || viewItem == findingNoFile)",
           "group": "inline"
+        },
+        {
+          "command": "ollama-code-review.viewFindingDiff",
+          "when": "view == ai-review.findings-explorer && viewItem == finding",
+          "group": "inline"
+        },
+        {
+          "command": "ollama-code-review.viewFindingDiff",
+          "when": "view == ai-review.findings-explorer && viewItem == findingsFile",
+          "group": "navigation"
         }
       ],
       "view/title": [
