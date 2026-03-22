@@ -1,3 +1,10 @@
+# [3.38.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.37.0...v3.38.0) (2026-03-22)
+
+
+### Features
+
+* **findings:** [F-044] add diff viewer command ([966d701](https://github.com/glorynguyen/ollama-code-review/commit/966d70160e0d7433e40921968d6f2f4b58e1a8ac))
+
 # [3.37.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.36.0...v3.37.0) (2026-03-22)
 
 
