@@ -2438,9 +2438,14 @@ export async function activate(context: vscode.ExtensionContext) {
 					const budget = { remaining: IMPORT_TOTAL_BUDGET - mainContent.length };
 					const visited = new Set<string>();
 
-					// Recursively resolve imports
+					// Use the monorepo resolver from AutoReviewManager if available,
+					// otherwise create a fresh one so cross-package imports are followed.
+					const existingManager = AutoReviewManager.getInstance();
+					const resolver = existingManager?.resolver ?? new MonorepoResolver();
+
+					// Recursively resolve imports (monorepo-aware)
 					const importedFiles = await resolveImportsRecursively(
-						fileUri, workspaceRoot, visited, 0, budget,
+						fileUri, workspaceRoot, visited, 0, budget, resolver,
 					);
 
 					if (token.isCancellationRequested) { return; }
@@ -2512,9 +2517,14 @@ export async function activate(context: vscode.ExtensionContext) {
 					const budget = { remaining: IMPORT_TOTAL_BUDGET - mainContent.length };
 					const visited = new Set<string>();
 
-					// 2. Resolve imports recursively (using your existing helper)
+					// Use the monorepo resolver from AutoReviewManager if available,
+					// otherwise create a fresh one so cross-package imports are followed.
+					const existingManager = AutoReviewManager.getInstance();
+					const resolver = existingManager?.resolver ?? new MonorepoResolver();
+
+					// 2. Resolve imports recursively (monorepo-aware)
 					const importedFiles = await resolveImportsRecursively(
-						fileUri, workspaceRoot, visited, 0, budget,
+						fileUri, workspaceRoot, visited, 0, budget, resolver,
 					);
 
 					if (token.isCancellationRequested) { return; }
@@ -2527,7 +2537,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
 					// 4. Copy to Clipboard
 					await vscode.env.clipboard.writeText(bundled);
-					
+
 					vscode.window.showInformationMessage(
 						`Copied ${relativePath} and ${importedFiles.length} imports to clipboard!`
 					);
@@ -4062,8 +4072,67 @@ const IMPORT_TOTAL_BUDGET = 64_000;
 const IMPORT_MAX_DEPTH = 3;
 
 /**
+ * Resolve a bare (non-relative) import specifier to a workspace file URI using
+ * the {@link MonorepoResolver}.  Handles scoped packages (`@scope/pkg/sub`)
+ * and unscoped packages (`pkg/sub`).
+ *
+ * Resolution order inside the discovered package:
+ *   1. `srcPath/<subpath>` with TS extension resolution
+ *   2. `rootPath/src/<subpath>` with TS extension resolution
+ *   3. `rootPath/<subpath>` with TS extension resolution
+ *   4. Package entry point (index file) when no subpath is specified
+ */
+async function resolveMonorepoImport(
+	specifier: string,
+	resolver: MonorepoResolver,
+	workspaceRoot: string,
+): Promise<vscode.Uri | undefined> {
+	// Split specifier into package name and optional subpath.
+	// Scoped: `@scope/pkg`         → name=`@scope/pkg`, sub=undefined
+	// Scoped: `@scope/pkg/utils`   → name=`@scope/pkg`, sub=`utils`
+	// Unscoped: `my-lib/foo`       → name=`my-lib`,     sub=`foo`
+	let pkgName: string;
+	let subpath: string | undefined;
+
+	if (specifier.startsWith('@')) {
+		// Scoped package: first two segments are the name.
+		const parts = specifier.split('/');
+		pkgName = parts.slice(0, 2).join('/');
+		subpath = parts.length > 2 ? parts.slice(2).join('/') : undefined;
+	} else {
+		const slashIdx = specifier.indexOf('/');
+		pkgName = slashIdx === -1 ? specifier : specifier.slice(0, slashIdx);
+		subpath = slashIdx === -1 ? undefined : specifier.slice(slashIdx + 1);
+	}
+
+	const pkg = await resolver.findPackageByName(pkgName, workspaceRoot);
+	if (!pkg) { return undefined; }
+
+	const wsRootUri = vscode.Uri.file(workspaceRoot);
+
+	// Try resolving the subpath (or index) inside the package.
+	const candidateRoots: string[] = [];
+	if (pkg.srcPath) { candidateRoots.push(pkg.srcPath); }
+	candidateRoots.push(path.join(pkg.rootPath, 'src'));
+	candidateRoots.push(pkg.rootPath);
+
+	const target = subpath ?? 'index';
+
+	for (const root of candidateRoots) {
+		const relFromWs = path.relative(workspaceRoot, path.join(root, target));
+		const resolved = await resolveImport(relFromWs, '', wsRootUri);
+		if (resolved) { return resolved; }
+	}
+
+	return undefined;
+}
+
+/**
  * Recursively resolve local imports for a file, returning all imported file contents.
  * Skips node_modules, already-visited files, and respects depth and budget limits.
+ *
+ * When a {@link MonorepoResolver} is provided, bare specifiers (e.g. `@myapp/shared`)
+ * that match a local workspace package are also followed.
  */
 async function resolveImportsRecursively(
 	fileUri: vscode.Uri,
@@ -4071,6 +4140,7 @@ async function resolveImportsRecursively(
 	visited: Set<string>,
 	depth: number,
 	budget: { remaining: number },
+	resolver?: MonorepoResolver,
 ): Promise<Array<{ relativePath: string; content: string }>> {
 	if (visited.has(fileUri.fsPath) || depth > IMPORT_MAX_DEPTH || budget.remaining <= 0) {
 		return [];
@@ -4087,12 +4157,18 @@ async function resolveImportsRecursively(
 	const relativeSrc = vscode.workspace.asRelativePath(fileUri);
 
 	for (const imp of imports) {
-		const isWorkspaceImport = imp.isRelative || imp.specifier.startsWith('src/');
-		if (!isWorkspaceImport) {
-			continue; // skip node_modules / bare specifiers
+		let resolved: vscode.Uri | undefined;
+
+		if (imp.isRelative || imp.specifier.startsWith('src/')) {
+			// Relative or src/-prefixed import — use standard file resolution.
+			resolved = await resolveImport(imp.specifier, relativeSrc, workspaceRoot);
+		} else if (resolver) {
+			// Bare specifier — try monorepo workspace package resolution.
+			resolved = await resolveMonorepoImport(
+				imp.specifier, resolver, workspaceRoot.fsPath,
+			);
 		}
 
-		const resolved = await resolveImport(imp.specifier, relativeSrc, workspaceRoot);
 		if (!resolved || visited.has(resolved.fsPath)) {
 			continue;
 		}
@@ -4112,7 +4188,7 @@ async function resolveImportsRecursively(
 		results.push({ relativePath: relPath, content: truncated });
 
 		// Recurse into this file's imports
-		const nested = await resolveImportsRecursively(resolved, workspaceRoot, visited, depth + 1, budget);
+		const nested = await resolveImportsRecursively(resolved, workspaceRoot, visited, depth + 1, budget, resolver);
 		results.push(...nested);
 	}
 
