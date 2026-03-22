@@ -1,3 +1,10 @@
+# [3.37.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.36.0...v3.37.0) (2026-03-22)
+
+
+### Features
+
+* **commands:** support monorepo imports ([423b570](https://github.com/glorynguyen/ollama-code-review/commit/423b5706697babe8a20bd6a096507668175ce9c8))
+
 # [3.36.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.35.0...v3.36.0) (2026-03-21)
 
 
