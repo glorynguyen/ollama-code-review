@@ -20,6 +20,52 @@ It leverages the power of local large language models to provide feedback on:
 - Adherence to best practices
 - Code readability and maintainability
 
+---
+
+## Quick Start
+
+### First-Time Setup Guide
+
+On first install, the extension shows an **interactive Setup Guide** that walks you through:
+
+1. **Installing Ollama** (or choosing cloud models instead)
+2. **Pulling a recommended model** (e.g., `kimi-k2.5:cloud`)
+3. **Getting started** with your first review
+
+You can reopen the guide at any time via the Command Palette: `Ollama Code Review: Open Setup Guide`.
+
+> **Don't want to install anything locally?** Choose "Use Cloud Models" in the setup guide to skip Ollama entirely and use providers like Gemini (free tier), Claude, Mistral, or any OpenAI-compatible server.
+
+### Requirements
+
+You must have the following software installed and configured for this extension to work.
+
+#### For Local Ollama Models
+1.  **[Ollama](https://ollama.com/)**: Download and install from the official website.
+2.  **An Ollama Model**: Pull a model tuned for coding:
+    ```bash
+    ollama pull kimi-k2.5:cloud
+    ```
+
+#### For Cloud Models (No Local Setup Required)
+Pick **one** of the following providers and configure its API key:
+
+| Provider | API Key Setting | Get API Key |
+|----------|----------------|-------------|
+| **Gemini** (free tier) | `geminiApiKey` | [aistudio.google.com](https://aistudio.google.com/) |
+| **Claude** | `claudeApiKey` | [console.anthropic.com](https://console.anthropic.com/) |
+| **Mistral** | `mistralApiKey` | [console.mistral.ai](https://console.mistral.ai/) |
+| **GLM** (free tier) | `glmApiKey` | [open.bigmodel.cn](https://open.bigmodel.cn/) |
+| **MiniMax** | `minimaxApiKey` | [platform.minimaxi.com](https://platform.minimaxi.com/) |
+| **Hugging Face** | `hfApiKey` | [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) |
+| **OpenAI-Compatible** | `openaiCompatible.apiKey` | Depends on server (optional for local) |
+
+#### General Requirements
+1.  **[Git](https://git-scm.com/)**: Git must be installed and available in your system's PATH.
+2.  **VS Code Built-in Git Extension**: This extension must be enabled (it is by default).
+
+---
+
 ## Usage
 
 You can interact with this extension in two primary ways:
@@ -1230,52 +1276,40 @@ Passive, always-on code quality feedback without interrupting your workflow. Whe
 
 ---
 
-## Requirements
+### 51. Scan for Secrets
 
-You must have the following software installed and configured for this extension to work.
+Detect accidentally committed secrets (API keys, tokens, passwords, private keys) in your staged changes or files before they reach your repository.
 
-### For Local Ollama Models
-1.  **[Ollama](https://ollama.com/)**: Download and install from the official website.
-2.  **An Ollama Model**: Pull a model tuned for coding:
-    ```bash
-    ollama pull kimi-k2.5:cloud
-    ```
+- **Command**: `Ollama Code Review: Scan for Secrets`
 
-### For Claude Models (Alternative)
-1.  **Anthropic API Key**: Get one from [console.anthropic.com](https://console.anthropic.com/)
-2.  **Configure the key** in VS Code settings: `ollama-code-review.claudeApiKey`
+The AI scans your code for common secret patterns including API keys, JWT tokens, connection strings, private keys, and other sensitive data — helping you catch leaks before they happen.
 
-### For GLM Models (Alternative)
-1.  **Z.AI API Key**: Get one from [open.bigmodel.cn](https://open.bigmodel.cn/)
-2.  **Configure the key** in VS Code settings: `ollama-code-review.glmApiKey`
+---
 
-### For Gemini Models (Alternative)
-1.  **Google AI Studio API Key**: Get one from [aistudio.google.com](https://aistudio.google.com/) (free, no credit card required)
-2.  **Configure the key** in VS Code settings: `ollama-code-review.geminiApiKey`
+### 52. Copy / Explain File with Imports (for LLM)
 
-### For Mistral Models (Alternative)
-1.  **Mistral AI API Key**: Get one from [console.mistral.ai](https://console.mistral.ai/)
-2.  **Configure the key** in VS Code settings: `ollama-code-review.mistralApiKey`
+Quickly prepare code context for pasting into external LLMs (ChatGPT, Claude, etc.) or for understanding complex files with their dependency tree.
 
-### For MiniMax Models (Alternative)
-1.  **MiniMax API Key**: Get one from [platform.minimaxi.com](https://platform.minimaxi.com/)
-2.  **Configure the key** in VS Code settings: `ollama-code-review.minimaxApiKey`
+- **Command**: `Ollama Code Review: Explain File with Imports` — get an AI explanation of the current file along with its resolved imports, so you understand how it fits into the codebase.
+- **Command**: `Ollama Code Review: Copy File with Imports (for LLM)` — copy the current file's source code together with the contents of its imported modules to your clipboard. Perfect for pasting into external AI chat tools with full context.
+- **Command**: `Ollama Code Review: Copy Function with Imports (for LLM)` — select a function, and copy it along with only the imports it uses. Produces a minimal, self-contained snippet ideal for LLM prompts.
 
-### For Hugging Face Models (Alternative)
-1.  **Hugging Face API Token**: Get one from [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)
-2.  **Configure the token** in VS Code settings: `ollama-code-review.hfApiKey`
-3.  **Select a model** from the model picker (recent, popular, or custom) - no need to configure `hfModel` manually!
+All three commands are available from the **editor context menu** (right-click) and the **Explorer context menu**.
 
-### For OpenAI-Compatible Servers (Alternative)
-1.  **Start your server** — e.g., open LM Studio and load a model, or start vLLM/LocalAI
-2.  **Select `openai-compatible`** from the status bar model picker
-3.  **Follow the setup picker** — choose a preset or enter a custom endpoint, then enter the model name
-4.  For cloud services (Groq, OpenRouter, etc.): configure `ollama-code-review.openaiCompatible.apiKey` with your API key
-5.  No API key needed for local servers (LM Studio, LocalAI, vLLM)
+> These commands resolve ES6/CommonJS imports, read the referenced files, and bundle everything together — so the AI (or you) gets the full picture without manually chasing imports.
 
-### General Requirements
-1.  **[Git](https://git-scm.com/)**: Git must be installed and available in your system's PATH.
-2.  **VS Code Built-in Git Extension**: This extension must be enabled (it is by default).
+---
+
+### 53. Ask AI About Finding
+
+After a code review, ask the AI to explain a specific finding in more detail — directly from the **Findings Explorer** sidebar.
+
+- **Command**: `Ollama Code Review: Ask AI About Finding`
+- **Quick Access**: Click the chat icon (`$(comment-discussion)`) inline button on any finding in the Findings Explorer tree view.
+
+The finding's message, severity, file context, and any suggestions are sent to the AI sidebar chat, where you can have a conversation about the issue, ask for alternative approaches, or request more context.
+
+---
 
 ## Extension Settings
 
