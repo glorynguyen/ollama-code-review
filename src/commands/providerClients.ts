@@ -119,7 +119,7 @@ export function isClaudeModel(model: string): boolean {
  * Check if the model is a GLM model (Z.AI/BigModel API)
  */
 export function isGlmModel(model: string): boolean {
-	return model.startsWith('glm-');
+	return model.startsWith('glm-') && !model.endsWith(':cloud');
 }
 
 /**
