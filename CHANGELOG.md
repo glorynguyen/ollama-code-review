@@ -1,3 +1,10 @@
+## [3.38.1](https://github.com/glorynguyen/ollama-code-review/compare/v3.38.0...v3.38.1) (2026-03-23)
+
+
+### Bug Fixes
+
+* **models:** exclude cloud GLM variants ([8c35201](https://github.com/glorynguyen/ollama-code-review/commit/8c35201511c16e93f6742b9f35a038f753e86735))
+
 # [3.38.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.37.0...v3.38.0) (2026-03-22)
 
 
