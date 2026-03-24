@@ -1,3 +1,10 @@
+# [3.39.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.38.1...v3.39.0) (2026-03-24)
+
+
+### Features
+
+* **commands:** copy prompts to clipboard ([c286295](https://github.com/glorynguyen/ollama-code-review/commit/c286295a30cabb7fe6c3f169d5c6944ccbf4f3ae))
+
 ## [3.38.1](https://github.com/glorynguyen/ollama-code-review/compare/v3.38.0...v3.38.1) (2026-03-23)
 
 
