@@ -147,7 +147,7 @@ export function isMistralModel(model: string): boolean {
  * Check if the model is a MiniMax model
  */
 export function isMiniMaxModel(model: string): boolean {
-	return model.toLocaleLowerCase().startsWith('minimax-');
+	return model.toLocaleLowerCase().startsWith('minimax-') && !model.endsWith(':cloud');;
 }
 
 /**

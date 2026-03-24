@@ -4164,6 +4164,15 @@ Code to review:
 ${content}
 \`\`\``;
 
+	// Copy the full prompt to clipboard so the user can paste it into other LLM chats immediately
+	try {
+		await vscode.env.clipboard.writeText(prompt);
+		vscode.window.setStatusBarMessage('$(clippy) Review prompt copied to clipboard — paste into any LLM chat', 5000);
+		outputChannel.appendLine('[File Review] Full prompt (with context) copied to clipboard.');
+	} catch (err) {
+		outputChannel.appendLine(`[File Review] Failed to copy prompt to clipboard: ${err}`);
+	}
+
 	clearPerformanceMetrics();
 	const requestContext: ProviderRequestContext = {
 		config,
@@ -4442,6 +4451,15 @@ async function getOllamaReview(diff: string, context?: vscode.ExtensionContext, 
 			// Non-fatal — continue review without Contentstack validation
 			outputChannel.appendLine(`[Contentstack] Error: ${err}`);
 		}
+	}
+
+	// Copy the full prompt (with all context) to clipboard so the user can paste it into other LLM chats immediately
+	try {
+		await vscode.env.clipboard.writeText(prompt);
+		vscode.window.setStatusBarMessage('$(clippy) Review prompt copied to clipboard — paste into any LLM chat', 5000);
+		outputChannel.appendLine('[Review] Full prompt (with context) copied to clipboard.');
+	} catch (err) {
+		outputChannel.appendLine(`[Review] Failed to copy prompt to clipboard: ${err}`);
 	}
 
 	// Clear previous metrics before the API call
