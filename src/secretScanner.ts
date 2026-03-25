@@ -25,9 +25,64 @@ const MAX_VALUE_SCAN_LENGTH = 256;
 
 const TOKEN_KEYWORD_REGEX = /\b(?:api_?key|api_?token|auth_?token|access_?token|secret)\b/gi;
 const PASSWORD_KEYWORD_REGEX = /\b(?:password|passwd|pwd)\b/gi;
+const AWS_SECRET_KEYWORD_REGEX = /\b(?:aws_?secret_?(?:access_?)?key|secret_?access_?key|aws_?secret)\b/gi;
 const ASSIGNMENT_PREFIX_REGEX = /^\s*(?::=|=>|:|=)\s*/;
 const TOKEN_VALUE_REGEX = /^["']?([A-Za-z0-9_=-]{16,})["']?/i;
 const PASSWORD_VALUE_REGEX = /^["']?([^\s"']{8,})["']?/i;
+const AWS_SECRET_VALUE_REGEX = /^["']?([A-Za-z0-9/+=]{40})["']?/;
+
+/**
+ * Computes Shannon entropy of a string.
+ * High entropy (>3.5) suggests a random/secret value.
+ * Low entropy suggests readable text like identifiers or class names.
+ */
+function shannonEntropy(s: string): number {
+	if (s.length === 0) { return 0; }
+	const freq = new Map<string, number>();
+	for (const ch of s) {
+		freq.set(ch, (freq.get(ch) || 0) + 1);
+	}
+	let entropy = 0;
+	for (const count of freq.values()) {
+		const p = count / s.length;
+		entropy -= p * Math.log2(p);
+	}
+	return entropy;
+}
+
+/**
+ * Checks if a string looks like a readable identifier (camelCase, PascalCase, snake_case, etc.)
+ * rather than a random secret value.
+ */
+function looksLikeIdentifier(value: string): boolean {
+	// Contains multiple camelCase transitions (lowercase→uppercase)
+	const camelTransitions = (value.match(/[a-z][A-Z]/g) || []).length;
+	if (camelTransitions >= 2) { return true; }
+
+	// Contains common English words (3+ chars) — strong signal it's an identifier
+	const lowerValue = value.toLowerCase();
+	const commonWords = ['page', 'template', 'column', 'block', 'text', 'list', 'home',
+		'button', 'container', 'wrapper', 'header', 'footer', 'layout', 'content',
+		'section', 'component', 'service', 'handler', 'manager', 'factory', 'builder',
+		'controller', 'provider', 'module', 'config', 'model', 'view', 'item', 'data',
+		'type', 'name', 'value', 'form', 'input', 'output', 'action', 'event', 'error',
+		'index', 'table', 'field', 'class', 'node', 'element', 'panel', 'menu', 'link'];
+	let wordMatches = 0;
+	for (const word of commonWords) {
+		if (lowerValue.includes(word)) { wordMatches++; }
+	}
+	if (wordMatches >= 2) { return true; }
+
+	return false;
+}
+
+/**
+ * Validates a potential secret value has sufficient entropy and doesn't look like an identifier.
+ */
+function isHighEntropySecret(value: string, minEntropy: number = 3.5): boolean {
+	if (looksLikeIdentifier(value)) { return false; }
+	return shannonEntropy(value) >= minEntropy;
+}
 
 function matchKeywordAssignment(
 	line: string,
@@ -80,14 +135,37 @@ const SECRET_PATTERNS: SecretPattern[] = [
 	},
 	{
 		name: 'AWS Secret Access Key',
-		regex: /\b(?<![A-Za-z0-9/+=])[A-Za-z0-9/+=]{40}(?![A-Za-z0-9/+=])\b/g,
+		match: (line) => {
+			// First try keyword-assignment context (e.g., aws_secret_key = "...")
+			const keywordMatches = matchKeywordAssignment(line, AWS_SECRET_KEYWORD_REGEX, AWS_SECRET_VALUE_REGEX);
+			if (keywordMatches.length > 0) {
+				return keywordMatches.filter(v => isHighEntropySecret(v));
+			}
+			// Fallback: match 40-char base64-like strings only if they have high entropy
+			// This avoids false positives on identifiers like "HomepageTemplateLeftColumnBlocksTextList"
+			const standaloneRegex = /\b([A-Za-z0-9/+=]{40})\b/g;
+			const results: string[] = [];
+			let m: RegExpExecArray | null;
+			while ((m = standaloneRegex.exec(line)) !== null) {
+				const candidate = m[1];
+				// Must contain mixed case + digits or special chars, AND have high entropy
+				if (/[a-z]/.test(candidate) && /[A-Z]/.test(candidate) &&
+					(/[0-9]/.test(candidate) || /[/+=]/.test(candidate)) &&
+					isHighEntropySecret(candidate, 4.0)) {
+					results.push(candidate);
+				}
+			}
+			return results;
+		},
 		suggestion: 'Potential AWS Secret Access Key detected. Move this to a secure vault or environment variable.',
 	},
 	{
 		name: 'Generic API Key / Token',
 		// Avoid multi-token backtracking by parsing in two steps:
 		// 1) find the keyword, 2) parse an assignment value from the remainder.
-		match: (line) => matchKeywordAssignment(line, TOKEN_KEYWORD_REGEX, TOKEN_VALUE_REGEX),
+		// Filter out low-entropy values that look like identifiers or class names.
+		match: (line) => matchKeywordAssignment(line, TOKEN_KEYWORD_REGEX, TOKEN_VALUE_REGEX)
+			.filter(v => isHighEntropySecret(v, 3.0)),
 		suggestion: 'Hardcoded API key or token found. Use environment config instead of committing credentials.',
 	},
 	{
