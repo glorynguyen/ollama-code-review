@@ -1,3 +1,10 @@
+# [3.40.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.39.0...v3.40.0) (2026-03-25)
+
+
+### Features
+
+* **secret-scanner:** add entropy filtering ([fc31e7a](https://github.com/glorynguyen/ollama-code-review/commit/fc31e7a07a9defbbe84717ab51cfab55c6c5ad99)), closes [hi#entropy](https://github.com/hi/issues/entropy)
+
 # [3.39.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.38.1...v3.39.0) (2026-03-24)
 
 
