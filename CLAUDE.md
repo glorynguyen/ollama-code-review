@@ -178,7 +178,7 @@ out/                      # Compiled JavaScript output
 | `src/compareModels/comparisonPanel.ts` | ~170 | Side-by-side comparison webview panel with summary table (F-030) |
 | `src/reviewFindings/index.ts` | ~5 | Barrel exports for findings explorer module (F-031) |
 | `src/reviewFindings/types.ts` | ~15 | IndexedFinding, SeverityCounts interfaces (F-031) |
-| `src/reviewFindings/findingsTreeProvider.ts` | ~175 | TreeDataProvider for sidebar findings navigation with severity icons (F-031) |
+| `src/reviewFindings/findingsTreeProvider.ts` | ~310 | TreeDataProvider for sidebar findings navigation with severity icons, filter & export (F-031, F-034) |
 | `src/autoReview/index.ts` | ~250 | AutoReviewManager singleton: save event listener, per-file debounce, glob exclusion, AI review callback, annotation integration, status bar (F-043) |
 
 ## Commands
@@ -227,6 +227,9 @@ out/                      # Compiled JavaScript output
 | `ollama-code-review.goToFinding` | Navigate to a specific finding's file and line in the editor (F-031) |
 | `ollama-code-review.clearFindings` | Clear all findings from the Findings Explorer tree view (F-031) |
 | `ollama-code-review.fixFinding` | Generate an AI fix for a specific review finding (F-033) |
+| `ollama-code-review.filterFindings` | Filter findings by severity level via multi-select picker (F-034) |
+| `ollama-code-review.showAllFindings` | Clear severity filter and show all findings (F-034) |
+| `ollama-code-review.exportFindings` | Export findings as Markdown checklist (clipboard or file) (F-034) |
 | `ollama-code-review.toggleAutoReview` | Toggle Auto-Review on Save (background code quality monitor) on/off (F-043) |
 
 ## Configuration Settings
@@ -1229,6 +1232,51 @@ The `ollama-code-review.fixFinding` command enables one-click AI-powered fixes f
 
 ---
 
+## Findings Severity Filter & Export (F-034)
+
+The Findings Explorer tree view (F-031) now supports filtering by severity level and exporting findings as a Markdown checklist.
+
+### How It Works
+
+1. After a review populates the Findings Explorer, the **Filter** toolbar button (`$(filter)`) opens a multi-select QuickPick showing all severity levels with their finding counts
+2. The user checks/unchecks severity levels to show or hide — the tree rebuilds instantly
+3. When a filter is active, the tree view description shows "Showing N of M" and a **Clear Filter** button (`$(clear-all)`) appears in the toolbar
+4. The **Export** toolbar button (`$(markdown)`) generates a Markdown checklist of all visible findings grouped by file, with severity emoji, line numbers, and suggestions
+5. The user can copy findings to the clipboard or save as a `.md` file
+
+### Commands
+
+| Command | Description |
+|---------|-------------|
+| `ollama-code-review.filterFindings` | Open multi-select severity filter picker |
+| `ollama-code-review.showAllFindings` | Clear filter and show all findings |
+| `ollama-code-review.exportFindings` | Export findings as Markdown (clipboard or file) |
+
+### Exported Methods (`src/reviewFindings/findingsTreeProvider.ts`)
+
+- `FindingsTreeProvider.showFilterPicker()` — Open severity QuickPick and apply filter
+- `FindingsTreeProvider.showAll()` — Reset filter to show all severity levels
+- `FindingsTreeProvider.exportAsMarkdown()` — Generate Markdown checklist of visible findings
+- `FindingsTreeProvider.filteredCount` — Count of currently visible findings
+- `FindingsTreeProvider.isFiltered` — Whether a severity filter is active
+- `FindingsTreeProvider.activeSeverities` — Read-only set of active severity levels
+
+### Export Format
+
+```markdown
+# Review Findings
+
+**12 findings:** 🔴 2 critical | 🟠 4 high | 🔵 3 medium | 🟢 3 low
+
+## src/auth.ts
+
+- [ ] 🔴 **critical** (L42): SQL injection via unsanitized user input
+  - **Suggestion:** Use parameterized queries instead
+- [ ] 🟠 **high** (L87): Missing error handling in async callback
+```
+
+---
+
 ## Auto-Review on Save — Background Code Quality Monitor (F-043)
 
 The `src/autoReview/index.ts` module provides passive, always-on code quality monitoring. When enabled, every file save triggers a silent AI review in the background. Results appear as inline annotations and optional notifications without requiring any manual command invocation.
@@ -1916,6 +1964,13 @@ See [docs/roadmap/](./docs/roadmap/) for comprehensive planning documents:
 | Review Findings Explorer (sidebar tree view for navigating review findings by file and severity) | F-031 | v10.0 |
 | Quick Fix from Review Findings (one-click AI fix from Findings Explorer inline button and annotation hover tooltips) | F-033 | v11.0 |
 | Auto-Review on Save (background code quality monitor; debounced per-file reviews on every save) | F-043 | v3.34.0 |
+| Findings Severity Filter & Export (filter tree by severity; export as Markdown checklist) | F-034 | v3.41.0 |
+
+### Phase 13: Findings UX (In Progress — v3.41.0)
+
+| Feature | ID | Priority | Effort | Status | Description |
+|---------|----|----------|--------|--------|-------------|
+| Findings Severity Filter & Export | F-034 | P2 | Low (1 day) | ✅ Complete | Filter Findings Explorer by severity via multi-select picker; export findings as Markdown checklist to clipboard or file |
 
 ### Phase 12: Passive Code Quality (Complete — v3.34.0)
 

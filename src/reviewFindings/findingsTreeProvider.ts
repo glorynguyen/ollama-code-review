@@ -1,5 +1,6 @@
 /**
  * F-031: Review Findings Explorer — TreeDataProvider
+ * F-034: Severity Filter & Export — filter tree by severity, export as Markdown
  *
  * Displays review findings in a navigable tree view in the sidebar,
  * organized by file and severity. Clicking a finding navigates to
@@ -22,6 +23,14 @@ const SEVERITY_ICONS: Record<Severity, vscode.ThemeIcon> = {
 };
 
 const SEVERITY_ORDER: Severity[] = ['critical', 'high', 'medium', 'low', 'info'];
+
+const SEVERITY_EMOJI: Record<Severity, string> = {
+	critical: '🔴',
+	high: '🟠',
+	medium: '🔵',
+	low: '🟢',
+	info: '⚪',
+};
 
 // ── Tree Item Types ──────────────────────────────────────────────────
 
@@ -56,6 +65,10 @@ export class FindingsTreeProvider implements vscode.TreeDataProvider<TreeElement
 	private findings: IndexedFinding[] = [];
 	private fileNodes: FileNode[] = [];
 
+	// ── F-034: Severity filter state ──────────────────────────────────
+	private _activeSeverities: Set<Severity> = new Set(SEVERITY_ORDER);
+	private _isFiltered = false;
+
 	/**
 	 * Update the tree with findings from a completed review.
 	 */
@@ -81,6 +94,105 @@ export class FindingsTreeProvider implements vscode.TreeDataProvider<TreeElement
 	/** Get total finding count. */
 	get count(): number {
 		return this.findings.length;
+	}
+
+	/** F-034: Get the count of currently visible (filtered) findings. */
+	get filteredCount(): number {
+		if (!this._isFiltered) { return this.findings.length; }
+		return this.findings.filter(f => this._activeSeverities.has(f.severity)).length;
+	}
+
+	/** F-034: Whether a severity filter is active. */
+	get isFiltered(): boolean {
+		return this._isFiltered;
+	}
+
+	/** F-034: Get the set of active severity levels. */
+	get activeSeverities(): ReadonlySet<Severity> {
+		return this._activeSeverities;
+	}
+
+	// ── F-034: Filter methods ─────────────────────────────────────────
+
+	/**
+	 * Show a QuickPick to let the user select which severity levels to show.
+	 */
+	async showFilterPicker(): Promise<void> {
+		type SeverityPickItem = vscode.QuickPickItem & { severity: Severity };
+		const items: SeverityPickItem[] = SEVERITY_ORDER.map(sev => ({
+			label: `${SEVERITY_EMOJI[sev]} ${sev.charAt(0).toUpperCase() + sev.slice(1)}`,
+			severity: sev,
+			picked: this._activeSeverities.has(sev),
+			description: `${this.findings.filter(f => f.severity === sev).length} finding(s)`,
+		}));
+
+		const picked = await vscode.window.showQuickPick(items, {
+			canPickMany: true,
+			placeHolder: 'Select severity levels to show (uncheck to hide)',
+			title: 'Filter Findings by Severity',
+		});
+
+		if (!picked) { return; } // cancelled
+
+		this._activeSeverities = new Set(picked.map((p: SeverityPickItem) => p.severity));
+		this._isFiltered = this._activeSeverities.size < SEVERITY_ORDER.length;
+		this.buildTree();
+		this._onDidChangeTreeData.fire();
+	}
+
+	/** F-034: Reset filter to show all severity levels. */
+	showAll(): void {
+		this._activeSeverities = new Set(SEVERITY_ORDER);
+		this._isFiltered = false;
+		this.buildTree();
+		this._onDidChangeTreeData.fire();
+	}
+
+	/**
+	 * F-034: Export all findings (respecting current filter) as a Markdown checklist.
+	 * Returns the Markdown string.
+	 */
+	exportAsMarkdown(): string {
+		const visibleFindings = this._isFiltered
+			? this.findings.filter(f => this._activeSeverities.has(f.severity))
+			: this.findings;
+
+		if (visibleFindings.length === 0) {
+			return '# Review Findings\n\nNo findings to export.\n';
+		}
+
+		// Group by file
+		const fileMap = new Map<string, IndexedFinding[]>();
+		for (const f of visibleFindings) {
+			const key = f.file ?? '(no file reference)';
+			if (!fileMap.has(key)) { fileMap.set(key, []); }
+			fileMap.get(key)!.push(f);
+		}
+
+		const lines: string[] = ['# Review Findings', ''];
+
+		// Summary counts
+		const counts: Record<Severity, number> = { critical: 0, high: 0, medium: 0, low: 0, info: 0 };
+		for (const f of visibleFindings) { counts[f.severity]++; }
+		const summaryParts = SEVERITY_ORDER
+			.filter(s => counts[s] > 0)
+			.map(s => `${SEVERITY_EMOJI[s]} ${counts[s]} ${s}`);
+		lines.push(`**${visibleFindings.length} findings:** ${summaryParts.join(' | ')}`, '');
+
+		for (const [filePath, findings] of fileMap) {
+			lines.push(`## ${filePath}`, '');
+			for (const f of findings) {
+				const loc = f.line ? `:${f.line}` : '';
+				const msg = f.message.replace(/\n/g, ' ').trim();
+				lines.push(`- [ ] ${SEVERITY_EMOJI[f.severity]} **${f.severity}**${loc ? ` (L${f.line})` : ''}: ${msg}`);
+				if (f.suggestion) {
+					lines.push(`  - **Suggestion:** ${f.suggestion.replace(/\n/g, ' ').trim()}`);
+				}
+			}
+			lines.push('');
+		}
+
+		return lines.join('\n');
 	}
 
 	// ── TreeDataProvider implementation ───────────────────────────────
@@ -120,9 +232,14 @@ export class FindingsTreeProvider implements vscode.TreeDataProvider<TreeElement
 	// ── Tree building ─────────────────────────────────────────────────
 
 	private buildTree(): void {
+		// F-034: Apply severity filter
+		const visibleFindings = this._isFiltered
+			? this.findings.filter(f => this._activeSeverities.has(f.severity))
+			: this.findings;
+
 		const fileMap = new Map<string, IndexedFinding[]>();
 
-		for (const finding of this.findings) {
+		for (const finding of visibleFindings) {
 			const key = finding.file ?? '(no file reference)';
 			if (!fileMap.has(key)) { fileMap.set(key, []); }
 			fileMap.get(key)!.push(finding);
