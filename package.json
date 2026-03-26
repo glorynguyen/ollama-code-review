@@ -340,6 +340,24 @@
         "title": "Open Setup Guide",
         "category": "Ollama Code Review",
         "icon": "$(book)"
+      },
+      {
+        "command": "ollama-code-review.filterFindings",
+        "title": "Filter Findings by Severity",
+        "category": "Ollama Code Review",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "ollama-code-review.showAllFindings",
+        "title": "Show All Findings (Clear Filter)",
+        "category": "Ollama Code Review",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "ollama-code-review.exportFindings",
+        "title": "Export Findings as Markdown",
+        "category": "Ollama Code Review",
+        "icon": "$(markdown)"
       }
     ],
     "walkthroughs": [
@@ -551,9 +569,24 @@
       ],
       "view/title": [
         {
+          "command": "ollama-code-review.filterFindings",
+          "when": "view == ai-review.findings-explorer",
+          "group": "navigation@1"
+        },
+        {
+          "command": "ollama-code-review.showAllFindings",
+          "when": "view == ai-review.findings-explorer && ollama-code-review.findingsFiltered",
+          "group": "navigation@2"
+        },
+        {
+          "command": "ollama-code-review.exportFindings",
+          "when": "view == ai-review.findings-explorer",
+          "group": "navigation@3"
+        },
+        {
           "command": "ollama-code-review.clearFindings",
           "when": "view == ai-review.findings-explorer",
-          "group": "navigation"
+          "group": "navigation@4"
         }
       ]
     },

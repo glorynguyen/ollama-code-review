@@ -401,6 +401,72 @@ export async function activate(context: vscode.ExtensionContext) {
 	);
 	context.subscriptions.push(clearFindingsCommand);
 
+	// F-034: Filter findings by severity
+	const filterFindingsCommand = vscode.commands.registerCommand(
+		'ollama-code-review.filterFindings',
+		async () => {
+			if (!findingsTreeProvider || findingsTreeProvider.count === 0) {
+				vscode.window.showInformationMessage('No findings to filter. Run a review first.');
+				return;
+			}
+			await findingsTreeProvider.showFilterPicker();
+			void vscode.commands.executeCommand('setContext', 'ollama-code-review.findingsFiltered', findingsTreeProvider.isFiltered);
+			if (findingsTreeProvider.isFiltered) {
+				findingsTreeView.description = `Showing ${findingsTreeProvider.filteredCount} of ${findingsTreeProvider.count}`;
+			} else {
+				findingsTreeView.description = undefined;
+			}
+		}
+	);
+	context.subscriptions.push(filterFindingsCommand);
+
+	// F-034: Show all findings (clear filter)
+	const showAllFindingsCommand = vscode.commands.registerCommand(
+		'ollama-code-review.showAllFindings',
+		() => {
+			if (!findingsTreeProvider) { return; }
+			findingsTreeProvider.showAll();
+			void vscode.commands.executeCommand('setContext', 'ollama-code-review.findingsFiltered', false);
+			findingsTreeView.description = undefined;
+		}
+	);
+	context.subscriptions.push(showAllFindingsCommand);
+
+	// F-034: Export findings as Markdown
+	const exportFindingsCommand = vscode.commands.registerCommand(
+		'ollama-code-review.exportFindings',
+		async () => {
+			if (!findingsTreeProvider || findingsTreeProvider.count === 0) {
+				vscode.window.showInformationMessage('No findings to export. Run a review first.');
+				return;
+			}
+			const markdown = findingsTreeProvider.exportAsMarkdown();
+			const choice = await vscode.window.showQuickPick(
+				[
+					{ label: '$(clippy) Copy to Clipboard', action: 'clipboard' },
+					{ label: '$(markdown) Save as Markdown File', action: 'save' },
+				],
+				{ placeHolder: 'Export findings as...' }
+			);
+			if (!choice) { return; }
+			if (choice.action === 'clipboard') {
+				await vscode.env.clipboard.writeText(markdown);
+				vscode.window.showInformationMessage(`Copied ${findingsTreeProvider.filteredCount} findings to clipboard.`);
+			} else {
+				const uri = await vscode.window.showSaveDialog({
+					defaultUri: vscode.Uri.file('review-findings.md'),
+					filters: { 'Markdown': ['md'] },
+				});
+				if (uri) {
+					await vscode.workspace.fs.writeFile(uri, Buffer.from(markdown, 'utf8'));
+					const doc = await vscode.workspace.openTextDocument(uri);
+					await vscode.window.showTextDocument(doc);
+				}
+			}
+		}
+	);
+	context.subscriptions.push(exportFindingsCommand);
+
 	// F-033: Quick Fix from Review Findings
 	const fixFindingCommand = vscode.commands.registerCommand(
 		'ollama-code-review.fixFinding',
