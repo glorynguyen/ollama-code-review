@@ -1,3 +1,10 @@
+# [3.41.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.40.0...v3.41.0) (2026-03-26)
+
+
+### Features
+
+* **findings:** add severity filter and Markdown export (F-034) ([b39b1a0](https://github.com/glorynguyen/ollama-code-review/commit/b39b1a094344bee2ed4bdf919161d3c3a2c47f36))
+
 # [3.40.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.39.0...v3.40.0) (2026-03-25)
 
 
