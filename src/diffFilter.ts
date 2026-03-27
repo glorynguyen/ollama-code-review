@@ -23,7 +23,7 @@ const DEFAULT_IGNORE_PATHS = [
 	'**/*.lock',
 	'**/package-lock.json',
 	'**/yarn.lock',
-	'**/pnpm-lock.yaml',
+	'**/*-lock.yaml',
 	'**/dist/**',
 	'**/build/**',
 	'**/out/**',
@@ -80,7 +80,7 @@ export async function getDiffFilterConfigWithYaml(outputChannel?: vscode.OutputC
 /**
  * Check if a file path matches any of the ignore patterns
  */
-function shouldIgnoreFile(filePath: string, config: DiffFilterConfig): boolean {
+export function shouldIgnoreFile(filePath: string, config: DiffFilterConfig): boolean {
 	const { ignorePaths, ignorePatterns } = config;
 
 	// Check ignore paths (glob-like patterns)
@@ -106,10 +106,13 @@ function shouldIgnoreFile(filePath: string, config: DiffFilterConfig): boolean {
  */
 function matchGlobPattern(text: string, pattern: string): boolean {
 	// Convert glob to regex
-	const regexPattern = pattern
+	// Handle leading **/ specially: it should match zero or more path segments
+	// e.g. **/foo matches both "foo" and "dir/foo"
+	let regexPattern = pattern
 		.replace(/\*\*/g, '{{GLOBSTAR}}')
 		.replace(/\*/g, '[^/]*')
 		.replace(/\?/g, '.')
+		.replace(/{{GLOBSTAR}}\//g, '(.*/)?')
 		.replace(/{{GLOBSTAR}}/g, '.*');
 
 	const regex = new RegExp(`^${regexPattern}$`, 'i');

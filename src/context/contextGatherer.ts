@@ -23,6 +23,7 @@ import {
 import { parseImports, extractChangedFiles } from './importParser';
 import { resolveImport, readFileContent, toRelativePath } from './fileResolver';
 import { findTestFiles } from './testDiscovery';
+import { getDiffFilterConfig, shouldIgnoreFile } from '../diffFilter';
 
 // ---------------------------------------------------------------------------
 // Defaults
@@ -108,7 +109,8 @@ export async function gatherContext(
 	}
 
 	const workspaceRoot = workspaceFolders[0].uri;
-	const changedPaths = extractChangedFiles(diff);
+	const diffFilterConfig = getDiffFilterConfig();
+	const changedPaths = extractChangedFiles(diff).filter(p => !shouldIgnoreFile(p, diffFilterConfig));
 	stats.changedFiles = changedPaths.length;
 
 	if (changedPaths.length === 0) {

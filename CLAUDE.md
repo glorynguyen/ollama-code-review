@@ -528,7 +528,7 @@ interface FilterResult {
 - `getFilterSummary(result)` - Generate human-readable summary of what was filtered
 
 ### Default Ignore Paths
-`**/node_modules/**`, `**/*.lock`, `**/package-lock.json`, `**/yarn.lock`, `**/pnpm-lock.yaml`, `**/dist/**`, `**/build/**`, `**/out/**`, `**/.next/**`, `**/coverage/**`
+`**/node_modules/**`, `**/*.lock`, `**/package-lock.json`, `**/yarn.lock`, `**/*-lock.yaml`, `**/dist/**`, `**/build/**`, `**/out/**`, `**/.next/**`, `**/coverage/**`
 
 ### Default Ignore Patterns
 `*.min.js`, `*.min.css`, `*.map`, `*.generated.*`, `*.g.ts`, `*.d.ts.map`

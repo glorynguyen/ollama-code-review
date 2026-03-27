@@ -767,6 +767,7 @@
                 "**/*.lock",
                 "**/package-lock.json",
                 "**/yarn.lock",
+                "**/*-lock.yaml",
                 "**/dist/**",
                 "**/build/**",
                 "**/out/**"
