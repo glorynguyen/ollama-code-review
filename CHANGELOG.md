@@ -1,3 +1,10 @@
+## [3.41.1](https://github.com/glorynguyen/ollama-code-review/compare/v3.41.0...v3.41.1) (2026-03-27)
+
+
+### Bug Fixes
+
+* **diff:** fix glob matching and apply filters ([2f70e63](https://github.com/glorynguyen/ollama-code-review/commit/2f70e639ddb2400e1182a9bb91994ca40c01ca52))
+
 # [3.41.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.40.0...v3.41.0) (2026-03-26)
 
 
