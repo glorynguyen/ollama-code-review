@@ -1,3 +1,10 @@
+# [3.42.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.41.1...v3.42.0) (2026-03-28)
+
+
+### Features
+
+* **commands:** opt-out and scope fix ([55adcfe](https://github.com/glorynguyen/ollama-code-review/commit/55adcfead0341dc86620e7f151e76e048dd2a249))
+
 ## [3.41.1](https://github.com/glorynguyen/ollama-code-review/compare/v3.41.0...v3.41.1) (2026-03-27)
 
 
