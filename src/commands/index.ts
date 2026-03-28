@@ -208,39 +208,68 @@ let ragUseOllamaEmbeddings: boolean | undefined;
  * Returns the project code string, or `undefined` if the user cancels.
  */
 async function ensureProjectCode(repoUri?: vscode.Uri): Promise<string | undefined> {
-	// Scope config resolution to the folder when we know which repo we're in.
-	// VS Code resolves: Folder → Workspace → User, so folder settings always win.
 	const config = repoUri
 		? vscode.workspace.getConfiguration('ollama-code-review', repoUri)
 		: vscode.workspace.getConfiguration('ollama-code-review');
 
-	let code = config.get<string>('projectCode', '').trim();
-	if (code) {
-		return code;
+	// When we know which repo we're in, only use the folder-scoped value.
+	// config.get() falls back through Folder → Workspace → Global, which
+	// causes a projectCode set for repo A to leak into repo B.
+	const folder = repoUri ? vscode.workspace.getWorkspaceFolder(repoUri) : undefined;
+	let code = '';
+	if (folder) {
+		const inspection = config.inspect<string>('projectCode');
+		code = (inspection?.workspaceFolderValue ?? '').trim();
+	} else {
+		code = config.get<string>('projectCode', '').trim();
+	}
+	// Sentinel: user previously opted out of project code for this repo.
+	if (code.toUpperCase() === 'NONE') { return undefined; }
+	if (code) { return code; }
+
+	// Give the user three choices instead of a bare input box so they can
+	// permanently opt out of the Jira ticket prefix for this repo.
+	const choice = await vscode.window.showQuickPick(
+		[
+			{ label: '$(pencil) Enter Project Code', description: 'Type your Jira project code (e.g., HWWW)', value: 'enter' as const },
+			{ label: "$(circle-slash) Don't use project code", description: 'Never add a ticket prefix for this repo', value: 'none' as const },
+			{ label: '$(debug-step-over) Skip this time', description: 'No prefix now, ask again next time', value: 'skip' as const },
+		],
+		{ placeHolder: 'Jira Project Code for commit messages', ignoreFocusOut: true },
+	);
+
+	if (!choice || choice.value === 'skip') { return undefined; }
+
+	if (choice.value === 'none') {
+		// Persist "NONE" so we never prompt again for this repo.
+		if (folder) {
+			const folderConfig = vscode.workspace.getConfiguration('ollama-code-review', folder.uri);
+			await folderConfig.update('projectCode', 'NONE', vscode.ConfigurationTarget.WorkspaceFolder);
+		} else {
+			await config.update('projectCode', 'NONE', vscode.ConfigurationTarget.Global);
+		}
+		return undefined;
 	}
 
+	// choice.value === 'enter' — show input box to type the code.
 	const input = await vscode.window.showInputBox({
 		prompt: 'Enter your Jira Project Code (e.g., HWWW)',
 		placeHolder: 'HWWW',
 		ignoreFocusOut: true,
-		validateInput: (v) => /^[A-Z][A-Z0-9_-]*$/i.test(v.trim()) ? null : 'Project code must start with a letter and contain only letters, digits, hyphens, or underscores',
+		validateInput: (v) => {
+			const t = v.trim();
+			if (t.toUpperCase() === 'NONE') { return '"NONE" is reserved — choose a different code'; }
+			return /^[A-Z][A-Z0-9_-]*$/i.test(t) ? null : 'Must start with a letter; only letters, digits, hyphens, or underscores';
+		},
 	});
 	code = input?.trim() ?? '';
-
-	if (!code) {
-		vscode.window.showWarningMessage('No project code entered — commit messages will not include a Jira ticket prefix.');
-		return undefined;
-	}
+	if (!code) { return undefined; }
 
 	// Persist at the most specific level available.
-	// If we can resolve a WorkspaceFolder for this repo, write into that folder's
-	// .vscode/settings.json so the code is scoped to this project only.
-	const folder = repoUri ? vscode.workspace.getWorkspaceFolder(repoUri) : undefined;
 	if (folder) {
 		const folderConfig = vscode.workspace.getConfiguration('ollama-code-review', folder.uri);
 		await folderConfig.update('projectCode', code.toUpperCase(), vscode.ConfigurationTarget.WorkspaceFolder);
 	} else {
-		// Fall back to global (user-level) for single-root or detached-folder scenarios.
 		await config.update('projectCode', code.toUpperCase(), vscode.ConfigurationTarget.Global);
 	}
 
