@@ -1,15 +1,16 @@
 import * as http from 'http';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+
+export type McpRequestHandler = (req: http.IncomingMessage, res: http.ServerResponse) => Promise<void>;
 
 /**
- * Creates an HTTP server that routes /mcp requests to the StreamableHTTPServerTransport.
+ * Creates an HTTP server that routes /mcp requests to a per-request handler.
  *
  * - POST /mcp  → tool calls, initialize, etc.
  * - GET  /mcp  → SSE stream for server-initiated notifications
  * - DELETE /mcp → session cleanup
  * - GET /health → health check
  */
-export function createHttpServer(transport: StreamableHTTPServerTransport): http.Server {
+export function createHttpServer(handleMcpRequest: McpRequestHandler): http.Server {
 	const server = http.createServer((req, res) => {
 		const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
 		const pathname = url.pathname;
@@ -32,9 +33,14 @@ export function createHttpServer(transport: StreamableHTTPServerTransport): http
 			return;
 		}
 
-		// Route all /mcp traffic to the Streamable HTTP transport
+		// Route all /mcp traffic — each request gets a fresh transport + server
 		if (pathname === '/mcp') {
-			transport.handleRequest(req, res);
+			handleMcpRequest(req, res).catch((err) => {
+				if (!res.headersSent) {
+					res.writeHead(500, { 'Content-Type': 'application/json' });
+					res.end(JSON.stringify({ error: String(err) }));
+				}
+			});
 			return;
 		}
 

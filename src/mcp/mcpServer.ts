@@ -15,12 +15,12 @@ export interface McpServerInstance {
 
 /**
  * Create an MCP server instance with all tools and resources registered.
- * Uses StreamableHTTPServerTransport in stateless mode (no session management).
+ * Uses StreamableHTTPServerTransport in stateless mode — each request gets
+ * a fresh transport + McpServer pair (required by SDK v1.29+).
  * The server is NOT started until `.start()` is called.
  */
 export function createMcpServer(port: number): McpServerInstance {
 	let httpServer: http.Server | null = null;
-	let transport: StreamableHTTPServerTransport | null = null;
 	let running = false;
 
 	return {
@@ -29,30 +29,27 @@ export function createMcpServer(port: number): McpServerInstance {
 		async start(): Promise<void> {
 			if (running) { return; }
 
-			// Create a single stateless transport
-			transport = new StreamableHTTPServerTransport({
-				sessionIdGenerator: undefined, // stateless mode — no session validation
-			});
+			// Per-request handler: SDK stateless mode requires a fresh transport per request
+			async function handleMcpRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+				const transport = new StreamableHTTPServerTransport({
+					sessionIdGenerator: undefined, // stateless mode
+				});
 
-			// Create a single McpServer and register all tools/resources
-			const mcp = new McpServer(
-				{ name: 'ollama-code-review', version: '1.0.0' },
-				{
-					capabilities: {
-						tools: {},
-						resources: {},
-					},
-				},
-			);
+				const mcp = new McpServer(
+					{ name: 'ollama-code-review', version: '1.0.0' },
+					{ capabilities: { tools: {}, resources: {} } },
+				);
 
-			registerAllTools(mcp);
-			registerAllResources(mcp);
+				registerAllTools(mcp);
+				registerAllResources(mcp);
 
-			// Connect transport to server
-			await mcp.connect(transport);
+				await mcp.connect(transport);
+				await transport.handleRequest(req, res);
+				await transport.close();
+				await mcp.close();
+			}
 
-			// Create HTTP server that routes to the transport
-			httpServer = createHttpServer(transport);
+			httpServer = createHttpServer(handleMcpRequest);
 			await listen(httpServer, port);
 
 			running = true;
@@ -62,13 +59,6 @@ export function createMcpServer(port: number): McpServerInstance {
 		async stop(): Promise<void> {
 			if (!running) { return; }
 
-			// Close transport
-			if (transport) {
-				try { await transport.close(); } catch { /* ignore */ }
-				transport = null;
-			}
-
-			// Close HTTP server
 			if (httpServer) {
 				await new Promise<void>((resolve, reject) => {
 					httpServer!.close((err) => {
