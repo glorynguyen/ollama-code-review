@@ -1,3 +1,10 @@
+# [3.43.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.42.0...v3.43.0) (2026-04-01)
+
+
+### Features
+
+* **mcp:** add MCP server for Claude Code integration ([d970fad](https://github.com/glorynguyen/ollama-code-review/commit/d970fad88ed22f313835ebe9f5d1590004e75e34))
+
 # [3.42.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.41.1...v3.42.0) (2026-03-28)
 
 
