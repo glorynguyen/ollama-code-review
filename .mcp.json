@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "ollama-code-review": {
+      "type": "http",
+      "url": "http://localhost:19840/mcp"
+    }
+  }
+}

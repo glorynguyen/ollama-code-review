@@ -1,0 +1,39 @@
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { z } from 'zod';
+import { mcpBridge } from '../context';
+import { getEffectiveCommitPrompt } from '../../config/promptLoader';
+import { resolvePrompt } from '../../utils';
+
+const DEFAULT_COMMIT_MESSAGE_PROMPT = "You are an expert at writing git commit messages for Semantic Release.\nGenerate a commit message based on the git diff below following the Conventional Commits specification.\n\n### Structural Requirements:\n1. **Subject Line**: <type>(<scope>): <short description>\n   - Keep under 50 characters.\n   - Use imperative mood (\"add\" not \"added\").\n   - Types: feat (new feature), fix (bug fix), docs, style, refactor, perf, test, build, ci, chore, revert.\n2. **Body**: Explain 'what' and 'why'. Required if the change is complex.\n3. **Breaking Changes**: If the diff contains breaking changes, the footer MUST start with \"BREAKING CHANGE:\" followed by a description.\n\n### Rules:\n- If the user's draft mentions a breaking change, prioritize documenting it in the footer.\n- Semantic Release triggers: 'feat' for MINOR, 'fix' for PATCH, and 'BREAKING CHANGE' in footer for MAJOR.\n- Output ONLY the raw commit message text. No markdown blocks, no \"Here is your message,\" no preamble.\n\nDeveloper's draft message (may reflect intent):\n${draftMessage}\n\nStaged git diff:\n---\n${diff}\n---";
+
+export function registerCommitTools(server: McpServer): void {
+
+	server.tool(
+		'get_commit_prompt',
+		'Assemble the full commit message prompt with the staged diff and template. Returns the prompt ready for AI analysis — no AI calls are made.',
+		{
+			repository_path: z.string().optional().describe('Path to the git repository. Defaults to the open workspace folder.'),
+			existing_message: z.string().optional().describe('Optional draft message to refine'),
+		},
+		async ({ repository_path, existing_message }) => {
+			const repoPath = repository_path || mcpBridge.getRepoPath();
+			mcpBridge.log(`get_commit_prompt: repo=${repoPath}`);
+
+			const diff = await mcpBridge.runGit(repoPath, ['diff', '--staged']);
+			if (!diff.trim()) {
+				return { content: [{ type: 'text' as const, text: 'No staged changes found. Stage some changes with `git add` first.' }] };
+			}
+
+			const draftMessage = existing_message?.trim() || '(none provided)';
+
+			// Resolve commit prompt template via config hierarchy
+			const promptTemplate = await getEffectiveCommitPrompt(DEFAULT_COMMIT_MESSAGE_PROMPT, mcpBridge.channel || undefined);
+			const prompt = resolvePrompt(promptTemplate, {
+				diff,
+				draftMessage,
+			});
+
+			return { content: [{ type: 'text' as const, text: prompt }] };
+		},
+	);
+}

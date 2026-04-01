@@ -166,6 +166,7 @@ import type { ModelAdvisorInput } from '../modelAdvisor';
 import { AutoReviewManager } from '../autoReview';
 import { MonorepoResolver } from '../autoReview/monorepo';
 import { buildFunctionContext, type FunctionContextEntry } from '../autoReview/smartContext';
+import { mcpBridge, createMcpServer, type McpServerInstance } from '../mcp';
 
 export { checkActiveModels, getLastPerformanceMetrics, clearPerformanceMetrics };
 export type { PerformanceMetrics };
@@ -191,6 +192,9 @@ let findingsTreeProvider: FindingsTreeProvider | undefined;
 let ragVectorStore: JsonVectorStore | undefined;
 // Whether the Ollama embedding model is reachable (checked lazily)
 let ragUseOllamaEmbeddings: boolean | undefined;
+
+// MCP Server instance (initialised in activate() if enabled)
+let mcpServerInstance: McpServerInstance | undefined;
 
 // ---------------------------------------------------------------------------
 // Project Code helpers (Jira ticket prefix for commit messages)
@@ -2557,6 +2561,64 @@ export async function activate(context: vscode.ExtensionContext) {
 	);
 	context.subscriptions.push(toggleAutoReviewCommand, autoReviewManager);
 
+	// MCP Server for Claude Code integration
+	mcpBridge.initialize(context, outputChannel);
+	const mcpConfig = vscode.workspace.getConfiguration('ollama-code-review');
+	const mcpEnabled = mcpConfig.get<boolean>('mcp.enabled', false);
+	const mcpPort = mcpConfig.get<number>('mcp.port', 19840);
+
+	const mcpStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 95);
+	mcpStatusBarItem.command = 'ollama-code-review.toggleMcpServer';
+
+	function updateMcpStatusBar(running: boolean, port: number): void {
+		if (running) {
+			mcpStatusBarItem.text = `$(plug) MCP :${port}`;
+			mcpStatusBarItem.tooltip = `MCP Server running on localhost:${port} — click to stop`;
+		} else {
+			mcpStatusBarItem.text = '$(plug) MCP OFF';
+			mcpStatusBarItem.tooltip = 'MCP Server stopped — click to start';
+		}
+		mcpStatusBarItem.show();
+	}
+
+	if (mcpEnabled) {
+		mcpServerInstance = createMcpServer(mcpPort);
+		mcpServerInstance.start().then(() => {
+			updateMcpStatusBar(true, mcpPort);
+			outputChannel.appendLine(`[MCP] Server started on http://127.0.0.1:${mcpPort}/mcp`);
+		}).catch((err: Error) => {
+			outputChannel.appendLine(`[MCP] Failed to start: ${err.message}`);
+			vscode.window.showErrorMessage(`MCP Server failed to start: ${err.message}`);
+			updateMcpStatusBar(false, mcpPort);
+		});
+	} else {
+		updateMcpStatusBar(false, mcpPort);
+	}
+
+	const toggleMcpServerCommand = vscode.commands.registerCommand(
+		'ollama-code-review.toggleMcpServer',
+		async () => {
+			const port = vscode.workspace.getConfiguration('ollama-code-review').get<number>('mcp.port', 19840);
+			if (mcpServerInstance?.isRunning()) {
+				await mcpServerInstance.stop();
+				mcpServerInstance = undefined;
+				updateMcpStatusBar(false, port);
+				vscode.window.showInformationMessage('MCP Server stopped.');
+			} else {
+				mcpServerInstance = createMcpServer(port);
+				try {
+					await mcpServerInstance.start();
+					updateMcpStatusBar(true, port);
+					vscode.window.showInformationMessage(`MCP Server started on localhost:${port}. Configure Claude Code to connect to http://localhost:${port}/mcp`);
+				} catch (err: any) {
+					vscode.window.showErrorMessage(`MCP Server failed to start: ${err.message}`);
+					updateMcpStatusBar(false, port);
+				}
+			}
+		},
+	);
+	context.subscriptions.push(toggleMcpServerCommand, mcpStatusBarItem);
+
 	// F-029: Toggle Review Annotations command
 	const toggleAnnotationsCommand = vscode.commands.registerCommand(
 		'ollama-code-review.toggleAnnotations',
@@ -4725,6 +4787,12 @@ export function deactivate() {
 	}
 	if (DocumentationPreviewPanel.currentPanel) {
 		DocumentationPreviewPanel.currentPanel.dispose();
+	}
+
+	// Stop MCP server if running
+	if (mcpServerInstance?.isRunning()) {
+		mcpServerInstance.stop().catch(() => {});
+		mcpServerInstance = undefined;
 	}
 
 	// Dispose skills service (clears in-memory caches)

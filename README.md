@@ -154,6 +154,8 @@ All feedback from Ollama is displayed in a dedicated "Ollama Code Review" output
 - **Auto-Discovery**: The extension automatically fetches all models currently installed on your local Ollama instance.
 - **Cloud Support**: Even if Ollama isn't running locally, you can switch to configured cloud-based models (like Kimi, Qwen, or GLM) or set a custom model name.
 - **Smart Fallbacks**: If the connection to the Ollama API fails, the extension gracefully provides a list of cloud and custom options so you're never stuck.
+- **⭐ Model Recommendations (F-037)**: The model picker shows a `⭐ Recommended` item at the top, scored based on the active task type, languages in the diff, and diff size. The reason and score percentage are shown as the item description.
+  - Enable **Auto-Select** (`ollama-code-review.autoSelectModel: true`) to have the extension automatically switch to the best model before each review — no manual picking needed.
 
 ![Model Selection](images/switch-models.gif)
 
@@ -360,6 +362,7 @@ After a review completes, use the toolbar buttons at the top of the review panel
 - **✨ Commit Msg**: Generate a conventional commit message from your currently staged changes directly from the review panel — no need to switch to the Source Control panel.
 - **💬 Discuss**: Open the current review in the [Persistent AI Review Chat Sidebar](#41-persistent-ai-review-chat-sidebar) to continue the conversation with multi-turn follow-up questions.
 - **Copy Diff**: Copies the original git diff that was analyzed to your clipboard. This is perfect for pasting into other LLM chats (like ChatGPT or Claude) if you want to provide the exact code context manually.
+- **🧠 Copy Prompt**: Copies the exact prompt that was sent to the AI — including the full diff, active skills, selected profile, and context sections. Useful for debugging review quality, sharing reproducible prompts, or pasting into external AI tools.
 
 ### 24. GitHub PR Integration
 Review GitHub Pull Requests directly from VS Code and post AI-generated reviews as PR comments:
@@ -1282,7 +1285,7 @@ Detect accidentally committed secrets (API keys, tokens, passwords, private keys
 
 - **Command**: `Ollama Code Review: Scan for Secrets`
 
-The AI scans your code for common secret patterns including API keys, JWT tokens, connection strings, private keys, and other sensitive data — helping you catch leaks before they happen.
+The scanner uses **regex pattern detection** for common secret patterns (API keys, JWT tokens, connection strings, private keys, and other sensitive data) combined with **Shannon entropy filtering** to suppress false positives — identifiers, CSS class names, and other low-entropy strings are automatically excluded, so you only see findings with genuine random/secret-looking values.
 
 ---
 
@@ -1311,12 +1314,74 @@ The finding's message, severity, file context, and any suggestions are sent to t
 
 ---
 
+### 54. Findings Severity Filter & Export (F-034)
+
+Filter the Findings Explorer by severity and export findings as a Markdown checklist — making it easy to focus on what matters most and share findings with your team.
+
+**Filtering:**
+
+- Click the **Filter** toolbar button (`$(filter)`) in the Findings Explorer to open a multi-select severity picker
+- Check/uncheck severity levels (`critical`, `high`, `medium`, `low`, `info`) to show or hide findings instantly
+- When a filter is active, the tree description shows **"Showing N of M"** and a **Clear Filter** (`$(clear-all)`) button appears in the toolbar
+- The filter applies to both the tree view and the Markdown export
+
+**Export:**
+
+- Click the **Export** toolbar button (`$(markdown)`) to generate a Markdown checklist of all currently visible findings, grouped by file
+- Choose to **copy to clipboard** or **save as a `.md` file**
+
+**Export format:**
+
+```markdown
+# Review Findings
+
+**12 findings:** 🔴 2 critical | 🟠 4 high | 🔵 3 medium | 🟢 3 low
+
+## src/auth.ts
+
+- [ ] 🔴 **critical** (L42): SQL injection via unsanitized user input
+  - **Suggestion:** Use parameterized queries instead
+- [ ] 🟠 **high** (L87): Missing error handling in async callback
+```
+
+**Commands:**
+
+| Command | Description |
+|---------|-------------|
+| `ollama-code-review.filterFindings` | Open multi-select severity filter picker |
+| `ollama-code-review.showAllFindings` | Clear filter and show all findings |
+| `ollama-code-review.exportFindings` | Export findings as Markdown (clipboard or file) |
+
+---
+
+### 55. View Finding Diff (F-044)
+
+Open a native VS Code **diff editor** for any finding in the Findings Explorer, showing the exact changes between the last Git commit (`HEAD`) and your current working file.
+
+- Click the **diff icon** (`$(diff)`) on a finding node or file node in the Findings Explorer
+- VS Code's built-in side-by-side diff editor opens with the title `<file> [SEVERITY] — Review Diff`
+- The editor automatically **scrolls to the finding's line** so you can see the relevant change in context
+- New/untracked files show all lines as additions (empty "before" side)
+
+**Command:**
+
+| Command | Description |
+|---------|-------------|
+| `ollama-code-review.viewFindingDiff` | Open the VS Code diff editor for a finding's file (HEAD vs working copy) |
+
+> This complements **Quick Fix from Review Findings** (Section 49) — use View Diff to understand the change, then Quick Fix to resolve it.
+
+---
+
 ## Extension Settings
 
 This extension contributes the following settings to your VS Code `settings.json`:
 
 * `ollama-code-review.model`: Supports local Ollama models, cloud models (`kimi-k2.5:cloud`, `qwen3-coder:480b-cloud`, `glm-4.7:cloud`), Claude models (`claude-sonnet-4-20250514`, `claude-opus-4-20250514`, `claude-3-7-sonnet-20250219`), Gemini models (`gemini-2.5-flash`, `gemini-2.5-pro`), Mistral models (`mistral-large-latest`, `mistral-small-latest`, `codestral-latest`), MiniMax models (`MiniMax-M2.5`), GLM models (`glm-4.7-flash`), Hugging Face (`huggingface`), any OpenAI-compatible server (`openai-compatible`), or `custom`.
 * `ollama-code-review.customModel`: Specify your own model name if you select "custom" in the model setting.
+* `ollama-code-review.autoSelectModel`: When `true`, the extension automatically switches to the best model before each review, based on task type, languages detected in the diff, and diff size. The recommendation engine scores all configured models and selects the highest scorer.
+    * **Type**: `boolean`
+    * **Default**: `false`
 * `ollama-code-review.claudeApiKey`: Your Anthropic API key for Claude models.
 * `ollama-code-review.glmApiKey`: Your Z.AI (BigModel/Zhipu) API key for GLM models.
 * `ollama-code-review.hfApiKey`: Your Hugging Face API token for using Hugging Face models.

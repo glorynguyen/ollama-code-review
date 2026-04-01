@@ -336,6 +336,12 @@
         "icon": "$(eye)"
       },
       {
+        "command": "ollama-code-review.toggleMcpServer",
+        "title": "Toggle MCP Server for Claude Code",
+        "category": "Ollama Code Review",
+        "icon": "$(plug)"
+      },
+      {
         "command": "ollama-code-review.openSetupGuide",
         "title": "Open Setup Guide",
         "category": "Ollama Code Review",
@@ -1271,6 +1277,18 @@
               "description": "Build smart context for reviews: instead of sending only the raw diff, the extension resolves the wrapping function body, called functions (BFS depth 2, max 8), and relevant imports. Requires an active language server for the file. Disable if you experience slow reviews or want minimal payloads."
             }
           }
+        },
+        "ollama-code-review.mcp.enabled": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Enable the **MCP (Model Context Protocol) server** so Claude Code can connect to this extension and use its code review tools. The server listens on `localhost` only."
+        },
+        "ollama-code-review.mcp.port": {
+          "type": "number",
+          "default": 19840,
+          "minimum": 1024,
+          "maximum": 65535,
+          "description": "Port for the MCP server (localhost only). Change if the default port conflicts with another service."
         }
       }
     }
@@ -1309,9 +1327,12 @@
     "esbuild": "^0.27.3",
     "eslint": "^9.32.0",
     "semantic-release": "^25.0.2",
-    "typescript": "^5.9.2"
+    "ts-loader": "^9.5.4",
+    "typescript": "^5.9.2",
+    "webpack-cli": "^7.0.2"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@octokit/rest": "^22.0.1",
     "axios": "^1.11.0",
     "js-yaml": "^4.1.1",
