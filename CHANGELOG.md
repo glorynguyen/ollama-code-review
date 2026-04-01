@@ -1,3 +1,10 @@
+## [3.43.1](https://github.com/glorynguyen/ollama-code-review/compare/v3.43.0...v3.43.1) (2026-04-01)
+
+
+### Bug Fixes
+
+* **mcp:** use per-request transport for SDK v1.29+ compatibility ([a995bfb](https://github.com/glorynguyen/ollama-code-review/commit/a995bfba6dd4f40f8ed14e361a8fd7a0da01f8a7))
+
 # [3.43.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.42.0...v3.43.0) (2026-04-01)
 
 
