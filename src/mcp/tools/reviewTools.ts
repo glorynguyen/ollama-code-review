@@ -123,4 +123,47 @@ export function registerReviewTools(server: McpServer): void {
 			return { content: [{ type: 'text' as const, text: output }] };
 		},
 	);
+
+	server.tool(
+		'get_branch_diff',
+		'Get the diff between two Git branches or refs (e.g., main vs feature-branch), filtered to exclude noise. Includes a file list summary.',
+		{
+			base_ref: z.string().describe('The base branch or ref to compare from (e.g., main)'),
+			target_ref: z.string().describe('The target branch or ref to compare to (e.g., feature-branch)'),
+			repository_path: z.string().optional().describe('Path to the git repository. Defaults to the open workspace folder.'),
+		},
+		async ({ base_ref, target_ref, repository_path }) => {
+			const repoPath = repository_path || mcpBridge.getRepoPath();
+			mcpBridge.log(`get_branch_diff: base=${base_ref}, target=${target_ref}, repo=${repoPath}`);
+
+			const rawDiff = await mcpBridge.runGit(repoPath, ['diff', base_ref, target_ref]);
+			if (!rawDiff.trim()) {
+				return { content: [{ type: 'text' as const, text: `No differences found between ${base_ref} and ${target_ref}.` }] };
+			}
+
+			const filesList = await mcpBridge.runGit(repoPath, ['diff', '--name-only', base_ref, target_ref]);
+			const filesArray = filesList.trim().split('\n').filter(Boolean);
+
+			const filterConfig = getDiffFilterConfig();
+			const result = filterDiff(rawDiff, filterConfig);
+			const summary = getFilterSummary(result.stats);
+
+			const output = [
+				`## Branch Diff: ${base_ref} → ${target_ref}`,
+				'',
+				`**Files changed:** ${filesArray.length}`,
+				`**Stats:** ${result.stats.includedFiles} of ${result.stats.totalFiles} files included`,
+				summary ? `**Filtered:** ${summary}` : '',
+				'',
+				'**Changed files:**',
+				...filesArray.map(f => `- ${f}`),
+				'',
+				'```diff',
+				result.filteredDiff,
+				'```',
+			].filter(Boolean).join('\n');
+
+			return { content: [{ type: 'text' as const, text: output }] };
+		},
+	);
 }
