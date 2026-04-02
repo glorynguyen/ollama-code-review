@@ -1,3 +1,10 @@
+# [3.44.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.43.1...v3.44.0) (2026-04-02)
+
+
+### Features
+
+* **reviewTools:** add 'get_branch_diff' tool to compare Git branches with filtered output ([8841716](https://github.com/glorynguyen/ollama-code-review/commit/8841716855c969313df7a1adcb31e22f858a7303))
+
 ## [3.43.1](https://github.com/glorynguyen/ollama-code-review/compare/v3.43.0...v3.43.1) (2026-04-01)
 
 
