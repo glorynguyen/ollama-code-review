@@ -1,6 +1,14 @@
 import * as http from 'http';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 
 export type McpRequestHandler = (req: http.IncomingMessage, res: http.ServerResponse) => Promise<void>;
+export interface McpListenOptions {
+	autoKillPortConflicts?: boolean;
+	log?: (message: string) => void;
+}
+
+const execFileAsync = promisify(execFile);
 
 /**
  * Creates an HTTP server that routes /mcp requests to a per-request handler.
@@ -53,19 +61,164 @@ export function createHttpServer(handleMcpRequest: McpRequestHandler): http.Serv
 
 /**
  * Start listening on the given port, bound to localhost only.
- * Rejects if the port is already in use.
+ * Rejects if the port is already in use unless auto-kill is enabled.
  */
-export function listen(server: http.Server, port: number): Promise<void> {
+export async function listen(server: http.Server, port: number, options: McpListenOptions = {}): Promise<void> {
+	try {
+		await listenOnce(server, port);
+	} catch (err) {
+		const error = err as NodeJS.ErrnoException;
+		if (error.code !== 'EADDRINUSE' || !options.autoKillPortConflicts) {
+			throw wrapListenError(port, error);
+		}
+
+		options.log?.(`Port ${port} is in use — attempting to terminate the existing listener.`);
+		const killedPids = await killProcessesUsingPort(port, options.log);
+		if (killedPids.length === 0) {
+			throw new Error(
+				`Port ${port} is already in use and no owning process could be terminated automatically. ` +
+				'Change ollama-code-review.mcp.port in settings or disable auto-kill.',
+			);
+		}
+
+		await waitForPortRelease(port, 3000);
+		await listenOnce(server, port);
+	}
+}
+
+function listenOnce(server: http.Server, port: number): Promise<void> {
 	return new Promise((resolve, reject) => {
-		server.once('error', (err: NodeJS.ErrnoException) => {
-			if (err.code === 'EADDRINUSE') {
-				reject(new Error(`Port ${port} is already in use. Change ollama-code-review.mcp.port in settings.`));
-			} else {
-				reject(err);
-			}
-		});
-		server.listen(port, '127.0.0.1', () => {
+		const onError = (err: NodeJS.ErrnoException): void => {
+			cleanup();
+			reject(err);
+		};
+		const onListening = (): void => {
+			cleanup();
 			resolve();
-		});
+		};
+		const cleanup = (): void => {
+			server.off('error', onError);
+			server.off('listening', onListening);
+		};
+
+		server.once('error', onError);
+		server.once('listening', onListening);
+		server.listen(port, '127.0.0.1');
 	});
+}
+
+function wrapListenError(port: number, err: NodeJS.ErrnoException): Error {
+	if (err.code === 'EADDRINUSE') {
+		return new Error(`Port ${port} is already in use. Change ollama-code-review.mcp.port in settings.`);
+	}
+	return err;
+}
+
+async function killProcessesUsingPort(port: number, log?: (message: string) => void): Promise<number[]> {
+	const pids = (await getListeningPids(port)).filter(pid => pid !== process.pid);
+	for (const pid of pids) {
+		log?.(`Terminating process ${pid} using MCP port ${port}.`);
+		await terminatePid(pid);
+	}
+	return pids;
+}
+
+async function getListeningPids(port: number): Promise<number[]> {
+	if (process.platform === 'win32') {
+		return getListeningPidsWindows(port);
+	}
+	return getListeningPidsUnix(port);
+}
+
+async function getListeningPidsUnix(port: number): Promise<number[]> {
+	try {
+		const { stdout } = await execFileAsync('lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-t']);
+		return parsePidList(stdout);
+	} catch (err) {
+		const error = err as NodeJS.ErrnoException & { stdout?: string };
+		if (typeof error.stdout === 'string' && error.stdout.trim()) {
+			return parsePidList(error.stdout);
+		}
+		if (error.code === 'ENOENT') {
+			throw new Error('Could not inspect port usage because `lsof` is not available on this system.');
+		}
+		return [];
+	}
+}
+
+async function getListeningPidsWindows(port: number): Promise<number[]> {
+	const { stdout } = await execFileAsync('netstat', ['-ano', '-p', 'tcp']);
+	const pids = new Set<number>();
+	for (const line of stdout.split(/\r?\n/)) {
+		const normalized = line.trim();
+		if (!normalized) { continue; }
+		const parts = normalized.split(/\s+/);
+		if (parts.length < 5) { continue; }
+		const localAddress = parts[1];
+		const state = parts[3];
+		const pid = Number(parts[4]);
+		if (!Number.isFinite(pid) || state.toUpperCase() !== 'LISTENING') { continue; }
+		if (matchesPort(localAddress, port)) {
+			pids.add(pid);
+		}
+	}
+	return [...pids];
+}
+
+function matchesPort(address: string, port: number): boolean {
+	const match = address.match(/:(\d+)$/);
+	return match ? Number(match[1]) === port : false;
+}
+
+function parsePidList(stdout: string): number[] {
+	return [...new Set(
+		stdout
+			.split(/\r?\n/)
+			.map(line => Number(line.trim()))
+			.filter(pid => Number.isInteger(pid) && pid > 0),
+	)];
+}
+
+async function terminatePid(pid: number): Promise<void> {
+	if (process.platform === 'win32') {
+		await execFileAsync('taskkill', ['/PID', String(pid), '/T', '/F']);
+		return;
+	}
+
+	try {
+		process.kill(pid, 'SIGTERM');
+	} catch (err) {
+		const error = err as NodeJS.ErrnoException;
+		if (error.code !== 'ESRCH') {
+			throw error;
+		}
+		return;
+	}
+
+	await sleep(250);
+	try {
+		process.kill(pid, 0);
+		process.kill(pid, 'SIGKILL');
+	} catch (err) {
+		const error = err as NodeJS.ErrnoException;
+		if (error.code !== 'ESRCH') {
+			throw error;
+		}
+	}
+}
+
+async function waitForPortRelease(port: number, timeoutMs: number): Promise<void> {
+	const startedAt = Date.now();
+	while ((Date.now() - startedAt) < timeoutMs) {
+		const pids = (await getListeningPids(port)).filter(pid => pid !== process.pid);
+		if (pids.length === 0) {
+			return;
+		}
+		await sleep(150);
+	}
+	throw new Error(`Timed out waiting for port ${port} to become available after terminating the previous listener.`);
+}
+
+function sleep(ms: number): Promise<void> {
+	return new Promise(resolve => setTimeout(resolve, ms));
 }

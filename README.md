@@ -471,15 +471,36 @@ Give the AI richer context by automatically including related files alongside yo
 
 > Context gathering is non-fatal — if it fails or finds nothing, the review proceeds normally without context.
 
-### 29. MCP Server for Claude Desktop
-Use the code review functionality directly in Claude Desktop without copy-pasting diffs. The MCP server is available as a separate project:
+### 29. Built-in MCP Server
+The extension includes an optional **MCP (Model Context Protocol) server** that exposes local review context to MCP clients such as Claude Code without copy-pasting diffs.
 
-**Repository:** [gitsage](https://github.com/glorynguyen/gitsage)
+- **Optional**: Disabled by default. Enable it with `ollama-code-review.mcp.enabled` or run `Ollama Code Review: Toggle MCP Server for Claude Code`.
+- **Local only**: The server listens on `127.0.0.1` and defaults to port `19840`.
+- **Port conflict handling**: Optionally enable `ollama-code-review.mcp.autoKillPortConflicts` to terminate an existing local listener on the configured MCP port before starting the server.
+- **No AI calls in MCP tools**: Current MCP tools return raw data and assembled prompts/resources only. They do not directly invoke Ollama or any cloud provider.
+- **Works alongside normal extension usage**: If MCP is disabled, the extension continues to work normally with the configured model/provider.
 
-Features include:
-- **16 Tools Available**: Review staged changes, commits, branches, generate commit messages, explain code, and more
-- **Skills Support**: Apply agent skills to enhance reviews
-- **Git Integration**: Full access to repository status, commits, and branches
+**Current MCP tools**
+- `get_staged_diff`
+- `get_commit_diff`
+- `get_file_content`
+- `get_branch_diff`
+- `get_review_context`
+- `get_review_prompt`
+- `get_commit_prompt`
+- `score_review`
+- `parse_findings`
+- `list_profiles`
+- `get_config`
+
+**Current MCP resources**
+- `review://scores`
+- `review://config`
+
+**Example endpoint**
+```text
+http://127.0.0.1:19840/mcp
+```
 
 ### 30. Batch / Legacy Code Review (No Git Required)
 Review any file, folder, or selected text without needing a Git diff — perfect for legacy codebases, third-party code, or files not tracked by Git.
@@ -1479,6 +1500,15 @@ This extension contributes the following settings to your VS Code `settings.json
 * `ollama-code-review.streaming.enabled`: Enable streaming responses for supported providers (Ollama, Claude, OpenAI-compatible). Review text appears token-by-token in the review panel as it is generated. Providers that don't support streaming automatically fall back to non-streaming mode.
     * **Type**: `boolean`
     * **Default**: `true`
+* `ollama-code-review.mcp.enabled`: Enable the built-in MCP server so local MCP clients can connect to the extension.
+    * **Type**: `boolean`
+    * **Default**: `false`
+* `ollama-code-review.mcp.port`: Port used by the built-in MCP server.
+    * **Type**: `number`
+    * **Default**: `19840`
+* `ollama-code-review.mcp.autoKillPortConflicts`: When enabled, the extension tries to terminate the existing local process using the configured MCP port before starting its own MCP server.
+    * **Type**: `boolean`
+    * **Default**: `false`
 * `ollama-code-review.contentstack`: Configure Contentstack Schema Validation (F-032). When enabled, validates Contentstack CMS field names in code against actual Content Type schemas and injects findings into the AI review prompt.
     * `enabled`: Enable Contentstack schema validation during reviews (default: `false`)
     * `schemaSource`: Where to load schemas — `local` (JSON export file) or `api` (Contentstack Management API) (default: `local`)

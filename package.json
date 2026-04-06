@@ -1289,6 +1289,11 @@
           "minimum": 1024,
           "maximum": 65535,
           "description": "Port for the MCP server (localhost only). Change if the default port conflicts with another service."
+        },
+        "ollama-code-review.mcp.autoKillPortConflicts": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "When enabled, the extension attempts to terminate the existing local process using the configured MCP port before starting its own MCP server. Useful when multiple VS Code windows compete for the same MCP port."
         }
       }
     }

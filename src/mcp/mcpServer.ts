@@ -28,6 +28,8 @@ export function createMcpServer(port: number): McpServerInstance {
 
 		async start(): Promise<void> {
 			if (running) { return; }
+			const config = mcpBridge.getConfig();
+			const autoKillPortConflicts = config.get<boolean>('mcp.autoKillPortConflicts', false);
 
 			// Per-request handler: SDK stateless mode requires a fresh transport per request
 			async function handleMcpRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
@@ -50,7 +52,10 @@ export function createMcpServer(port: number): McpServerInstance {
 			}
 
 			httpServer = createHttpServer(handleMcpRequest);
-			await listen(httpServer, port);
+			await listen(httpServer, port, {
+				autoKillPortConflicts,
+				log: (message) => mcpBridge.log(message),
+			});
 
 			running = true;
 			mcpBridge.log(`MCP server listening on http://127.0.0.1:${port}/mcp`);

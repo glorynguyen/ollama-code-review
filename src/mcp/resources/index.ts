@@ -46,6 +46,7 @@ export function registerAllResources(server: McpServer): void {
 				mcp: {
 					enabled: config.get('mcp.enabled'),
 					port: config.get('mcp.port'),
+					autoKillPortConflicts: config.get('mcp.autoKillPortConflicts'),
 				},
 			};
 
