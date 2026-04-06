@@ -1,3 +1,10 @@
+# [3.45.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.44.0...v3.45.0) (2026-04-06)
+
+
+### Features
+
+* **mcp:** add auto-kill port conflict resolution on server start ([935c6c3](https://github.com/glorynguyen/ollama-code-review/commit/935c6c3c4ec0582c940d73ce317188cdc1a67553))
+
 # [3.44.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.43.1...v3.44.0) (2026-04-02)
 
 
