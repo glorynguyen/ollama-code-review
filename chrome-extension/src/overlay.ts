@@ -1,6 +1,8 @@
 import { ModelManager } from './modelManager';
 import type {
+	ApplyCommitMessageMessage,
 	FetchBranchDiffMessage,
+	FetchCommitPromptMessage,
 	FetchPrDiffMessage,
 	FetchStagedDiffMessage,
 	PageContext,
@@ -20,6 +22,7 @@ const tokenInput = getElement<HTMLInputElement>('mcp-token-input');
 const modelSelect = getElement<HTMLSelectElement>('model-select');
 const baseRefInput = getElement<HTMLInputElement>('base-ref-input');
 const targetRefInput = getElement<HTMLInputElement>('target-ref-input');
+const commitDraftInput = getElement<HTMLInputElement>('commit-draft-input');
 const saveTokenButton = getElement<HTMLButtonElement>('save-token-btn');
 const testMcpButton = getElement<HTMLButtonElement>('test-mcp-btn');
 const previewTabButton = getElement<HTMLButtonElement>('preview-tab-btn');
@@ -27,6 +30,7 @@ const markdownTabButton = getElement<HTMLButtonElement>('markdown-tab-btn');
 const loadModelButton = getElement<HTMLButtonElement>('load-model-btn');
 const reviewStagedButton = getElement<HTMLButtonElement>('review-staged-btn');
 const reviewBranchesButton = getElement<HTMLButtonElement>('review-branches-btn');
+const generateCommitButton = getElement<HTMLButtonElement>('generate-commit-btn');
 const runReviewButton = getElement<HTMLButtonElement>('run-review-btn');
 const closeButton = getElement<HTMLButtonElement>('close-btn');
 
@@ -77,6 +81,10 @@ reviewStagedButton.addEventListener('click', () => {
 
 reviewBranchesButton.addEventListener('click', () => {
 	void runBranchReview().catch(renderError);
+});
+
+generateCommitButton.addEventListener('click', () => {
+	void runCommitMessageGeneration().catch(renderError);
 });
 
 runReviewButton.addEventListener('click', () => {
@@ -264,6 +272,44 @@ async function runBranchReview(): Promise<void> {
 	statusEl.textContent = `Branch comparison review complete (${baseRef} → ${targetRef}).`;
 }
 
+async function runCommitMessageGeneration(): Promise<void> {
+	resetOutput();
+	statusEl.textContent = 'Loading model and preparing commit message prompt...';
+
+	await modelManager.ensureLoaded(modelSelect.value, updateProgress);
+
+	const message: FetchCommitPromptMessage = {
+		type: 'FETCH_COMMIT_PROMPT',
+		payload: {
+			host: pageContext?.host,
+			owner: pageContext?.owner,
+			repo: pageContext?.repo,
+			existingMessage: commitDraftInput.value.trim(),
+		},
+	};
+
+	const response = await chrome.runtime.sendMessage(message);
+	if (!response?.ok) {
+		throw new Error(response?.error ?? 'Failed to fetch commit prompt from MCP.');
+	}
+
+	statusEl.textContent = 'Generating commit message from staged changes...';
+	const commitMessage = await modelManager.generateCommitMessage(
+		{
+			modelId: modelSelect.value,
+			commitPrompt: String(response.data.promptText ?? ''),
+		},
+		(token) => {
+			appendOutput(token);
+		},
+	);
+
+	outputMarkdown = normalizeCommitMessage(commitMessage);
+	renderOutput();
+	const applyResult = await applyCommitMessageToVscode(commitMessage);
+	statusEl.textContent = applyResult || 'Commit message generated and applied to VS Code.';
+}
+
 function updateProgress(progress: { text: string; progress?: number }): void {
 	if (typeof progress.progress === 'number') {
 		statusEl.textContent = `${progress.text} (${Math.round(progress.progress * 100)}%)`;
@@ -327,6 +373,21 @@ function truncateText(text: string, maxLength: number): string {
 	return `${text.slice(0, maxLength)}\n...`;
 }
 
+function normalizeCommitMessage(text: string): string {
+	const trimmed = text.trim();
+	if (!trimmed) {
+		return 'No commit message was generated.';
+	}
+
+	return [
+		'## Commit Message',
+		'',
+		'```text',
+		trimmed,
+		'```',
+	].join('\n');
+}
+
 async function fetchReviewScore(reviewText: string): Promise<string> {
 	const message: ScoreReviewMessage = {
 		type: 'SCORE_REVIEW',
@@ -345,6 +406,23 @@ async function appendScoreSafely(reviewText: string): Promise<void> {
 	} catch (error) {
 		appendReviewScore(`## Review Score\n\nScoring failed: ${error instanceof Error ? error.message : String(error)}`);
 	}
+}
+
+async function applyCommitMessageToVscode(commitMessage: string): Promise<string> {
+	const message: ApplyCommitMessageMessage = {
+		type: 'APPLY_COMMIT_MESSAGE',
+		payload: {
+			host: pageContext?.host,
+			owner: pageContext?.owner,
+			repo: pageContext?.repo,
+			commitMessage,
+		},
+	};
+	const response = await chrome.runtime.sendMessage(message);
+	if (!response?.ok) {
+		throw new Error(response?.error ?? 'Failed to apply commit message to VS Code.');
+	}
+	return String(response.data.resultText ?? '');
 }
 
 function renderMarkdown(markdown: string): string {

@@ -51,6 +51,10 @@ html, body {
   align-items: stretch;
 }
 
+.panel-commit {
+  align-items: stretch;
+}
+
 .field {
   display: grid;
   gap: 6px;

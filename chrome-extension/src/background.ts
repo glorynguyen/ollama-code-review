@@ -139,6 +139,80 @@ chrome.runtime.onMessage.addListener((message: BackgroundMessage, _sender, sendR
 			return;
 		}
 
+		if (message.type === 'FETCH_COMMIT_PROMPT') {
+			const stored = await chrome.storage.local.get('mcpToken');
+			mcpClient.setToken((stored.mcpToken as string | undefined) ?? '');
+			await mcpClient.initialize();
+
+			const repos = await mcpClient.getWorkspaceRepos();
+			const repo = findRepoForStagedChanges(
+				repos,
+				message.payload.host,
+				message.payload.owner,
+				message.payload.repo,
+			);
+
+			if (!repo) {
+				sendResponse({
+					ok: false,
+					error: 'Could not determine which local workspace repo to use for commit message generation. Open the repo in VS Code, or keep only one matching repo open.',
+				});
+				return;
+			}
+
+			const promptResult = await mcpClient.callTool('get_commit_prompt', {
+				repository_path: repo.path,
+				existing_message: message.payload.existingMessage ?? '',
+			});
+			const promptText = promptResult.content?.find(entry => entry.type === 'text')?.text ?? '';
+
+			sendResponse({
+				ok: true,
+				data: {
+					repositoryPath: repo.path,
+					promptText,
+				},
+			});
+			return;
+		}
+
+		if (message.type === 'APPLY_COMMIT_MESSAGE') {
+			const stored = await chrome.storage.local.get('mcpToken');
+			mcpClient.setToken((stored.mcpToken as string | undefined) ?? '');
+			await mcpClient.initialize();
+
+			const repos = await mcpClient.getWorkspaceRepos();
+			const repo = findRepoForStagedChanges(
+				repos,
+				message.payload.host,
+				message.payload.owner,
+				message.payload.repo,
+			);
+
+			if (!repo) {
+				sendResponse({
+					ok: false,
+					error: 'Could not determine which local workspace repo to use when applying the commit message.',
+				});
+				return;
+			}
+
+			const result = await mcpClient.callTool('set_commit_message', {
+				repository_path: repo.path,
+				commit_message: message.payload.commitMessage,
+			});
+			const resultText = result.content?.find(entry => entry.type === 'text')?.text ?? '';
+
+			sendResponse({
+				ok: true,
+				data: {
+					repositoryPath: repo.path,
+					resultText,
+				},
+			});
+			return;
+		}
+
 		if (message.type === 'TEST_MCP_CONNECTION') {
 			const stored = await chrome.storage.local.get('mcpToken');
 			mcpClient.setToken((stored.mcpToken as string | undefined) ?? '');

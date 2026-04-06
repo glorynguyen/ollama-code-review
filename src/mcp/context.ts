@@ -69,6 +69,25 @@ export class McpExtensionBridge {
 	getGlobalStoragePath(): string {
 		return this.context.globalStorageUri.fsPath;
 	}
+
+	async setCommitMessage(repoPath: string, commitMessage: string): Promise<void> {
+		const gitExtension = vscode.extensions.getExtension('vscode.git')?.exports;
+		if (!gitExtension) {
+			throw new Error('Git extension not found. Please ensure it is enabled.');
+		}
+
+		const gitApi = gitExtension.getAPI(1);
+		const repo = gitApi?.repositories?.find((candidate: { rootUri?: { fsPath?: string }; }) =>
+			candidate.rootUri?.fsPath === repoPath,
+		);
+
+		if (!repo?.inputBox) {
+			throw new Error(`Could not find a Git repository input box for ${repoPath}.`);
+		}
+
+		repo.inputBox.value = commitMessage;
+		await vscode.commands.executeCommand('workbench.view.scm');
+	}
 }
 
 /** Singleton bridge instance shared across all MCP tool handlers */

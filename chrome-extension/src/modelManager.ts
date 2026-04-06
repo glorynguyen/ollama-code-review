@@ -360,4 +360,54 @@ export class ModelManager {
 
 		return chunks.filter(Boolean);
 	}
+
+	async generateCommitMessage(
+		input: {
+			modelId: string;
+			commitPrompt: string;
+		},
+		onToken: (token: string) => void,
+	): Promise<string> {
+		if (!this.engine || this.loadedModel !== input.modelId) {
+			throw new Error('The selected model is not loaded yet.');
+		}
+
+		this.status = 'generating';
+		let output = '';
+
+		try {
+			const stream = await this.engine.chat.completions.create({
+				model: input.modelId,
+				stream: true,
+				temperature: 0.1,
+				messages: [
+					{
+						role: 'system',
+						content:
+							'You generate concise, high-quality git commit messages. ' +
+							'Follow the user prompt exactly and output only the final commit message.',
+					},
+					{
+						role: 'user',
+						content: input.commitPrompt,
+					},
+				],
+			});
+
+			for await (const chunk of stream) {
+				const token = chunk.choices?.[0]?.delta?.content ?? '';
+				if (!token) {
+					continue;
+				}
+				output += token;
+				onToken(token);
+			}
+
+			this.status = 'ready';
+			return output.trim();
+		} catch (error) {
+			this.status = 'error';
+			throw error;
+		}
+	}
 }

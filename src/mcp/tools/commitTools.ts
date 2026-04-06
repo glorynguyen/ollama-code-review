@@ -36,4 +36,30 @@ export function registerCommitTools(server: McpServer): void {
 			return { content: [{ type: 'text' as const, text: prompt }] };
 		},
 	);
+
+	server.tool(
+		'set_commit_message',
+		'Set the VS Code Source Control commit message input box for the selected repository.',
+		{
+			commit_message: z.string().describe('The commit message to place into the VS Code SCM input box'),
+			repository_path: z.string().optional().describe('Path to the git repository. Defaults to the open workspace folder.'),
+		},
+		async ({ commit_message, repository_path }) => {
+			const repoPath = repository_path || mcpBridge.getRepoPath();
+			const trimmedMessage = commit_message.trim();
+			if (!trimmedMessage) {
+				return { content: [{ type: 'text' as const, text: 'Commit message was empty. Nothing was written to the SCM input box.' }] };
+			}
+
+			await mcpBridge.setCommitMessage(repoPath, trimmedMessage);
+			mcpBridge.log(`set_commit_message: repo=${repoPath}`);
+
+			return {
+				content: [{
+					type: 'text' as const,
+					text: `Commit message written to the VS Code SCM input box for ${repoPath}.`,
+				}],
+			};
+		},
+	);
 }
