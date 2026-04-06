@@ -1,5 +1,8 @@
 import * as vscode from 'vscode';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+
+const execFileAsync = promisify(execFile);
 
 /**
  * Bridge between MCP tool handlers and VS Code extension context.
@@ -32,6 +35,18 @@ export class McpExtensionBridge {
 		return vscode.workspace.getConfiguration('ollama-code-review');
 	}
 
+	getWorkspaceFolders(): readonly vscode.WorkspaceFolder[] {
+		return vscode.workspace.workspaceFolders ?? [];
+	}
+
+	getMcpAllowedOrigins(): string[] {
+		return this.getConfig().get<string[]>('mcp.allowedOrigins', ['chrome-extension://*']);
+	}
+
+	getMcpAuthToken(): string {
+		return this.getConfig().get<string>('mcp.authToken', '').trim();
+	}
+
 	getRepoPath(): string {
 		const folders = vscode.workspace.workspaceFolders;
 		if (!folders || folders.length === 0) {
@@ -41,16 +56,10 @@ export class McpExtensionBridge {
 	}
 
 	runGit(repoPath: string, args: string[]): Promise<string> {
-		return new Promise((resolve, reject) => {
-			const cmd = `git ${args.join(' ')}`;
-			exec(cmd, { cwd: repoPath, maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
-				if (error) {
-					reject(new Error(stderr || error.message));
-				} else {
-					resolve(stdout);
-				}
-			});
-		});
+		return execFileAsync('git', args, {
+			cwd: repoPath,
+			maxBuffer: 10 * 1024 * 1024,
+		}).then(({ stdout }) => stdout);
 	}
 
 	log(message: string): void {

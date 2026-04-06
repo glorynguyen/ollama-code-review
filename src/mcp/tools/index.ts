@@ -3,6 +3,7 @@ import { registerReviewTools } from './reviewTools';
 import { registerContextTools } from './contextTools';
 import { registerCommitTools } from './commitTools';
 import { registerUtilityTools } from './scoreTools';
+import { registerBrowserTools } from './browserTools';
 
 /**
  * Register all MCP tools on the server.
@@ -13,4 +14,5 @@ export function registerAllTools(server: McpServer): void {
 	registerContextTools(server);      // get_review_context, get_review_prompt
 	registerCommitTools(server);       // get_commit_prompt
 	registerUtilityTools(server);      // score_review, parse_findings, list_profiles, get_config
+	registerBrowserTools(server);      // get_workspace_repos
 }

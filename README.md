@@ -477,6 +477,7 @@ The extension includes an optional **MCP (Model Context Protocol) server** that 
 - **Optional**: Disabled by default. Enable it with `ollama-code-review.mcp.enabled` or run `Ollama Code Review: Toggle MCP Server for Claude Code`.
 - **Local only**: The server listens on `127.0.0.1` and defaults to port `19840`.
 - **Port conflict handling**: Optionally enable `ollama-code-review.mcp.autoKillPortConflicts` to terminate an existing local listener on the configured MCP port before starting the server.
+- **Browser clients supported**: You can allow a companion Chrome extension by configuring `ollama-code-review.mcp.allowedOrigins` and optionally protecting requests with `ollama-code-review.mcp.authToken`.
 - **No AI calls in MCP tools**: Current MCP tools return raw data and assembled prompts/resources only. They do not directly invoke Ollama or any cloud provider.
 - **Works alongside normal extension usage**: If MCP is disabled, the extension continues to work normally with the configured model/provider.
 
@@ -492,10 +493,16 @@ The extension includes an optional **MCP (Model Context Protocol) server** that 
 - `parse_findings`
 - `list_profiles`
 - `get_config`
+- `get_workspace_repos`
 
 **Current MCP resources**
 - `review://scores`
 - `review://config`
+
+**Companion Chrome extension**
+- A browser-side companion extension lives in `chrome-extension/`
+- Build it separately with `npm run build:chrome-extension`
+- It is intentionally excluded from the VS Code extension bundle and `.vsix` package
 
 **Example endpoint**
 ```text
@@ -1509,6 +1516,12 @@ This extension contributes the following settings to your VS Code `settings.json
 * `ollama-code-review.mcp.autoKillPortConflicts`: When enabled, the extension tries to terminate the existing local process using the configured MCP port before starting its own MCP server.
     * **Type**: `boolean`
     * **Default**: `false`
+* `ollama-code-review.mcp.allowedOrigins`: Allowed browser origins for the built-in MCP server.
+    * **Type**: `array`
+    * **Default**: `["chrome-extension://*"]`
+* `ollama-code-review.mcp.authToken`: Optional shared secret that browser MCP clients must send in the `X-OCR-MCP-Token` header.
+    * **Type**: `string`
+    * **Default**: `""`
 * `ollama-code-review.contentstack`: Configure Contentstack Schema Validation (F-032). When enabled, validates Contentstack CMS field names in code against actual Content Type schemas and injects findings into the AI review prompt.
     * `enabled`: Enable Contentstack schema validation during reviews (default: `false`)
     * `schemaSource`: Where to load schemas — `local` (JSON export file) or `api` (Contentstack Management API) (default: `local`)

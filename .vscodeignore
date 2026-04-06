@@ -18,3 +18,4 @@ src/**
 tsconfig.json
 yarn.lock
 .editorconfig
+chrome-extension/**

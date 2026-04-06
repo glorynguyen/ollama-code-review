@@ -1,0 +1,19 @@
+{
+  "name": "ocr-browser-review",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Companion Chrome extension for Ollama Code Review using the local MCP server and WebLLM.",
+  "scripts": {
+    "build": "node ./build.mjs",
+    "watch": "node ./build.mjs --watch"
+  },
+  "dependencies": {
+    "@mlc-ai/web-llm": "^0.2.81"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.321",
+    "esbuild": "^0.27.3",
+    "typescript": "^5.9.2"
+  }
+}

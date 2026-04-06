@@ -1,0 +1,49 @@
+{
+  "manifest_version": 3,
+  "name": "OCR Browser Review",
+  "version": "0.1.0",
+  "description": "Review GitHub and GitLab pull requests with local MCP context and browser-side WebLLM.",
+  "permissions": ["storage", "tabs"],
+  "host_permissions": [
+    "http://127.0.0.1:19840/*",
+    "http://localhost:19840/*",
+    "https://github.com/*",
+    "https://gitlab.com/*",
+    "*://*/-/merge_requests/*"
+  ],
+  "background": {
+    "service_worker": "dist/background.js",
+    "type": "module"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://github.com/*/pull/*",
+        "https://gitlab.com/*/-/merge_requests/*",
+        "*://*/-/merge_requests/*"
+      ],
+      "js": ["dist/content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "ui/overlay.html",
+        "ui/overlay.css",
+        "dist/overlay.js"
+      ],
+      "matches": [
+        "https://github.com/*",
+        "https://gitlab.com/*",
+        "*://*/*"
+      ]
+    }
+  ],
+  "action": {
+    "default_title": "OCR Browser Review"
+  }
+}

@@ -106,6 +106,8 @@ export function registerUtilityTools(server: McpServer): void {
 					enabled: config.get('mcp.enabled'),
 					port: config.get('mcp.port'),
 					autoKillPortConflicts: config.get('mcp.autoKillPortConflicts'),
+					allowedOrigins: config.get('mcp.allowedOrigins'),
+					authTokenConfigured: !!config.get('mcp.authToken'),
 				},
 			};
 

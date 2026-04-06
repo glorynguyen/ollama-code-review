@@ -1294,6 +1294,21 @@
           "type": "boolean",
           "default": false,
           "markdownDescription": "When enabled, the extension attempts to terminate the existing local process using the configured MCP port before starting its own MCP server. Useful when multiple VS Code windows compete for the same MCP port."
+        },
+        "ollama-code-review.mcp.allowedOrigins": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "chrome-extension://*"
+          ],
+          "markdownDescription": "Allowed browser origins for the built-in MCP server. Use exact origins such as `chrome-extension://<extension-id>` or the wildcard `chrome-extension://*` for local development."
+        },
+        "ollama-code-review.mcp.authToken": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Optional shared secret required by browser clients. When set, requests to the MCP server must include the `X-OCR-MCP-Token` header."
         }
       }
     }
@@ -1301,6 +1316,8 @@
   "scripts": {
     "vscode:prepublish": "yarn run compile",
     "compile": "tsc -p ./",
+    "build:chrome-extension": "npm --prefix ./chrome-extension run build",
+    "watch:chrome-extension": "npm --prefix ./chrome-extension run watch",
     "build": "yarn run lint --fix && yarn run compile",
     "bundle": "yarn esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node",
     "package": "yarn bundle -- --minify && vsce package --yarn",

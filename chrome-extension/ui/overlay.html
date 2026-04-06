@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OCR Browser Review</title>
+  <link rel="stylesheet" href="./overlay.css">
+</head>
+<body>
+  <main id="app">
+    <header class="app-header">
+      <div>
+        <h1>AI Review</h1>
+        <p id="repo-meta">Waiting for pull request context…</p>
+      </div>
+      <button id="close-btn" class="ghost">Close</button>
+    </header>
+
+    <section class="panel">
+      <label class="field">
+        <span>MCP token</span>
+        <input id="mcp-token-input" type="password" placeholder="Optional shared token">
+      </label>
+      <div class="actions">
+        <button id="save-token-btn">Save Token</button>
+        <button id="test-mcp-btn" class="ghost">Test MCP</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <label class="field">
+        <span>Model</span>
+        <select id="model-select">
+          <option value="Qwen2.5-Coder-7B-Instruct-q4f32_1-MLC">Qwen2.5 Coder 7B</option>
+          <option value="Llama-3.1-8B-Instruct-q4f32_1-MLC">Llama 3.1 8B</option>
+        </select>
+      </label>
+      <div class="actions">
+        <button id="load-model-btn">Load Model</button>
+        <button id="review-staged-btn" class="ghost">Review Staged</button>
+        <button id="run-review-btn">Run Review</button>
+      </div>
+    </section>
+
+    <section class="panel panel-branches">
+      <label class="field">
+        <span>Base branch</span>
+        <input id="base-ref-input" type="text" placeholder="main">
+      </label>
+      <label class="field">
+        <span>Target branch</span>
+        <input id="target-ref-input" type="text" placeholder="feature/my-branch">
+      </label>
+      <div class="actions">
+        <button id="review-branches-btn" class="ghost">Review Branches</button>
+      </div>
+    </section>
+
+    <section id="status" class="status">Ready.</section>
+    <section id="mcp-test-result" class="test-result" hidden></section>
+    <section class="output-shell">
+      <div class="output-tabs">
+        <button id="preview-tab-btn" class="tab-button active">Preview</button>
+        <button id="markdown-tab-btn" class="tab-button ghost">Markdown</button>
+      </div>
+      <div id="output-preview" class="output-preview"></div>
+      <pre id="output" class="output" hidden></pre>
+    </section>
+  </main>
+
+  <script type="module" src="../dist/overlay.js"></script>
+</body>
+</html>

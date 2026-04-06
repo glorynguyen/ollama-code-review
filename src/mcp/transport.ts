@@ -1,6 +1,7 @@
 import * as http from 'http';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import { mcpBridge } from './context';
 
 export type McpRequestHandler = (req: http.IncomingMessage, res: http.ServerResponse) => Promise<void>;
 export interface McpListenOptions {
@@ -9,6 +10,52 @@ export interface McpListenOptions {
 }
 
 const execFileAsync = promisify(execFile);
+
+function resolveAllowedOrigin(originHeader: string | undefined): string | null {
+	if (!originHeader) {
+		return null;
+	}
+
+	for (const rule of mcpBridge.getMcpAllowedOrigins()) {
+		if (rule === originHeader) {
+			return originHeader;
+		}
+		if (rule === 'chrome-extension://*' && originHeader.startsWith('chrome-extension://')) {
+			return originHeader;
+		}
+	}
+
+	return null;
+}
+
+function applyCorsHeaders(req: http.IncomingMessage, res: http.ServerResponse): void {
+	const allowedOrigin = resolveAllowedOrigin(req.headers.origin);
+	if (allowedOrigin) {
+		res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
+		res.setHeader('Vary', 'Origin');
+	}
+
+	res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+	res.setHeader(
+		'Access-Control-Allow-Headers',
+		'Content-Type, Accept, Authorization, MCP-Protocol-Version, mcp-session-id, X-OCR-MCP-Token',
+	);
+	res.setHeader('Access-Control-Expose-Headers', 'mcp-session-id');
+
+	if (req.headers['access-control-request-private-network'] === 'true') {
+		res.setHeader('Access-Control-Allow-Private-Network', 'true');
+	}
+}
+
+function isRequestAuthorized(req: http.IncomingMessage): boolean {
+	const expectedToken = mcpBridge.getMcpAuthToken();
+	if (!expectedToken) {
+		return true;
+	}
+
+	const providedToken = req.headers['x-ocr-mcp-token'];
+	return typeof providedToken === 'string' && providedToken === expectedToken;
+}
 
 /**
  * Creates an HTTP server that routes /mcp requests to a per-request handler.
@@ -23,11 +70,7 @@ export function createHttpServer(handleMcpRequest: McpRequestHandler): http.Serv
 		const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
 		const pathname = url.pathname;
 
-		// CORS headers for local MCP clients
-		res.setHeader('Access-Control-Allow-Origin', '*');
-		res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
-		res.setHeader('Access-Control-Allow-Headers', 'Content-Type, mcp-session-id');
-		res.setHeader('Access-Control-Expose-Headers', 'mcp-session-id');
+		applyCorsHeaders(req, res);
 
 		if (req.method === 'OPTIONS') {
 			res.writeHead(204);
@@ -43,6 +86,12 @@ export function createHttpServer(handleMcpRequest: McpRequestHandler): http.Serv
 
 		// Route all /mcp traffic — each request gets a fresh transport + server
 		if (pathname === '/mcp') {
+			if (!isRequestAuthorized(req)) {
+				res.writeHead(401, { 'Content-Type': 'application/json' });
+				res.end(JSON.stringify({ error: 'Unauthorized' }));
+				return;
+			}
+
 			handleMcpRequest(req, res).catch((err) => {
 				if (!res.headersSent) {
 					res.writeHead(500, { 'Content-Type': 'application/json' });
