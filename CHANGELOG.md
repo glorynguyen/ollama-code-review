@@ -1,3 +1,10 @@
+# [3.47.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.46.0...v3.47.0) (2026-04-06)
+
+
+### Features
+
+* **chrome-extension:** add commit message generation and application functionality ([66a3eaa](https://github.com/glorynguyen/ollama-code-review/commit/66a3eaa9571110cda1050aa9e0e9be4017899138))
+
 # [3.46.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.45.0...v3.46.0) (2026-04-06)
 
 
