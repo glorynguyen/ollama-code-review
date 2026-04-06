@@ -18,7 +18,7 @@ It leverages the power of local large language models to provide feedback on:
 - Performance optimizations
 - Security vulnerabilities
 - Adherence to best practices
-- Code readability and maintainability111
+- Code readability and maintainability
 
 ---
 
