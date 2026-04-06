@@ -1,3 +1,10 @@
+# [3.46.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.45.0...v3.46.0) (2026-04-06)
+
+
+### Features
+
+* add overlay functionality for AI review in Chrome extension ([8426bd7](https://github.com/glorynguyen/ollama-code-review/commit/8426bd79add954d7c6d88cf491cbbc464844eb4f))
+
 # [3.45.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.44.0...v3.45.0) (2026-04-06)
 
 
