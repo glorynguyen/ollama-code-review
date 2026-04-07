@@ -1,3 +1,10 @@
+# [3.51.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.50.0...v3.51.0) (2026-04-07)
+
+
+### Features
+
+* **chrome-extension:** add prompt mode and light check criteria support ([b116a0b](https://github.com/glorynguyen/ollama-code-review/commit/b116a0b526513d6c00ddf49cfd974b34e7e53391))
+
 # [3.50.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.49.0...v3.50.0) (2026-04-07)
 
 
