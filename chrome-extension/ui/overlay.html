@@ -12,6 +12,12 @@
       <div>
         <h1>AI Review</h1>
         <p id="repo-meta">Waiting for pull request context…</p>
+        <div class="status-row">
+          <button id="mcp-status-chip" class="status-chip status-chip--checking" type="button">
+            <span id="mcp-status-dot" class="status-dot"></span>
+            <span id="mcp-status-text">Checking MCP…</span>
+          </button>
+        </div>
       </div>
       <button id="close-btn" class="ghost">Close</button>
     </header>
@@ -23,7 +29,7 @@
       </label>
       <div class="actions">
         <button id="save-token-btn">Save Token</button>
-        <button id="test-mcp-btn" class="ghost">Test MCP</button>
+        <button id="test-mcp-btn" class="ghost">Refresh MCP</button>
       </div>
     </section>
 
@@ -67,7 +73,13 @@
     </section>
 
     <section id="status" class="status">Ready.</section>
-    <section id="mcp-test-result" class="test-result" hidden></section>
+    <section id="mcp-test-result" class="test-result" hidden>
+      <div class="test-result__header">
+        <strong>MCP Details</strong>
+        <button id="close-mcp-result-btn" class="ghost test-result__close" type="button">Hide</button>
+      </div>
+      <pre id="mcp-test-result-text" class="test-result__body"></pre>
+    </section>
     <section class="output-shell">
       <div class="output-tabs">
         <button id="preview-tab-btn" class="tab-button active">Preview</button>

@@ -16,6 +16,9 @@ const modelManager = new ModelManager();
 const repoMetaEl = getElement<HTMLParagraphElement>('repo-meta');
 const statusEl = getElement<HTMLDivElement>('status');
 const mcpTestResultEl = getElement<HTMLDivElement>('mcp-test-result');
+const mcpTestResultTextEl = getElement<HTMLPreElement>('mcp-test-result-text');
+const mcpStatusChipEl = getElement<HTMLButtonElement>('mcp-status-chip');
+const mcpStatusTextEl = getElement<HTMLSpanElement>('mcp-status-text');
 const outputPreviewEl = getElement<HTMLDivElement>('output-preview');
 const outputEl = getElement<HTMLPreElement>('output');
 const tokenInput = getElement<HTMLInputElement>('mcp-token-input');
@@ -25,6 +28,7 @@ const targetRefInput = getElement<HTMLInputElement>('target-ref-input');
 const commitDraftInput = getElement<HTMLInputElement>('commit-draft-input');
 const saveTokenButton = getElement<HTMLButtonElement>('save-token-btn');
 const testMcpButton = getElement<HTMLButtonElement>('test-mcp-btn');
+const closeMcpResultButton = getElement<HTMLButtonElement>('close-mcp-result-btn');
 const previewTabButton = getElement<HTMLButtonElement>('preview-tab-btn');
 const markdownTabButton = getElement<HTMLButtonElement>('markdown-tab-btn');
 const loadModelButton = getElement<HTMLButtonElement>('load-model-btn');
@@ -38,6 +42,7 @@ let pageContext: PageContext | null = null;
 let outputMarkdown = '';
 
 resetOutput();
+void refreshMcpStatus(false);
 
 window.addEventListener('message', (event: MessageEvent) => {
 	if (event.data?.type !== 'OCR_PAGE_CONTEXT') {
@@ -58,7 +63,19 @@ saveTokenButton.addEventListener('click', () => {
 });
 
 testMcpButton.addEventListener('click', () => {
-	void testMcpConnection().catch(renderError);
+	void refreshMcpStatus(true).catch(renderError);
+});
+
+mcpStatusChipEl.addEventListener('click', () => {
+	if (mcpTestResultEl.hidden) {
+		void refreshMcpStatus(true).catch(renderError);
+	} else {
+		hideMcpDetails();
+	}
+});
+
+closeMcpResultButton.addEventListener('click', () => {
+	hideMcpDetails();
 });
 
 previewTabButton.addEventListener('click', () => {
@@ -110,13 +127,12 @@ async function saveToken(): Promise<void> {
 		throw new Error(response?.error ?? 'Failed to save MCP token.');
 	}
 	statusEl.textContent = 'Saved MCP token for future local requests.';
+	await refreshMcpStatus(false);
 }
 
-async function testMcpConnection(): Promise<void> {
-	statusEl.textContent = 'Testing MCP connection...';
-	mcpTestResultEl.hidden = true;
-	mcpTestResultEl.textContent = '';
-
+async function refreshMcpStatus(showDetails: boolean): Promise<void> {
+	statusEl.textContent = 'Checking MCP connection...';
+	setMcpStatus('checking', 'Checking MCP…');
 	const saveMessage: SetMcpTokenMessage = {
 		type: 'SET_MCP_TOKEN',
 		payload: { token: tokenInput.value },
@@ -136,8 +152,7 @@ async function testMcpConnection(): Promise<void> {
 	}
 
 	const configPreview = truncateText(String(response.data.configPreview ?? '{}'), 600);
-	mcpTestResultEl.hidden = false;
-	mcpTestResultEl.textContent = [
+	const details = [
 		'MCP connection OK',
 		`Server: ${response.data.health?.server ?? 'unknown'}`,
 		`Health: ${response.data.health?.status ?? 'unknown'}`,
@@ -145,6 +160,10 @@ async function testMcpConnection(): Promise<void> {
 		'Config preview:',
 		configPreview,
 	].join('\n');
+	setMcpStatus('connected', `MCP connected · ${response.data.workspaceRepoCount ?? 0} repo(s)`);
+	if (showDetails) {
+		showMcpDetails(details);
+	}
 	statusEl.textContent = 'MCP connection test succeeded.';
 }
 
@@ -320,8 +339,8 @@ function updateProgress(progress: { text: string; progress?: number }): void {
 
 function renderError(error: unknown): void {
 	statusEl.textContent = error instanceof Error ? error.message : String(error);
-	mcpTestResultEl.hidden = false;
-	mcpTestResultEl.textContent = statusEl.textContent;
+	setMcpStatus('error', 'MCP error');
+	showMcpDetails(statusEl.textContent);
 }
 
 function resetOutput(): void {
@@ -371,6 +390,21 @@ function truncateText(text: string, maxLength: number): string {
 		return text;
 	}
 	return `${text.slice(0, maxLength)}\n...`;
+}
+
+function setMcpStatus(state: 'checking' | 'connected' | 'error', text: string): void {
+	mcpStatusChipEl.classList.remove('status-chip--checking', 'status-chip--connected', 'status-chip--error');
+	mcpStatusChipEl.classList.add(`status-chip--${state}`);
+	mcpStatusTextEl.textContent = text;
+}
+
+function showMcpDetails(details: string): void {
+	mcpTestResultTextEl.textContent = details;
+	mcpTestResultEl.hidden = false;
+}
+
+function hideMcpDetails(): void {
+	mcpTestResultEl.hidden = true;
 }
 
 function normalizeCommitMessage(text: string): string {
