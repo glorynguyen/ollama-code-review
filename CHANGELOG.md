@@ -1,3 +1,11 @@
+# [3.50.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.49.0...v3.50.0) (2026-04-07)
+
+
+### Features
+
+* **mcp-client:** add get_commit_review_bundle tool for commit-level code reviews ([c558f57](https://github.com/glorynguyen/ollama-code-review/commit/c558f57fabe53b94f9735d118c6fcf63f33d888a))
+* **mcp:** add commit prompt bundle endpoint with chunked diff analysis ([34ba468](https://github.com/glorynguyen/ollama-code-review/commit/34ba468c485de491b37e07b3ad2091e3ff79ac49))
+
 # [3.49.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.48.0...v3.49.0) (2026-04-07)
 
 
