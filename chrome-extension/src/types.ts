@@ -108,6 +108,16 @@ export interface TestMcpConnectionMessage {
 	payload?: {};
 }
 
+export interface NotifySlackMessage {
+	type: 'NOTIFY_SLACK';
+	payload: {
+		task: string;
+		status: string;
+		repo?: string;
+		pr?: string;
+	};
+}
+
 export type BackgroundMessage =
 	| FetchPrDiffMessage
 	| FetchBranchDiffMessage
@@ -119,4 +129,5 @@ export type BackgroundMessage =
 	| ScoreReviewMessage
 	| FetchStagedDiffMessage
 	| SetMcpTokenMessage
-	| TestMcpConnectionMessage;
+	| TestMcpConnectionMessage
+	| NotifySlackMessage;

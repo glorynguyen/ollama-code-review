@@ -128,7 +128,8 @@ html, body {
   align-items: end;
 }
 
-.panel-commit {
+.panel-commit,
+.panel-slack {
   align-items: stretch;
 }
 

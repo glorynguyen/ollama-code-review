@@ -359,6 +359,44 @@ chrome.runtime.onMessage.addListener((message: BackgroundMessage, _sender, sendR
 			return;
 		}
 
+		if (message.type === 'NOTIFY_SLACK') {
+			const stored = await chrome.storage.local.get('slackWebhookUrl');
+			const webhookUrl = (stored.slackWebhookUrl as string | undefined) ?? '';
+
+			if (!webhookUrl) {
+				sendResponse({ ok: false, error: 'Slack Webhook URL not configured.' });
+				return;
+			}
+
+			if (!isValidSlackWebhookUrl(webhookUrl)) {
+				sendResponse({ ok: false, error: 'Invalid Slack Webhook URL. It must start with https://hooks.slack.com/.' });
+				return;
+			}
+
+			try {
+				const response = await fetch(webhookUrl, {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+					},
+					body: JSON.stringify(message.payload),
+				});
+
+				if (!response.ok) {
+					const errorBody = await response.text().catch(() => 'No response body');
+					console.error('Slack notification failed:', response.status, response.statusText, errorBody);
+					sendResponse({ ok: false, error: `Slack notification failed: ${response.status} ${response.statusText}` });
+					return;
+				}
+				sendResponse({ ok: true });
+			} catch (err) {
+				const errorMsg = err instanceof Error ? err.message : String(err);
+				console.error('Error sending Slack notification:', errorMsg);
+				sendResponse({ ok: false, error: `Network error sending Slack notification: ${errorMsg}` });
+			}
+			return;
+		}
+
 		sendResponse({ ok: false, error: 'Unsupported message type.' });
 	})().catch((error: unknown) => {
 		sendResponse({
@@ -369,6 +407,15 @@ chrome.runtime.onMessage.addListener((message: BackgroundMessage, _sender, sendR
 
 	return true;
 });
+
+function isValidSlackWebhookUrl(url: string): boolean {
+	try {
+		const parsedUrl = new URL(url);
+		return parsedUrl.protocol === 'https:' && parsedUrl.hostname === 'hooks.slack.com';
+	} catch {
+		return false;
+	}
+}
 
 function findMatchingRepo(
 	repos: WorkspaceRepo[],

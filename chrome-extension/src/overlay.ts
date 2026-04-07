@@ -36,7 +36,9 @@ const targetRefInput = getElement<HTMLInputElement>('target-ref-input');
 const lightCheckCriteriaField = getElement<HTMLElement>('light-check-criteria-field');
 const lightCheckCriteriaInput = getElement<HTMLTextAreaElement>('light-check-criteria-input');
 const commitDraftInput = getElement<HTMLInputElement>('commit-draft-input');
+const slackWebhookInput = getElement<HTMLInputElement>('slack-webhook-input');
 const saveTokenButton = getElement<HTMLButtonElement>('save-token-btn');
+const saveSlackButton = getElement<HTMLButtonElement>('save-slack-btn');
 const testMcpButton = getElement<HTMLButtonElement>('test-mcp-btn');
 const closeMcpResultButton = getElement<HTMLButtonElement>('close-mcp-result-btn');
 const previewTabButton = getElement<HTMLButtonElement>('preview-tab-btn');
@@ -77,9 +79,14 @@ window.addEventListener('message', (event: MessageEvent) => {
 });
 
 void hydrateToken();
+void hydrateSlackConfig();
 
 saveTokenButton.addEventListener('click', () => {
 	void saveToken().catch(renderError);
+});
+
+saveSlackButton.addEventListener('click', () => {
+	void saveSlackConfig().catch(renderError);
 });
 
 testMcpButton.addEventListener('click', () => {
@@ -149,6 +156,22 @@ closeButton.addEventListener('click', () => {
 async function hydrateToken(): Promise<void> {
 	const stored = await chrome.storage.local.get('mcpToken');
 	tokenInput.value = (stored.mcpToken as string | undefined) ?? '';
+}
+
+async function hydrateSlackConfig(): Promise<void> {
+	const stored = await chrome.storage.local.get('slackWebhookUrl');
+	slackWebhookInput.value = (stored.slackWebhookUrl as string | undefined) ?? '';
+}
+
+async function saveSlackConfig(): Promise<void> {
+	const url = slackWebhookInput.value.trim();
+	if (url && !url.startsWith('https://hooks.slack.com/')) {
+		statusEl.textContent = 'Error: Slack Webhook URL must start with https://hooks.slack.com/';
+		return;
+	}
+
+	await chrome.storage.local.set({ slackWebhookUrl: url });
+	statusEl.textContent = 'Slack Webhook URL saved.';
 }
 
 async function hydrateRepoDefaults(): Promise<void> {
@@ -357,6 +380,7 @@ async function runCommitMessageGeneration(): Promise<void> {
 	renderOutput();
 	const applyResult = await applyCommitMessageToVscode(commitMessage);
 	statusEl.textContent = applyResult || 'Commit message generated and applied to VS Code.';
+	void notifySlack('Commit Message Generation', 'Finished');
 }
 
 function updateProgress(progress: { text: string; progress?: number }): void {
@@ -504,6 +528,7 @@ async function runCancelableReview(
 		);
 		await appendScoreSafely(reviewText);
 		statusEl.textContent = completionMessage;
+		void notifySlack('Code Review', 'Finished');
 	} finally {
 		endReviewRun();
 	}
@@ -610,6 +635,26 @@ async function applyCommitMessageToVscode(commitMessage: string): Promise<string
 		throw new Error(response?.error ?? 'Failed to apply commit message to VS Code.');
 	}
 	return String(response.data.resultText ?? '');
+}
+
+async function notifySlack(task: string, status: string): Promise<void> {
+	try {
+		const response = await chrome.runtime.sendMessage({
+			type: 'NOTIFY_SLACK',
+			payload: {
+				task,
+				status,
+				repo: pageContext ? `${pageContext.owner}/${pageContext.repo}` : undefined,
+				pr: pageContext ? `${pageContext.owner}/${pageContext.repo}#${pageContext.baseRef}->${pageContext.headRef}` : undefined,
+			},
+		});
+
+		if (response && !response.ok) {
+			console.error('Slack notification error:', response.error);
+		}
+	} catch (error) {
+		console.error('Failed to send Slack notification message:', error);
+	}
 }
 
 function renderMarkdown(markdown: string): string {
