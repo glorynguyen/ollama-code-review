@@ -237,4 +237,47 @@ export function registerContextTools(server: McpServer): void {
 			};
 		},
 	);
+
+	server.tool(
+		'get_commit_review_bundle',
+		'Build the commit-review input bundle for browser or agent clients. Returns JSON with the filtered commit diff, commit message, and the fully built review prompt. No AI calls are made.',
+		{
+			commit_sha: z.string().describe('The commit SHA to review'),
+			repository_path: z.string().optional().describe('Path to the git repository. Defaults to the open workspace folder.'),
+		},
+		async ({ commit_sha, repository_path }) => {
+			const repoPath = repository_path || mcpBridge.getRepoPath();
+			mcpBridge.log(`get_commit_review_bundle: sha=${commit_sha}, repo=${repoPath}`);
+
+			const rawDiff = await mcpBridge.runGit(repoPath, ['show', commit_sha, '--format=']);
+			if (!rawDiff.trim()) {
+				return {
+					content: [{
+						type: 'text' as const,
+						text: JSON.stringify({
+							commitSha: commit_sha,
+							commitMessage: '',
+							filteredDiff: '',
+							promptText: '',
+							error: `Commit ${commit_sha} has no changes.`,
+						}, null, 2),
+					}],
+				};
+			}
+
+			const commitMessage = (await mcpBridge.runGit(repoPath, ['log', '--format=%B', '-n', '1', commit_sha])).trim();
+			const bundle = await buildPromptBundleForDiff(rawDiff);
+
+			return {
+				content: [{
+					type: 'text' as const,
+					text: JSON.stringify({
+						commitSha: commit_sha,
+						commitMessage,
+						...bundle,
+					}, null, 2),
+				}],
+			};
+		},
+	);
 }

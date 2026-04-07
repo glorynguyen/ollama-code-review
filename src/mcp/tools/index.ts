@@ -10,9 +10,9 @@ import { registerBrowserTools } from './browserTools';
  * All tools return raw data only — no AI provider calls.
  */
 export function registerAllTools(server: McpServer): void {
-	registerReviewTools(server);       // get_staged_diff, get_commit_diff, get_file_content
-	registerContextTools(server);      // get_review_context, get_review_prompt
-	registerCommitTools(server);       // get_commit_prompt
+	registerReviewTools(server);       // get_staged_diff, get_commit_diff, get_file_content, get_branch_diff
+	registerContextTools(server);      // get_review_context, get_review_prompt, *_review_bundle tools
+	registerCommitTools(server);       // get_commit_prompt, get_commit_prompt_bundle
 	registerUtilityTools(server);      // score_review, parse_findings, list_profiles, get_config
 	registerBrowserTools(server);      // get_workspace_repos
 }

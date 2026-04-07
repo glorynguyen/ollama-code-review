@@ -81,9 +81,32 @@ export class McpClient {
 		repository_path: string;
 		base_ref: string;
 		target_ref: string;
-	}): Promise<{ filteredDiff: string; promptText: string }> {
+	}): Promise<{ filteredDiff: string; promptText: string; error?: string }> {
 		const result = await this.callTool('get_branch_review_bundle', args);
-		return parseJsonToolText<{ filteredDiff: string; promptText: string }>(result, 'get_branch_review_bundle');
+		return parseJsonToolText<{ filteredDiff: string; promptText: string; error?: string }>(
+			result,
+			'get_branch_review_bundle',
+		);
+	}
+
+	async getCommitReviewBundle(args: {
+		repository_path: string;
+		commit_sha: string;
+	}): Promise<{
+		commitSha: string;
+		commitMessage: string;
+		filteredDiff: string;
+		promptText: string;
+		error?: string;
+	}> {
+		const result = await this.callTool('get_commit_review_bundle', args);
+		return parseJsonToolText<{
+			commitSha: string;
+			commitMessage: string;
+			filteredDiff: string;
+			promptText: string;
+			error?: string;
+		}>(result, 'get_commit_review_bundle');
 	}
 
 	async getRepoConfig(args: { repository_path: string }): Promise<{ defaultBaseBranch?: string }> {
