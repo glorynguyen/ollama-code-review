@@ -432,6 +432,8 @@ export class ModelManager {
 		input: {
 			modelId: string;
 			commitPrompt: string;
+			diffText?: string;
+			draftMessage?: string;
 		},
 		onToken: (token: string) => void,
 	): Promise<string> {
@@ -441,8 +443,15 @@ export class ModelManager {
 
 		this.status = 'generating';
 		let output = '';
+		const estimatedTokens = this.estimateTokens(input.commitPrompt.length);
 
 		try {
+			if (estimatedTokens > this.getAvailablePromptTokens() && input.diffText?.trim()) {
+				const chunkedCommitMessage = await this.generateChunkedCommitMessage(input, onToken);
+				this.status = 'ready';
+				return chunkedCommitMessage.trim();
+			}
+
 			const stream = await this.engine.chat.completions.create({
 				model: input.modelId,
 				stream: true,
@@ -476,5 +485,77 @@ export class ModelManager {
 			this.status = 'error';
 			throw error;
 		}
+	}
+
+	private async generateChunkedCommitMessage(
+		input: {
+			modelId: string;
+			diffText: string;
+			draftMessage?: string;
+		},
+		onToken: (token: string) => void,
+	): Promise<string> {
+		const chunks = this.chunkDiff(input.diffText);
+		const chunkSummaries: string[] = [];
+
+		onToken(`Prompt is too large for one pass, so analyzing ${chunks.length} diff chunk(s) for commit intent.\n\n`);
+
+		for (let i = 0; i < chunks.length; i += 1) {
+			const response = await this.engine!.chat.completions.create({
+				model: input.modelId,
+				stream: false,
+				temperature: 0.1,
+				messages: [
+					{
+						role: 'system',
+						content:
+							'You are analyzing one chunk of a staged git diff to help write a final Conventional Commit message. ' +
+							'Return concise markdown bullets only. Capture likely commit type, possible scope, breaking changes, and the most important user-facing or architectural changes.',
+					},
+					{
+						role: 'user',
+						content: [
+							`Developer draft: ${input.draftMessage?.trim() || '(none provided)'}`,
+							'',
+							`Analyze staged diff chunk ${i + 1}/${chunks.length}:`,
+							'```diff',
+							chunks[i],
+							'```',
+						].join('\n'),
+					},
+				],
+			});
+
+			const summary = response.choices?.[0]?.message?.content?.trim() || 'No summary returned for this chunk.';
+			chunkSummaries.push(`Chunk ${i + 1} summary:\n${summary}`);
+			onToken(`Analyzed chunk ${i + 1}/${chunks.length}\n`);
+		}
+
+		onToken('\nSynthesizing final commit message...\n');
+		const synthesis = await this.engine!.chat.completions.create({
+			model: input.modelId,
+			stream: false,
+			temperature: 0.1,
+			messages: [
+				{
+					role: 'system',
+					content:
+						'You generate concise, high-quality git commit messages for Semantic Release. ' +
+						'Output only the raw final commit message. Follow Conventional Commits. ' +
+						'Use imperative mood, keep the subject concise, include a body only when useful, and include a BREAKING CHANGE footer if needed.',
+				},
+				{
+					role: 'user',
+					content: [
+						`Developer draft: ${input.draftMessage?.trim() || '(none provided)'}`,
+						'',
+						'Use these staged diff summaries to produce one final commit message:',
+						chunkSummaries.join('\n\n'),
+					].join('\n'),
+				},
+			],
+		});
+
+		return synthesis.choices?.[0]?.message?.content ?? 'Unable to synthesize a commit message.';
 	}
 }

@@ -269,17 +269,25 @@ chrome.runtime.onMessage.addListener((message: BackgroundMessage, _sender, sendR
 				return;
 			}
 
-			const promptResult = await mcpClient.callTool('get_commit_prompt', {
+			const bundle = await mcpClient.getCommitPromptBundle({
 				repository_path: repo.path,
 				existing_message: message.payload.existingMessage ?? '',
 			});
-			const promptText = promptResult.content?.find(entry => entry.type === 'text')?.text ?? '';
+			if (bundle.error) {
+				sendResponse({
+					ok: false,
+					error: bundle.error,
+				});
+				return;
+			}
 
 			sendResponse({
 				ok: true,
 				data: {
 					repositoryPath: repo.path,
-					promptText,
+					promptText: bundle.promptText ?? '',
+					diffText: bundle.diffText ?? '',
+					draftMessage: bundle.draftMessage ?? '',
 				},
 			});
 			return;

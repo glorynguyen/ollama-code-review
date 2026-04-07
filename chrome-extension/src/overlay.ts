@@ -315,6 +315,8 @@ async function runCommitMessageGeneration(): Promise<void> {
 		{
 			modelId: modelSelect.value,
 			commitPrompt: String(response.data.promptText ?? ''),
+			diffText: String(response.data.diffText ?? ''),
+			draftMessage: String(response.data.draftMessage ?? commitDraftInput.value.trim()),
 		},
 		(token) => {
 			appendOutput(token);

@@ -20,6 +20,15 @@ type ToolCallResult = {
 	content?: Array<{ type: string; text?: string }>;
 };
 
+function parseJsonToolText<T>(result: ToolCallResult, toolName: string): T {
+	const text = extractText(result).trim();
+	try {
+		return JSON.parse(text) as T;
+	} catch {
+		throw new Error(`${toolName} returned non-JSON content: ${text}`);
+	}
+}
+
 export class McpClient {
 	private initialized = false;
 	private nextId = 1;
@@ -49,7 +58,7 @@ export class McpClient {
 
 	async getWorkspaceRepos(): Promise<WorkspaceRepo[]> {
 		const result = await this.callTool('get_workspace_repos', {});
-		return JSON.parse(extractText(result)) as WorkspaceRepo[];
+		return parseJsonToolText<WorkspaceRepo[]>(result, 'get_workspace_repos');
 	}
 
 	async getBranchDiff(args: {
@@ -65,7 +74,7 @@ export class McpClient {
 		repository_path: string;
 	}): Promise<{ filteredDiff: string; promptText: string }> {
 		const result = await this.callTool('get_staged_review_bundle', args);
-		return JSON.parse(extractText(result)) as { filteredDiff: string; promptText: string };
+		return parseJsonToolText<{ filteredDiff: string; promptText: string }>(result, 'get_staged_review_bundle');
 	}
 
 	async getBranchReviewBundle(args: {
@@ -74,12 +83,23 @@ export class McpClient {
 		target_ref: string;
 	}): Promise<{ filteredDiff: string; promptText: string }> {
 		const result = await this.callTool('get_branch_review_bundle', args);
-		return JSON.parse(extractText(result)) as { filteredDiff: string; promptText: string };
+		return parseJsonToolText<{ filteredDiff: string; promptText: string }>(result, 'get_branch_review_bundle');
 	}
 
 	async getRepoConfig(args: { repository_path: string }): Promise<{ defaultBaseBranch?: string }> {
 		const result = await this.callTool('get_repo_config', args);
-		return JSON.parse(extractText(result)) as { defaultBaseBranch?: string };
+		return parseJsonToolText<{ defaultBaseBranch?: string }>(result, 'get_repo_config');
+	}
+
+	async getCommitPromptBundle(args: {
+		repository_path: string;
+		existing_message?: string;
+	}): Promise<{ promptText?: string; diffText?: string; draftMessage?: string; error?: string }> {
+		const result = await this.callTool('get_commit_prompt_bundle', args);
+		return parseJsonToolText<{ promptText?: string; diffText?: string; draftMessage?: string; error?: string }>(
+			result,
+			'get_commit_prompt_bundle',
+		);
 	}
 
 	async getStagedDiff(args: { repository_path?: string } = {}): Promise<string> {
