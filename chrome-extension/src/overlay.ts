@@ -25,6 +25,7 @@ const outputEl = getElement<HTMLPreElement>('output');
 const tokenInput = getElement<HTMLInputElement>('mcp-token-input');
 const modelSelect = getElement<HTMLSelectElement>('model-select');
 const baseRefInput = getElement<HTMLInputElement>('base-ref-input');
+const baseRefHintEl = getElement<HTMLElement>('base-ref-hint');
 const targetRefInput = getElement<HTMLInputElement>('target-ref-input');
 const commitDraftInput = getElement<HTMLInputElement>('commit-draft-input');
 const saveTokenButton = getElement<HTMLButtonElement>('save-token-btn');
@@ -53,6 +54,7 @@ window.addEventListener('message', (event: MessageEvent) => {
 	pageContext = event.data.payload as PageContext;
 	repoMetaEl.textContent = `${pageContext.owner}/${pageContext.repo} · ${pageContext.baseRef} → ${pageContext.headRef}`;
 	baseRefInput.value = pageContext.baseRef;
+	updateBaseRefHint(`Using pull request base branch: ${pageContext.baseRef}`);
 	targetRefInput.value = pageContext.headRef;
 	statusEl.textContent = 'PR context received from the current page.';
 	void hydrateRepoDefaults().catch(renderError);
@@ -136,7 +138,18 @@ async function hydrateRepoDefaults(): Promise<void> {
 	const defaultBaseBranch = String(response.data?.defaultBaseBranch ?? '').trim();
 	if (defaultBaseBranch) {
 		baseRefInput.value = defaultBaseBranch;
+		baseRefInput.placeholder = defaultBaseBranch;
+		updateBaseRefHint(`Using VS Code repo default base branch: ${defaultBaseBranch}`);
+		return;
 	}
+
+	if (pageContext?.baseRef) {
+		updateBaseRefHint(`Using pull request base branch: ${pageContext.baseRef}`);
+	}
+}
+
+function updateBaseRefHint(text: string): void {
+	baseRefHintEl.textContent = text;
 }
 
 async function saveToken(): Promise<void> {
