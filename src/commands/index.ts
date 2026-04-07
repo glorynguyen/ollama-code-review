@@ -152,6 +152,7 @@ import {
 } from './aiActions';
 import { executeInlineEdit } from '../inlineEdit/inlineEditProvider';
 import { ComparisonPanel, type ModelComparisonEntry, type ComparisonResult } from '../compareModels';
+import { buildReviewPrompt as buildSharedReviewPrompt, DEFAULT_REVIEW_PROMPT } from '../reviewPromptBuilder';
 import {
 	FindingsTreeProvider,
 	STRUCTURED_REVIEW_SCHEMA_VERSION,
@@ -170,8 +171,6 @@ import { mcpBridge, createMcpServer, type McpServerInstance } from '../mcp';
 
 export { checkActiveModels, getLastPerformanceMetrics, clearPerformanceMetrics };
 export type { PerformanceMetrics };
-
-const DEFAULT_REVIEW_PROMPT = "You are an expert software engineer and code reviewer with deep knowledge of the following frameworks and libraries: **${frameworks}**.\nYour task is to analyze the following code changes (in git diff format) and provide constructive, actionable feedback tailored to the conventions, best practices, and common pitfalls of these technologies.\n${skills}\n${profile}\n**How to Read the Git Diff Format:**\n- Lines starting with `---` and `+++` indicate the file names before and after the changes.\n- Lines starting with `@@` (e.g., `@@ -15,7 +15,9 @@`) denote the location of the changes within the file.\n- Lines starting with a `-` are lines that were DELETED.\n- Lines starting with a `+` are lines that were ADDED.\n- Lines without a prefix (starting with a space) are for context and have not been changed. **Please focus your review on the added (`+`) and deleted (`-`) lines.**\n\n**Review Focus:**\n- Potential bugs or logical errors specific to the frameworks/libraries (${frameworks}).\n- Performance optimizations, considering framework-specific patterns.\n- Code style inconsistencies or deviations from ${frameworks} best practices.\n- Security vulnerabilities, especially those common in ${frameworks}.\n- Improvements to maintainability and readability, aligned with ${frameworks} conventions.\n\n**Feedback Requirements:**\n1. Explain any issues clearly and concisely, referencing ${frameworks} where relevant.\n2. Suggest specific code changes or improvements. Include code snippets for examples where appropriate.\n3. Use Markdown for clear formatting.\n\nIf you find no issues, please respond with the single sentence: \"I have reviewed the changes and found no significant issues.\"\n\nHere is the code diff to review:\n---\n${code}\n---";
 
 const DEFAULT_COMMIT_MESSAGE_PROMPT = "You are an expert at writing git commit messages for Semantic Release.\nGenerate a commit message based on the git diff below following the Conventional Commits specification.\n\n### Structural Requirements:\n1. **Subject Line**: <type>(<scope>): <short description>\n   - Keep under 50 characters.\n   - Use imperative mood (\"add\" not \"added\").\n   - Types: feat (new feature), fix (bug fix), docs, style, refactor, perf, test, build, ci, chore, revert.\n2. **Body**: Explain 'what' and 'why'. Required if the change is complex.\n3. **Breaking Changes**: If the diff contains breaking changes, the footer MUST start with \"BREAKING CHANGE:\" followed by a description.\n\n### Rules:\n- If the user's draft mentions a breaking change, prioritize documenting it in the footer.\n- Semantic Release triggers: 'feat' for MINOR, 'fix' for PATCH, and 'BREAKING CHANGE' in footer for MAJOR.\n- Output ONLY the raw commit message text. No markdown blocks, no \"Here is your message,\" no preamble.\n\nDeveloper's draft message (may reflect intent):\n${draftMessage}\n\nStaged git diff:\n---\n${diff}\n---";
 
@@ -4508,75 +4507,12 @@ async function buildReviewPrompt(
 ): Promise<string> {
 	const config = vscode.workspace.getConfiguration('ollama-code-review');
 	const endpoint = config.get<string>('endpoint', 'http://localhost:11434/api/generate');
-	const frameworksList = (await getEffectiveFrameworks(outputChannel)).join(', ');
-	let skillContext = '';
-
-	if (context) {
-		const selectedSkills = context.globalState.get<any[]>('selectedSkills', []);
-		if (selectedSkills && selectedSkills.length > 0) {
-			const skillContents = selectedSkills.map((skill, index) =>
-				`### Skill ${index + 1}: ${skill.name}\n${skill.content}`
-			).join('\n\n');
-			skillContext = `\n\nAdditional Review Guidelines (${selectedSkills.length} skill(s) applied):\n${skillContents}\n`;
-		}
-	}
-
-	let profileContext = '';
-	if (context) {
-		const profile = getActiveProfile(context);
-		profileContext = buildProfilePromptContext(profile);
-	}
-
-	const promptTemplate = await getEffectiveReviewPrompt(DEFAULT_REVIEW_PROMPT, outputChannel);
-	const variables: Record<string, string> = {
-		code: diff,
-		frameworks: frameworksList,
-		skills: skillContext,
-		profile: profileContext,
-	};
-
-	let prompt = resolvePrompt(promptTemplate, variables);
-
-	if (skillContext && !promptTemplate.includes('${skills}')) {
-		prompt += '\n' + skillContext;
-	}
-
-	if (contextBundle && contextBundle.files.length > 0) {
-		const contextSection = formatContextForPrompt(contextBundle);
-		prompt += '\n' + contextSection;
-	}
-
-	if (profileContext && !promptTemplate.includes('${profile}')) {
-		prompt += '\n' + profileContext;
-	}
-
-	const kbConfig = getKnowledgeBaseConfig();
-	if (kbConfig.enabled) {
-		try {
-			const knowledge = await loadKnowledgeBase(outputChannel);
-			if (knowledge) {
-				const matchResult = matchKnowledge(knowledge, diff, kbConfig.maxEntries);
-				if (matchResult.matches.length > 0) {
-					const knowledgeSection = formatKnowledgeForPrompt(knowledge, kbConfig.maxEntries);
-					if (knowledgeSection) {
-						prompt += knowledgeSection;
-						outputChannel.appendLine(`[Knowledge Base] Injected ${matchResult.matches.length} of ${matchResult.totalEntries} entries into review prompt.`);
-					}
-				}
-			}
-		} catch (err) {
-			outputChannel.appendLine(`[Knowledge Base] Error: ${err}`);
-		}
-	}
-
-	try {
-		const rulesSection = await loadRulesDirectory(outputChannel);
-		if (rulesSection) {
-			prompt += rulesSection;
-		}
-	} catch (err) {
-		outputChannel.appendLine(`[Rules] Error: ${err}`);
-	}
+	let prompt = await buildSharedReviewPrompt({
+		context,
+		contextBundle,
+		diff,
+		outputChannel,
+	});
 
 	const ragConfig = getRagConfig();
 	if (ragConfig.enabled && ragVectorStore && ragVectorStore.chunkCount > 0) {

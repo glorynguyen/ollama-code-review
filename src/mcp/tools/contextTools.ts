@@ -6,10 +6,44 @@ import { gatherContext, formatContextForPrompt, getContextGatheringConfig } from
 import { loadKnowledgeBase, getKnowledgeBaseConfig, formatKnowledgeForPrompt, matchKnowledge } from '../../knowledge';
 import { loadRulesDirectory } from '../../rules/loader';
 import { getActiveProfile, buildProfilePromptContext } from '../../profiles';
-import { getEffectiveReviewPrompt, getEffectiveFrameworks } from '../../config/promptLoader';
-import { resolvePrompt } from '../../utils';
+import { getEffectiveFrameworks } from '../../config/promptLoader';
+import { buildReviewPrompt } from '../../reviewPromptBuilder';
 
-const DEFAULT_REVIEW_PROMPT = "You are an expert software engineer and code reviewer with deep knowledge of the following frameworks and libraries: **${frameworks}**.\nYour task is to analyze the following code changes (in git diff format) and provide constructive, actionable feedback tailored to the conventions, best practices, and common pitfalls of these technologies.\n${skills}\n${profile}\n**How to Read the Git Diff Format:**\n- Lines starting with `---` and `+++` indicate the file names before and after the changes.\n- Lines starting with `@@` (e.g., `@@ -15,7 +15,9 @@`) denote the location of the changes within the file.\n- Lines starting with a `-` are lines that were DELETED.\n- Lines starting with a `+` are lines that were ADDED.\n- Lines without a prefix (starting with a space) are for context and have not been changed. **Please focus your review on the added (`+`) and deleted (`-`) lines.**\n\n**Review Focus:**\n- Potential bugs or logical errors specific to the frameworks/libraries (${frameworks}).\n- Performance optimizations, considering framework-specific patterns.\n- Code style inconsistencies or deviations from ${frameworks} best practices.\n- Security vulnerabilities, especially those common in ${frameworks}.\n- Improvements to maintainability and readability, aligned with ${frameworks} conventions.\n\n**Feedback Requirements:**\n1. Explain any issues clearly and concisely, referencing ${frameworks} where relevant.\n2. Suggest specific code changes or improvements. Include code snippets for examples where appropriate.\n3. Use Markdown for clear formatting.\n\nIf you find no issues, please respond with the single sentence: \"I have reviewed the changes and found no significant issues.\"\n\nHere is the code diff to review:\n---\n${code}\n---";
+async function buildPromptBundleForDiff(diff: string): Promise<{
+	filteredDiff: string;
+	promptText: string;
+	stats: ReturnType<typeof filterDiff>['stats'];
+}> {
+	const filterConfig = getDiffFilterConfig();
+	const result = filterDiff(diff, filterConfig);
+	const filteredDiff = result.filteredDiff;
+	if (!filteredDiff.trim()) {
+		throw new Error('All changes were filtered out. No reviewable diff remains.');
+	}
+
+	let contextBundle;
+	try {
+		const ctxConfig = getContextGatheringConfig();
+		if (ctxConfig.enabled) {
+			contextBundle = await gatherContext(filteredDiff, ctxConfig, mcpBridge.channel || undefined);
+		}
+	} catch (err) {
+		mcpBridge.log(`get_review_prompt context gathering error: ${String(err)}`);
+	}
+
+	const promptText = await buildReviewPrompt({
+		context: mcpBridge.context,
+		contextBundle,
+		diff: filteredDiff,
+		outputChannel: mcpBridge.channel || undefined,
+	});
+
+	return {
+		filteredDiff,
+		promptText,
+		stats: result.stats,
+	};
+}
 
 export function registerContextTools(server: McpServer): void {
 
@@ -140,88 +174,67 @@ export function registerContextTools(server: McpServer): void {
 			const repoPath = repository_path || mcpBridge.getRepoPath();
 			mcpBridge.log('get_review_prompt');
 
-			// Get staged diff
 			const rawDiff = await mcpBridge.runGit(repoPath, ['diff', '--staged']);
 			if (!rawDiff.trim()) {
 				return { content: [{ type: 'text' as const, text: 'No staged changes found.' }] };
 			}
 
-			const filterConfig = getDiffFilterConfig();
-			const { filteredDiff } = filterDiff(rawDiff, filterConfig);
+			const bundle = await buildPromptBundleForDiff(rawDiff);
+			return { content: [{ type: 'text' as const, text: bundle.promptText }] };
+		},
+	);
 
-			// Gather all context sections
-			const frameworksList = (await getEffectiveFrameworks(mcpBridge.channel || undefined)).join(', ');
+	server.tool(
+		'get_staged_review_bundle',
+		'Build the staged-review input bundle for browser or agent clients. Returns JSON with the filtered staged diff and the fully built review prompt. No AI calls are made.',
+		{
+			repository_path: z.string().optional().describe('Path to the git repository. Defaults to the open workspace folder.'),
+		},
+		async ({ repository_path }) => {
+			const repoPath = repository_path || mcpBridge.getRepoPath();
+			mcpBridge.log(`get_staged_review_bundle: repo=${repoPath}`);
 
-			let skillContext = '';
-			try {
-				const selectedSkills = mcpBridge.context.globalState.get<any[]>('selectedSkills', []);
-				if (selectedSkills?.length > 0) {
-					const skillContents = selectedSkills.map((skill: any, i: number) =>
-						`### Skill ${i + 1}: ${skill.name}\n${skill.content}`
-					).join('\n\n');
-					skillContext = `\n\nAdditional Review Guidelines (${selectedSkills.length} skill(s) applied):\n${skillContents}\n`;
-				}
-			} catch { /* ignore */ }
+			const rawDiff = await mcpBridge.runGit(repoPath, ['diff', '--staged']);
+			if (!rawDiff.trim()) {
+				return { content: [{ type: 'text' as const, text: 'No staged changes found.' }] };
+			}
 
-			let profileContext = '';
-			try {
-				const profile = getActiveProfile(mcpBridge.context);
-				profileContext = buildProfilePromptContext(profile);
-			} catch { /* ignore */ }
-
-			// Resolve prompt template
-			const promptTemplate = await getEffectiveReviewPrompt(DEFAULT_REVIEW_PROMPT, mcpBridge.channel || undefined);
-			const variables: Record<string, string> = {
-				code: filteredDiff,
-				frameworks: frameworksList,
-				skills: skillContext,
-				profile: profileContext,
+			const bundle = await buildPromptBundleForDiff(rawDiff);
+			return {
+				content: [{
+					type: 'text' as const,
+					text: JSON.stringify(bundle, null, 2),
+				}],
 			};
-			let prompt = resolvePrompt(promptTemplate, variables);
+		},
+	);
 
-			// Append skills if template omits ${skills}
-			if (skillContext && !promptTemplate.includes('${skills}')) {
-				prompt += '\n' + skillContext;
+	server.tool(
+		'get_branch_review_bundle',
+		'Build the branch-review input bundle for browser or agent clients. Returns JSON with the filtered branch diff and the fully built review prompt. No AI calls are made.',
+		{
+			base_ref: z.string().describe('The base branch or ref to compare from (e.g., main)'),
+			target_ref: z.string().describe('The target branch or ref to compare to (e.g., feature-branch)'),
+			repository_path: z.string().optional().describe('Path to the git repository. Defaults to the open workspace folder.'),
+		},
+		async ({ base_ref, target_ref, repository_path }) => {
+			const repoPath = repository_path || mcpBridge.getRepoPath();
+			mcpBridge.log(`get_branch_review_bundle: base=${base_ref}, target=${target_ref}, repo=${repoPath}`);
+
+			const rawDiff = await mcpBridge.runGit(repoPath, ['diff', base_ref, target_ref]);
+			if (!rawDiff.trim()) {
+				return {
+					content: [{ type: 'text' as const, text: `No differences found between ${base_ref} and ${target_ref}.` }],
+				};
 			}
 
-			// Append context files
-			try {
-				const ctxConfig = getContextGatheringConfig();
-				if (ctxConfig.enabled) {
-					const bundle = await gatherContext(filteredDiff, ctxConfig, mcpBridge.channel || undefined);
-					if (bundle.files.length > 0) {
-						prompt += '\n' + formatContextForPrompt(bundle);
-					}
-				}
-			} catch { /* non-fatal */ }
-
-			// Append profile if template omits ${profile}
-			if (profileContext && !promptTemplate.includes('${profile}')) {
-				prompt += '\n' + profileContext;
-			}
-
-			// Append knowledge base
-			try {
-				const kbConfig = getKnowledgeBaseConfig();
-				if (kbConfig.enabled) {
-					const knowledge = await loadKnowledgeBase(mcpBridge.channel || undefined);
-					if (knowledge) {
-						const matchResult = matchKnowledge(knowledge, filteredDiff, kbConfig.maxEntries);
-						if (matchResult.matches.length > 0) {
-							const section = formatKnowledgeForPrompt(knowledge, kbConfig.maxEntries);
-							if (section) { prompt += section; }
-						}
-					}
-				}
-			} catch { /* non-fatal */ }
-
-			// Append rules
-			try {
-				const rulesSection = await loadRulesDirectory(mcpBridge.channel || undefined);
-				if (rulesSection) { prompt += rulesSection; }
-			} catch { /* non-fatal */ }
-
-			return { content: [{ type: 'text' as const, text: prompt }] };
+			const bundle = await buildPromptBundleForDiff(rawDiff);
+			return {
+				content: [{
+					type: 'text' as const,
+					text: JSON.stringify(bundle, null, 2),
+				}],
+			};
 		},
 	);
 }

@@ -12,6 +12,14 @@ export interface LoadProgress {
 	progress?: number;
 }
 
+export interface ReviewProgress {
+	stage: 'single' | 'chunk' | 'synthesis' | 'complete';
+	message: string;
+	current?: number;
+	total?: number;
+	indeterminate?: boolean;
+}
+
 export class ModelManager {
 	private engine: MLCEngine | null = null;
 	private loadedModel = '';
@@ -19,6 +27,7 @@ export class ModelManager {
 	private readonly maxContextTokens = 4096;
 	private readonly reservedPromptTokens = 1200;
 	private readonly chunkTargetChars = 9000;
+	private generationCancelled = false;
 
 	getStatus(): ModelStatus {
 		return this.status;
@@ -64,45 +73,57 @@ export class ModelManager {
 
 	async reviewDiff(input: {
 		modelId: string;
+		promptText: string;
 		prTitle: string;
 		prDescription: string;
 		diff: string;
-	}, onToken: (token: string) => void): Promise<string> {
+	}, onToken: (token: string) => void, onProgress?: (progress: ReviewProgress) => void): Promise<string> {
 		if (!this.engine || this.loadedModel !== input.modelId) {
 			throw new Error('The selected model is not loaded yet.');
 		}
 
 		this.status = 'generating';
-		const promptChars = this.buildReviewPrompt(input.prTitle, input.prDescription, input.diff).length;
+		this.generationCancelled = false;
+		const promptChars = input.promptText.length;
 		const estimatedTokens = this.estimateTokens(promptChars);
 
 		try {
 			if (estimatedTokens <= this.getAvailablePromptTokens()) {
-				const output = await this.streamSingleReview(
-					input.modelId,
-					input.prTitle,
-					input.prDescription,
-					input.diff,
-					onToken,
-				);
+				onProgress?.({
+					stage: 'single',
+					message: 'Generating review...',
+					indeterminate: true,
+				});
+					const output = await this.streamSingleReview(
+						input.modelId,
+						input.promptText,
+						onToken,
+					);
+				this.throwIfCancelled('Review cancelled.');
+				onProgress?.({
+					stage: 'complete',
+					message: 'Review complete.',
+					current: 1,
+					total: 1,
+				});
 				this.status = 'ready';
 				return output;
 			}
 
-			const chunkedOutput = await this.runChunkedReview(input, onToken);
+			const chunkedOutput = await this.runChunkedReview(input, onToken, onProgress);
 			this.status = 'ready';
 			return chunkedOutput;
 		} catch (error) {
-			this.status = 'error';
+			this.status = this.generationCancelled ? 'ready' : 'error';
 			throw error;
+		} finally {
+			this.generationCancelled = false;
 		}
 	}
 
 	private async streamSingleReview(
 		modelId: string,
-		prTitle: string,
-		prDescription: string,
-		diff: string,
+		promptText: string,
 		onToken: (token: string) => void,
 	): Promise<string> {
 		let output = '';
@@ -116,11 +137,13 @@ export class ModelManager {
 					content:
 						'You are an expert software engineer reviewing pull requests. ' +
 						'Respond in markdown with sections: Summary, Findings, Suggestions. ' +
+						'For every finding, include an explicit severity badge using one of: ' +
+						'🔴 Critical, 🟠 High, 🟡 Medium, 🟢 Low. ' +
 						'If there are no significant issues, say so clearly.',
 				},
 				{
 					role: 'user',
-					content: this.buildReviewPrompt(prTitle, prDescription, diff),
+					content: promptText,
 				},
 			],
 		});
@@ -134,6 +157,7 @@ export class ModelManager {
 			onToken(token);
 		}
 
+		this.throwIfCancelled('Review cancelled.');
 		return output;
 	}
 
@@ -145,16 +169,25 @@ export class ModelManager {
 			diff: string;
 		},
 		onToken: (token: string) => void,
+		onProgress?: (progress: ReviewProgress) => void,
 	): Promise<string> {
 		const chunks = this.chunkDiff(input.diff);
 		const partialReviews: string[] = [];
+		const totalSteps = chunks.length + 1;
 
 		onToken(
 			`Diff is too large for this model in one pass, so running chunked review across ${chunks.length} part(s).\n\n`,
 		);
 
 		for (let i = 0; i < chunks.length; i += 1) {
+			this.throwIfCancelled('Review cancelled before chunk generation.');
 			const chunk = chunks[i];
+			onProgress?.({
+				stage: 'chunk',
+				message: `Reviewing chunk ${i + 1} of ${chunks.length}...`,
+				current: i + 1,
+				total: totalSteps,
+			});
 			onToken(`\n---\nReviewing chunk ${i + 1}/${chunks.length}\n\n`);
 
 			const chunkReview = await this.generateChunkReview(
@@ -169,6 +202,13 @@ export class ModelManager {
 			onToken('\n');
 		}
 
+		this.throwIfCancelled('Review cancelled before synthesis.');
+		onProgress?.({
+			stage: 'synthesis',
+			message: `Synthesizing final review from ${chunks.length} chunk(s)...`,
+			current: totalSteps,
+			total: totalSteps,
+		});
 		onToken('\n---\nSynthesizing final review from chunk findings...\n\n');
 		const finalReview = await this.generateFinalSynthesis(
 			input.modelId,
@@ -176,6 +216,13 @@ export class ModelManager {
 			input.prDescription,
 			partialReviews,
 		);
+		this.throwIfCancelled('Review cancelled during synthesis.');
+		onProgress?.({
+			stage: 'complete',
+			message: 'Chunked review complete.',
+			current: totalSteps,
+			total: totalSteps,
+		});
 		onToken(finalReview);
 		return finalReview;
 	}
@@ -196,6 +243,8 @@ export class ModelManager {
 					content:
 						'You are an expert software engineer reviewing one chunk of a pull request diff. ' +
 						'Focus only on the supplied chunk. Return concise markdown with Findings and Suggestions. ' +
+						'For every finding, include an explicit severity badge using one of: ' +
+						'🔴 Critical, 🟠 High, 🟡 Medium, 🟢 Low. ' +
 						'If there are no significant issues, say so clearly.',
 				},
 				{
@@ -213,6 +262,10 @@ export class ModelManager {
 			],
 		});
 
+		this.throwIfCancelled('Review cancelled.');
+		if (response.choices?.[0]?.finish_reason === 'abort') {
+			throw new Error('Review cancelled.');
+		}
 		return response.choices?.[0]?.message?.content ?? 'No findings returned for this chunk.';
 	}
 
@@ -235,7 +288,9 @@ export class ModelManager {
 						role: 'system',
 						content:
 							'You are synthesizing chunk-level code review findings into a final concise pull request review. ' +
-							'Return markdown with sections: Summary, Findings, Suggestions. Deduplicate repeated findings.',
+							'Return markdown with sections: Summary, Findings, Suggestions. Deduplicate repeated findings. ' +
+							'Preserve or add an explicit severity badge for every finding using one of: ' +
+							'🔴 Critical, 🟠 High, 🟡 Medium, 🟢 Low.',
 					},
 					{
 						role: 'user',
@@ -250,6 +305,10 @@ export class ModelManager {
 				],
 			});
 
+			this.throwIfCancelled('Review cancelled.');
+			if (response.choices?.[0]?.finish_reason === 'abort') {
+				throw new Error('Review cancelled.');
+			}
 			const text = response.choices?.[0]?.message?.content ?? '';
 			synthesized = synthesized ? `${synthesized}\n\n${text}` : text;
 		}
@@ -266,7 +325,9 @@ export class ModelManager {
 				{
 					role: 'system',
 					content:
-						'You are refining a combined pull request review. Return one final markdown review with sections: Summary, Findings, Suggestions.',
+						'You are refining a combined pull request review. Return one final markdown review with sections: Summary, Findings, Suggestions. ' +
+						'Ensure every finding includes an explicit severity badge using one of: ' +
+						'🔴 Critical, 🟠 High, 🟡 Medium, 🟢 Low.',
 				},
 				{
 					role: 'user',
@@ -281,21 +342,27 @@ export class ModelManager {
 			],
 		});
 
+		this.throwIfCancelled('Review cancelled.');
+		if (finalPass.choices?.[0]?.finish_reason === 'abort') {
+			throw new Error('Review cancelled.');
+		}
 		return finalPass.choices?.[0]?.message?.content ?? synthesized ?? 'No final synthesis was produced.';
 	}
 
-	private buildReviewPrompt(prTitle: string, prDescription: string, diff: string): string {
-		return [
-			`PR Title: ${prTitle}`,
-			`PR Description: ${prDescription || '(none)'}`,
-			'',
-			'Review the following diff:',
-			'```diff',
-			diff,
-			'```',
-		].join('\n');
+	async cancelGeneration(): Promise<void> {
+		if (!this.engine || this.status !== 'generating') {
+			return;
+		}
+
+		this.generationCancelled = true;
+		await Promise.resolve(this.engine.interruptGenerate());
 	}
 
+	private throwIfCancelled(message: string): void {
+		if (this.generationCancelled) {
+			throw new Error(message);
+		}
+	}
 	private estimateTokens(charCount: number): number {
 		return Math.ceil(charCount / 4);
 	}

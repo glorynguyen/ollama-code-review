@@ -83,6 +83,42 @@ chrome.runtime.onMessage.addListener((message: BackgroundMessage, _sender, sendR
 			return;
 		}
 
+		if (message.type === 'FETCH_STAGED_REVIEW_BUNDLE') {
+			const stored = await chrome.storage.local.get('mcpToken');
+			mcpClient.setToken((stored.mcpToken as string | undefined) ?? '');
+			await mcpClient.initialize();
+
+			const repos = await mcpClient.getWorkspaceRepos();
+			const repo = findRepoForStagedChanges(
+				repos,
+				message.payload.host,
+				message.payload.owner,
+				message.payload.repo,
+			);
+
+			if (!repo) {
+				sendResponse({
+					ok: false,
+					error: 'Could not determine which local workspace repo to use for staged review. Open the repo in VS Code, or keep only one matching repo open.',
+				});
+				return;
+			}
+
+			const bundle = await mcpClient.getStagedReviewBundle({
+				repository_path: repo.path,
+			});
+
+			sendResponse({
+				ok: true,
+				data: {
+					repositoryPath: repo.path,
+					diff: bundle.filteredDiff,
+					promptText: bundle.promptText,
+				},
+			});
+			return;
+		}
+
 		if (message.type === 'FETCH_BRANCH_DIFF') {
 			const stored = await chrome.storage.local.get('mcpToken');
 			mcpClient.setToken((stored.mcpToken as string | undefined) ?? '');
@@ -115,6 +151,44 @@ chrome.runtime.onMessage.addListener((message: BackgroundMessage, _sender, sendR
 				data: {
 					repositoryPath: repo.path,
 					diff,
+				},
+			});
+			return;
+		}
+
+		if (message.type === 'FETCH_BRANCH_REVIEW_BUNDLE') {
+			const stored = await chrome.storage.local.get('mcpToken');
+			mcpClient.setToken((stored.mcpToken as string | undefined) ?? '');
+			await mcpClient.initialize();
+
+			const repos = await mcpClient.getWorkspaceRepos();
+			const repo = findRepoForStagedChanges(
+				repos,
+				message.payload.host,
+				message.payload.owner,
+				message.payload.repo,
+			);
+
+			if (!repo) {
+				sendResponse({
+					ok: false,
+					error: 'Could not determine which local workspace repo to use for branch review. Open the repo in VS Code, or keep only one matching repo open.',
+				});
+				return;
+			}
+
+			const bundle = await mcpClient.getBranchReviewBundle({
+				repository_path: repo.path,
+				base_ref: message.payload.baseRef,
+				target_ref: message.payload.targetRef,
+			});
+
+			sendResponse({
+				ok: true,
+				data: {
+					repositoryPath: repo.path,
+					diff: bundle.filteredDiff,
+					promptText: bundle.promptText,
 				},
 			});
 			return;

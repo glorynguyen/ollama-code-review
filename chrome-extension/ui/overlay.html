@@ -74,6 +74,13 @@
     </section>
 
     <section id="status" class="status">Ready.</section>
+    <section id="review-runner" class="review-runner" hidden>
+      <div class="review-runner__header">
+        <span id="review-progress-label">Preparing review…</span>
+        <button id="cancel-review-btn" class="ghost review-runner__cancel" type="button">Cancel</button>
+      </div>
+      <progress id="review-progress-bar" class="review-runner__bar" max="1"></progress>
+    </section>
     <section id="mcp-test-result" class="test-result" hidden>
       <div class="test-result__header">
         <strong>MCP Details</strong>

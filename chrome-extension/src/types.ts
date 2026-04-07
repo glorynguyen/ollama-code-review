@@ -31,6 +31,26 @@ export interface FetchBranchDiffMessage {
 	};
 }
 
+export interface FetchStagedReviewBundleMessage {
+	type: 'FETCH_STAGED_REVIEW_BUNDLE';
+	payload: {
+		host?: string;
+		owner?: string;
+		repo?: string;
+	};
+}
+
+export interface FetchBranchReviewBundleMessage {
+	type: 'FETCH_BRANCH_REVIEW_BUNDLE';
+	payload: {
+		host?: string;
+		owner?: string;
+		repo?: string;
+		baseRef: string;
+		targetRef: string;
+	};
+}
+
 export interface FetchRepoDefaultsMessage {
 	type: 'FETCH_REPO_DEFAULTS';
 	payload: {
@@ -89,6 +109,8 @@ export interface TestMcpConnectionMessage {
 export type BackgroundMessage =
 	| FetchPrDiffMessage
 	| FetchBranchDiffMessage
+	| FetchStagedReviewBundleMessage
+	| FetchBranchReviewBundleMessage
 	| FetchRepoDefaultsMessage
 	| ApplyCommitMessageMessage
 	| FetchCommitPromptMessage

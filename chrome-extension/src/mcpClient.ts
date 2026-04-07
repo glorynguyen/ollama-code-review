@@ -61,6 +61,22 @@ export class McpClient {
 		return extractText(result);
 	}
 
+	async getStagedReviewBundle(args: {
+		repository_path: string;
+	}): Promise<{ filteredDiff: string; promptText: string }> {
+		const result = await this.callTool('get_staged_review_bundle', args);
+		return JSON.parse(extractText(result)) as { filteredDiff: string; promptText: string };
+	}
+
+	async getBranchReviewBundle(args: {
+		repository_path: string;
+		base_ref: string;
+		target_ref: string;
+	}): Promise<{ filteredDiff: string; promptText: string }> {
+		const result = await this.callTool('get_branch_review_bundle', args);
+		return JSON.parse(extractText(result)) as { filteredDiff: string; promptText: string };
+	}
+
 	async getRepoConfig(args: { repository_path: string }): Promise<{ defaultBaseBranch?: string }> {
 		const result = await this.callTool('get_repo_config', args);
 		return JSON.parse(extractText(result)) as { defaultBaseBranch?: string };

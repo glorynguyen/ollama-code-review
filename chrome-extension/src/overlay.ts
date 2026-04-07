@@ -1,10 +1,10 @@
-import { ModelManager } from './modelManager';
+import { ModelManager, type ReviewProgress } from './modelManager';
 import type {
 	ApplyCommitMessageMessage,
-	FetchBranchDiffMessage,
+	FetchBranchReviewBundleMessage,
 	FetchRepoDefaultsMessage,
 	FetchCommitPromptMessage,
-	FetchStagedDiffMessage,
+	FetchStagedReviewBundleMessage,
 	PageContext,
 	ScoreReviewMessage,
 	SetMcpTokenMessage,
@@ -16,6 +16,10 @@ const modelManager = new ModelManager();
 const repoMetaEl = getElement<HTMLParagraphElement>('repo-meta');
 const repoPathEl = getElement<HTMLParagraphElement>('repo-path');
 const statusEl = getElement<HTMLDivElement>('status');
+const reviewRunnerEl = getElement<HTMLDivElement>('review-runner');
+const reviewProgressLabelEl = getElement<HTMLSpanElement>('review-progress-label');
+const reviewProgressBarEl = getElement<HTMLProgressElement>('review-progress-bar');
+const cancelReviewButton = getElement<HTMLButtonElement>('cancel-review-btn');
 const mcpTestResultEl = getElement<HTMLDivElement>('mcp-test-result');
 const mcpTestResultTextEl = getElement<HTMLPreElement>('mcp-test-result-text');
 const mcpStatusChipEl = getElement<HTMLButtonElement>('mcp-status-chip');
@@ -80,6 +84,12 @@ mcpStatusChipEl.addEventListener('click', () => {
 
 closeMcpResultButton.addEventListener('click', () => {
 	hideMcpDetails();
+});
+
+cancelReviewButton.addEventListener('click', () => {
+	cancelReviewButton.disabled = true;
+	statusEl.textContent = 'Cancelling review...';
+	void modelManager.cancelGeneration().catch(renderError);
 });
 
 previewTabButton.addEventListener('click', () => {
@@ -210,8 +220,8 @@ async function runStagedReview(): Promise<void> {
 
 	await modelManager.ensureLoaded(modelSelect.value, updateProgress);
 
-	const message: FetchStagedDiffMessage = {
-		type: 'FETCH_STAGED_DIFF',
+	const message: FetchStagedReviewBundleMessage = {
+		type: 'FETCH_STAGED_REVIEW_BUNDLE',
 		payload: {
 			host: pageContext?.host,
 			owner: pageContext?.owner,
@@ -224,20 +234,17 @@ async function runStagedReview(): Promise<void> {
 		throw new Error(response?.error ?? 'Failed to fetch staged diff from MCP.');
 	}
 
-	statusEl.textContent = 'Generating staged-changes review...';
-	const reviewText = await modelManager.reviewDiff(
+	await runCancelableReview(
+		'Generating staged-changes review...',
 		{
 			modelId: modelSelect.value,
+			promptText: String(response.data.promptText ?? ''),
 			prTitle: pageContext?.prTitle ?? 'Local staged changes',
 			prDescription: pageContext?.prDescription ?? 'Reviewing local staged changes from the current workspace.',
 			diff: response.data.diff as string,
 		},
-		(token) => {
-			appendOutput(token);
-		},
+		'Staged-changes review complete.',
 	);
-	await appendScoreSafely(reviewText);
-	statusEl.textContent = 'Staged-changes review complete.';
 }
 
 async function runBranchReview(): Promise<void> {
@@ -253,8 +260,8 @@ async function runBranchReview(): Promise<void> {
 
 	await modelManager.ensureLoaded(modelSelect.value, updateProgress);
 
-	const message: FetchBranchDiffMessage = {
-		type: 'FETCH_BRANCH_DIFF',
+	const message: FetchBranchReviewBundleMessage = {
+		type: 'FETCH_BRANCH_REVIEW_BUNDLE',
 		payload: {
 			host: pageContext?.host,
 			owner: pageContext?.owner,
@@ -269,20 +276,17 @@ async function runBranchReview(): Promise<void> {
 		throw new Error(response?.error ?? 'Failed to fetch branch diff from MCP.');
 	}
 
-	statusEl.textContent = `Generating branch comparison review (${baseRef} → ${targetRef})...`;
-	const reviewText = await modelManager.reviewDiff(
+	await runCancelableReview(
+		`Generating branch comparison review (${baseRef} → ${targetRef})...`,
 		{
 			modelId: modelSelect.value,
+			promptText: String(response.data.promptText ?? ''),
 			prTitle: pageContext?.prTitle ?? `Branch comparison: ${baseRef} → ${targetRef}`,
 			prDescription: pageContext?.prDescription ?? `Reviewing changes between ${baseRef} and ${targetRef}.`,
 			diff: response.data.diff as string,
 		},
-		(token) => {
-			appendOutput(token);
-		},
+		`Branch comparison review complete (${baseRef} → ${targetRef}).`,
 	);
-	await appendScoreSafely(reviewText);
-	statusEl.textContent = `Branch comparison review complete (${baseRef} → ${targetRef}).`;
 }
 
 async function runCommitMessageGeneration(): Promise<void> {
@@ -332,7 +336,11 @@ function updateProgress(progress: { text: string; progress?: number }): void {
 }
 
 function renderError(error: unknown): void {
-	statusEl.textContent = error instanceof Error ? error.message : String(error);
+	const message = error instanceof Error ? error.message : String(error);
+	statusEl.textContent = message;
+	if (message === 'Review cancelled.') {
+		return;
+	}
 	setMcpStatus('error', 'MCP error');
 	showMcpDetails(statusEl.textContent);
 }
@@ -434,6 +442,62 @@ async function appendScoreSafely(reviewText: string): Promise<void> {
 	} catch (error) {
 		appendReviewScore(`## Review Score\n\nScoring failed: ${error instanceof Error ? error.message : String(error)}`);
 	}
+}
+
+async function runCancelableReview(
+	startMessage: string,
+	input: {
+		modelId: string;
+		promptText: string;
+		prTitle: string;
+		prDescription: string;
+		diff: string;
+	},
+	completionMessage: string,
+): Promise<void> {
+	beginReviewRun(startMessage);
+
+	try {
+		statusEl.textContent = startMessage;
+		const reviewText = await modelManager.reviewDiff(
+			input,
+			(token) => {
+				appendOutput(token);
+			},
+			(progress) => {
+				updateReviewProgress(progress);
+			},
+		);
+		await appendScoreSafely(reviewText);
+		statusEl.textContent = completionMessage;
+	} finally {
+		endReviewRun();
+	}
+}
+
+function beginReviewRun(message: string): void {
+	reviewRunnerEl.hidden = false;
+	cancelReviewButton.disabled = false;
+	reviewProgressLabelEl.textContent = message;
+	reviewProgressBarEl.max = 1;
+	reviewProgressBarEl.removeAttribute('value');
+}
+
+function endReviewRun(): void {
+	reviewRunnerEl.hidden = true;
+	cancelReviewButton.disabled = false;
+}
+
+function updateReviewProgress(progress: ReviewProgress): void {
+	reviewProgressLabelEl.textContent = progress.message;
+	if (progress.indeterminate || !progress.total || progress.total <= 0) {
+		reviewProgressBarEl.max = 1;
+		reviewProgressBarEl.removeAttribute('value');
+		return;
+	}
+
+	reviewProgressBarEl.max = progress.total;
+	reviewProgressBarEl.value = Math.min(progress.current ?? 0, progress.total);
 }
 
 async function applyCommitMessageToVscode(commitMessage: string): Promise<string> {
