@@ -1,3 +1,10 @@
+# [3.49.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.48.0...v3.49.0) (2026-04-07)
+
+
+### Features
+
+* **review:** centralise prompt builder and add cancellable review UI ([fb68ba9](https://github.com/glorynguyen/ollama-code-review/commit/fb68ba9b8a3170fe95bf0aa6b7acc0d537def83c))
+
 # [3.48.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.47.0...v3.48.0) (2026-04-07)
 
 
