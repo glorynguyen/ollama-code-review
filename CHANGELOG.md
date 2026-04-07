@@ -1,3 +1,13 @@
+# [3.48.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.47.0...v3.48.0) (2026-04-07)
+
+
+### Features
+
+* **chrome-extension:** add base ref hint element and update logic ([d7bea17](https://github.com/glorynguyen/ollama-code-review/commit/d7bea1782a37454ae8456a9b3ec54edb5e74eb34))
+* **chrome-extension:** add MCP status and test result UI elements ([ef9124b](https://github.com/glorynguyen/ollama-code-review/commit/ef9124bfb2608df0c9078a70f6e6823d7d953f85))
+* **chrome-extension:** add support for fetching repository defaults ([a20e1b9](https://github.com/glorynguyen/ollama-code-review/commit/a20e1b9dcbf1b7e8ed498a74a4c613551435bf65))
+* **ollama-code-review:** add default base branch configuration and conditional prompt copying ([d511423](https://github.com/glorynguyen/ollama-code-review/commit/d5114235d9c0447ce981836a2aab097054ecf589))
+
 # [3.47.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.46.0...v3.47.0) (2026-04-06)
 
 
