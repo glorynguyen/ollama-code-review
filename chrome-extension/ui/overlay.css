@@ -39,6 +39,20 @@ html, body {
   color: #475569;
 }
 
+.repo-path {
+  margin: 6px 0 0;
+  color: #475569;
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  word-break: break-all;
+}
+
+.repo-path::before {
+  content: "Local repo: ";
+  font-family: "Segoe UI", system-ui, sans-serif;
+  color: #334155;
+}
+
 .status-row {
   margin-top: 10px;
 }

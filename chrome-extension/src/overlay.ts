@@ -4,7 +4,6 @@ import type {
 	FetchBranchDiffMessage,
 	FetchRepoDefaultsMessage,
 	FetchCommitPromptMessage,
-	FetchPrDiffMessage,
 	FetchStagedDiffMessage,
 	PageContext,
 	ScoreReviewMessage,
@@ -15,6 +14,7 @@ import type {
 const modelManager = new ModelManager();
 
 const repoMetaEl = getElement<HTMLParagraphElement>('repo-meta');
+const repoPathEl = getElement<HTMLParagraphElement>('repo-path');
 const statusEl = getElement<HTMLDivElement>('status');
 const mcpTestResultEl = getElement<HTMLDivElement>('mcp-test-result');
 const mcpTestResultTextEl = getElement<HTMLPreElement>('mcp-test-result-text');
@@ -37,7 +37,6 @@ const loadModelButton = getElement<HTMLButtonElement>('load-model-btn');
 const reviewStagedButton = getElement<HTMLButtonElement>('review-staged-btn');
 const reviewBranchesButton = getElement<HTMLButtonElement>('review-branches-btn');
 const generateCommitButton = getElement<HTMLButtonElement>('generate-commit-btn');
-const runReviewButton = getElement<HTMLButtonElement>('run-review-btn');
 const closeButton = getElement<HTMLButtonElement>('close-btn');
 
 let pageContext: PageContext | null = null;
@@ -53,6 +52,7 @@ window.addEventListener('message', (event: MessageEvent) => {
 
 	pageContext = event.data.payload as PageContext;
 	repoMetaEl.textContent = `${pageContext.owner}/${pageContext.repo} · ${pageContext.baseRef} → ${pageContext.headRef}`;
+	repoPathEl.hidden = true;
 	baseRefInput.value = pageContext.baseRef;
 	updateBaseRefHint(`Using pull request base branch: ${pageContext.baseRef}`);
 	targetRefInput.value = pageContext.headRef;
@@ -108,10 +108,6 @@ generateCommitButton.addEventListener('click', () => {
 	void runCommitMessageGeneration().catch(renderError);
 });
 
-runReviewButton.addEventListener('click', () => {
-	void runReview().catch(renderError);
-});
-
 closeButton.addEventListener('click', () => {
 	window.parent.postMessage({ type: 'OCR_CLOSE_OVERLAY' }, '*');
 });
@@ -133,6 +129,12 @@ async function hydrateRepoDefaults(): Promise<void> {
 	const response = await chrome.runtime.sendMessage(message);
 	if (!response?.ok) {
 		return;
+	}
+
+	const repositoryPath = String(response.data?.repositoryPath ?? '').trim();
+	if (repositoryPath) {
+		repoPathEl.textContent = repositoryPath;
+		repoPathEl.hidden = false;
 	}
 
 	const defaultBaseBranch = String(response.data?.defaultBaseBranch ?? '').trim();
@@ -200,49 +202,6 @@ async function refreshMcpStatus(showDetails: boolean): Promise<void> {
 		showMcpDetails(details);
 	}
 	statusEl.textContent = 'MCP connection test succeeded.';
-}
-
-async function runReview(): Promise<void> {
-	if (!pageContext) {
-		statusEl.textContent = 'No pull request context available yet.';
-		return;
-	}
-
-	resetOutput();
-	statusEl.textContent = 'Loading model and retrieving local diff...';
-
-	await modelManager.ensureLoaded(modelSelect.value, updateProgress);
-
-	const message: FetchPrDiffMessage = {
-		type: 'FETCH_PR_DIFF',
-		payload: {
-			host: pageContext.host,
-			owner: pageContext.owner,
-			repo: pageContext.repo,
-			baseRef: pageContext.baseRef,
-			headRef: pageContext.headRef,
-		},
-	};
-
-	const response = await chrome.runtime.sendMessage(message);
-	if (!response?.ok) {
-		throw new Error(response?.error ?? 'Failed to fetch diff from MCP.');
-	}
-
-	statusEl.textContent = 'Generating browser-side review...';
-	const reviewText = await modelManager.reviewDiff(
-		{
-			modelId: modelSelect.value,
-			prTitle: pageContext.prTitle,
-			prDescription: pageContext.prDescription,
-			diff: response.data.diff as string,
-		},
-		(token) => {
-			appendOutput(token);
-		},
-	);
-	await appendScoreSafely(reviewText);
-	statusEl.textContent = 'Review complete.';
 }
 
 async function runStagedReview(): Promise<void> {
