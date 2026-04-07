@@ -8,10 +8,12 @@ import { ReviewScoreStore } from '../../reviewScore';
 export function registerAllResources(server: McpServer): void {
 
 	// Review score history
-	server.resource(
+	server.registerResource(
 		'review-scores',
 		'review://scores',
-		{ description: 'Review quality score history (JSON)' },
+		{ 
+			description: 'Review quality score history (JSON)',
+		},
 		async () => {
 			let scores: unknown[] = [];
 			try {
@@ -32,10 +34,12 @@ export function registerAllResources(server: McpServer): void {
 	);
 
 	// Current extension configuration
-	server.resource(
+	server.registerResource(
 		'extension-config',
 		'review://config',
-		{ description: 'Current Ollama Code Review extension configuration' },
+		{ 
+			description: 'Current Ollama Code Review extension configuration',
+		},
 		async () => {
 			const config = mcpBridge.getConfig();
 			const exportedConfig = {
