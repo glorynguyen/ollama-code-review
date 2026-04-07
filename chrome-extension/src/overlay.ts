@@ -2,6 +2,7 @@ import { ModelManager } from './modelManager';
 import type {
 	ApplyCommitMessageMessage,
 	FetchBranchDiffMessage,
+	FetchRepoDefaultsMessage,
 	FetchCommitPromptMessage,
 	FetchPrDiffMessage,
 	FetchStagedDiffMessage,
@@ -54,6 +55,7 @@ window.addEventListener('message', (event: MessageEvent) => {
 	baseRefInput.value = pageContext.baseRef;
 	targetRefInput.value = pageContext.headRef;
 	statusEl.textContent = 'PR context received from the current page.';
+	void hydrateRepoDefaults().catch(renderError);
 });
 
 void hydrateToken();
@@ -115,6 +117,26 @@ closeButton.addEventListener('click', () => {
 async function hydrateToken(): Promise<void> {
 	const stored = await chrome.storage.local.get('mcpToken');
 	tokenInput.value = (stored.mcpToken as string | undefined) ?? '';
+}
+
+async function hydrateRepoDefaults(): Promise<void> {
+	const message: FetchRepoDefaultsMessage = {
+		type: 'FETCH_REPO_DEFAULTS',
+		payload: {
+			host: pageContext?.host,
+			owner: pageContext?.owner,
+			repo: pageContext?.repo,
+		},
+	};
+	const response = await chrome.runtime.sendMessage(message);
+	if (!response?.ok) {
+		return;
+	}
+
+	const defaultBaseBranch = String(response.data?.defaultBaseBranch ?? '').trim();
+	if (defaultBaseBranch) {
+		baseRefInput.value = defaultBaseBranch;
+	}
 }
 
 async function saveToken(): Promise<void> {

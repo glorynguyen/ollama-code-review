@@ -31,6 +31,15 @@ export interface FetchBranchDiffMessage {
 	};
 }
 
+export interface FetchRepoDefaultsMessage {
+	type: 'FETCH_REPO_DEFAULTS';
+	payload: {
+		host?: string;
+		owner?: string;
+		repo?: string;
+	};
+}
+
 export interface ScoreReviewMessage {
 	type: 'SCORE_REVIEW';
 	payload: {
@@ -80,6 +89,7 @@ export interface TestMcpConnectionMessage {
 export type BackgroundMessage =
 	| FetchPrDiffMessage
 	| FetchBranchDiffMessage
+	| FetchRepoDefaultsMessage
 	| ApplyCommitMessageMessage
 	| FetchCommitPromptMessage
 	| ScoreReviewMessage

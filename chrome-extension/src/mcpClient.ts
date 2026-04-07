@@ -61,6 +61,11 @@ export class McpClient {
 		return extractText(result);
 	}
 
+	async getRepoConfig(args: { repository_path: string }): Promise<{ defaultBaseBranch?: string }> {
+		const result = await this.callTool('get_repo_config', args);
+		return JSON.parse(extractText(result)) as { defaultBaseBranch?: string };
+	}
+
 	async getStagedDiff(args: { repository_path?: string } = {}): Promise<string> {
 		const result = await this.callTool('get_staged_diff', args);
 		return extractText(result);

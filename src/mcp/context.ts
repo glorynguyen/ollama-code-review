@@ -31,8 +31,8 @@ export class McpExtensionBridge {
 		return this.outputChannel;
 	}
 
-	getConfig(): vscode.WorkspaceConfiguration {
-		return vscode.workspace.getConfiguration('ollama-code-review');
+	getConfig(resource?: vscode.Uri): vscode.WorkspaceConfiguration {
+		return vscode.workspace.getConfiguration('ollama-code-review', resource);
 	}
 
 	getWorkspaceFolders(): readonly vscode.WorkspaceFolder[] {

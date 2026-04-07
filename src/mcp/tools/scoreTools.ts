@@ -1,5 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
+import * as vscode from 'vscode';
 import { mcpBridge } from '../context';
 import { parseFindingCounts, computeScore } from '../../reviewScore';
 import { parseReviewIntoFindings } from '../../github/commentMapper';
@@ -81,6 +82,24 @@ export function registerUtilityTools(server: McpServer): void {
 			}));
 
 			return { content: [{ type: 'text' as const, text: JSON.stringify(output, null, 2) }] };
+		},
+	);
+
+	server.tool(
+		'get_repo_config',
+		'Get repository-scoped extension configuration values used by local tooling, such as the default base branch for branch comparison.',
+		{
+			repository_path: z.string().describe('Absolute path to the local repository/workspace folder.'),
+		},
+		async ({ repository_path }) => {
+			mcpBridge.log(`get_repo_config: repo=${repository_path}`);
+
+			const config = mcpBridge.getConfig(vscode.Uri.file(repository_path));
+			const exported = {
+				defaultBaseBranch: config.get('defaultBaseBranch'),
+			};
+
+			return { content: [{ type: 'text' as const, text: JSON.stringify(exported, null, 2) }] };
 		},
 	);
 

@@ -120,6 +120,41 @@ chrome.runtime.onMessage.addListener((message: BackgroundMessage, _sender, sendR
 			return;
 		}
 
+		if (message.type === 'FETCH_REPO_DEFAULTS') {
+			const stored = await chrome.storage.local.get('mcpToken');
+			mcpClient.setToken((stored.mcpToken as string | undefined) ?? '');
+			await mcpClient.initialize();
+
+			const repos = await mcpClient.getWorkspaceRepos();
+			const repo = findRepoForStagedChanges(
+				repos,
+				message.payload.host,
+				message.payload.owner,
+				message.payload.repo,
+			);
+
+			if (!repo) {
+				sendResponse({
+					ok: false,
+					error: 'Could not determine which local workspace repo to use for branch defaults. Open the repo in VS Code, or keep only one matching repo open.',
+				});
+				return;
+			}
+
+			const repoConfig = await mcpClient.getRepoConfig({
+				repository_path: repo.path,
+			});
+
+			sendResponse({
+				ok: true,
+				data: {
+					repositoryPath: repo.path,
+					defaultBaseBranch: repoConfig.defaultBaseBranch ?? '',
+				},
+			});
+			return;
+		}
+
 		if (message.type === 'SCORE_REVIEW') {
 			const stored = await chrome.storage.local.get('mcpToken');
 			mcpClient.setToken((stored.mcpToken as string | undefined) ?? '');
