@@ -8,11 +8,13 @@ import { getAllProfiles } from '../../profiles';
 
 export function registerUtilityTools(server: McpServer): void {
 
-	server.tool(
+	server.registerTool(
 		'score_review',
-		'Compute a quality score (0-100) from a code review text. Parses finding severities and returns score breakdown. Pure computation — no AI calls.',
 		{
-			review_text: z.string().describe('The review text (Markdown) to score'),
+			description: 'Compute a quality score (0-100) from a code review text. Parses finding severities and returns score breakdown. Pure computation — no AI calls.',
+			inputSchema: {
+				review_text: z.string().describe('The review text (Markdown) to score'),
+			},
 		},
 		async ({ review_text }) => {
 			mcpBridge.log('score_review');
@@ -41,12 +43,14 @@ export function registerUtilityTools(server: McpServer): void {
 		},
 	);
 
-	server.tool(
+	server.registerTool(
 		'parse_findings',
-		'Parse a code review into structured findings with file, line, severity, and message. Pure computation — no AI calls.',
 		{
-			review_text: z.string().describe('The review text (Markdown) to parse'),
-			diff: z.string().optional().describe('Optional diff for file/line matching'),
+			description: 'Parse a code review into structured findings with file, line, severity, and message. Pure computation — no AI calls.',
+			inputSchema: {
+				review_text: z.string().describe('The review text (Markdown) to parse'),
+				diff: z.string().optional().describe('Optional diff for file/line matching'),
+			},
 		},
 		async ({ review_text, diff }) => {
 			mcpBridge.log('parse_findings');
@@ -65,10 +69,12 @@ export function registerUtilityTools(server: McpServer): void {
 		},
 	);
 
-	server.tool(
+	server.registerTool(
 		'list_profiles',
-		'List all available review profiles (built-in + custom + compliance). Returns profile names, descriptions, and focus areas.',
-		{},
+		{
+			description: 'List all available review profiles (built-in + custom + compliance). Returns profile names, descriptions, and focus areas.',
+			inputSchema: undefined,
+		},
 		async () => {
 			mcpBridge.log('list_profiles');
 
@@ -85,11 +91,13 @@ export function registerUtilityTools(server: McpServer): void {
 		},
 	);
 
-	server.tool(
+	server.registerTool(
 		'get_repo_config',
-		'Get repository-scoped extension configuration values used by local tooling, such as the default base branch for branch comparison.',
 		{
-			repository_path: z.string().describe('Absolute path to the local repository/workspace folder.'),
+			description: 'Get repository-scoped extension configuration values used by local tooling, such as the default base branch for branch comparison.',
+			inputSchema: {
+				repository_path: z.string().describe('Absolute path to the local repository/workspace folder.'),
+			},
 		},
 		async ({ repository_path }) => {
 			mcpBridge.log(`get_repo_config: repo=${repository_path}`);
@@ -103,10 +111,12 @@ export function registerUtilityTools(server: McpServer): void {
 		},
 	);
 
-	server.tool(
+	server.registerTool(
 		'get_config',
-		'Get the current extension configuration (model, endpoint, frameworks, diff filter settings, etc.).',
-		{},
+		{
+			description: 'Get the current extension configuration (model, endpoint, frameworks, diff filter settings, etc.).',
+			inputSchema: undefined,
+		},
 		async () => {
 			mcpBridge.log('get_config');
 

@@ -26,12 +26,14 @@ async function buildCommitPromptBundle(diff: string, draftMessage: string) {
 
 export function registerCommitTools(server: McpServer): void {
 
-	server.tool(
+	server.registerTool(
 		'get_commit_prompt',
-		'Assemble the full commit message prompt with the staged diff and template. Returns the prompt ready for AI analysis — no AI calls are made.',
 		{
-			repository_path: z.string().optional().describe('Path to the git repository. Defaults to the open workspace folder.'),
-			existing_message: z.string().optional().describe('Optional draft message to refine'),
+			description: 'Assemble the full commit message prompt with the staged diff and template. Returns the prompt ready for AI analysis — no AI calls are made.',
+			inputSchema: {
+				repository_path: z.string().optional().describe('Path to the git repository. Defaults to the open workspace folder.'),
+				existing_message: z.string().optional().describe('Optional draft message to refine'),
+			},
 		},
 		async ({ repository_path, existing_message }) => {
 			const repoPath = repository_path || mcpBridge.getRepoPath();
@@ -49,12 +51,14 @@ export function registerCommitTools(server: McpServer): void {
 		},
 	);
 
-	server.tool(
+	server.registerTool(
 		'get_commit_prompt_bundle',
-		'Assemble the commit message prompt bundle with a filtered staged diff. Returns JSON containing the final prompt, filtered diff, and draft message. No AI calls are made.',
 		{
-			repository_path: z.string().optional().describe('Path to the git repository. Defaults to the open workspace folder.'),
-			existing_message: z.string().optional().describe('Optional draft message to refine'),
+			description: 'Assemble the commit message prompt bundle with a filtered staged diff. Returns JSON containing the final prompt, filtered diff, and draft message. No AI calls are made.',
+			inputSchema: {
+				repository_path: z.string().optional().describe('Path to the git repository. Defaults to the open workspace folder.'),
+				existing_message: z.string().optional().describe('Optional draft message to refine'),
+			},
 		},
 		async ({ repository_path, existing_message }) => {
 			const repoPath = repository_path || mcpBridge.getRepoPath();
@@ -87,12 +91,14 @@ export function registerCommitTools(server: McpServer): void {
 		},
 	);
 
-	server.tool(
+	server.registerTool(
 		'set_commit_message',
-		'Set the VS Code Source Control commit message input box for the selected repository.',
 		{
-			commit_message: z.string().describe('The commit message to place into the VS Code SCM input box'),
-			repository_path: z.string().optional().describe('Path to the git repository. Defaults to the open workspace folder.'),
+			description: 'Set the VS Code Source Control commit message input box for the selected repository.',
+			inputSchema: {
+				commit_message: z.string().describe('The commit message to place into the VS Code SCM input box'),
+				repository_path: z.string().optional().describe('Path to the git repository. Defaults to the open workspace folder.'),
+			},
 		},
 		async ({ commit_message, repository_path }) => {
 			const repoPath = repository_path || mcpBridge.getRepoPath();

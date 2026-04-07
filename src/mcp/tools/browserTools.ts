@@ -3,10 +3,13 @@ import { mcpBridge } from '../context';
 
 export function registerBrowserTools(server: McpServer): void {
 
-	server.tool(
-		'get_workspace_repos',
-		'List open workspace folders and their git remotes so browser clients can map a PR URL to a local repository path.',
-		{},
+	server.registerTool(
+		"get_workspace_repos",
+		{
+			description:
+				"List open workspace folders and their git remotes so browser clients can map a PR URL to a local repository path.",
+			inputSchema: undefined, // no parameters
+		},
 		async () => {
 			const repos: Array<{
 				name: string;
@@ -16,15 +19,21 @@ export function registerBrowserTools(server: McpServer): void {
 
 			for (const folder of mcpBridge.getWorkspaceFolders()) {
 				try {
-					const rawRemotes = await mcpBridge.runGit(folder.uri.fsPath, ['remote', '-v']);
-					const remotes = [...new Set(
-						rawRemotes
-							.split(/\r?\n/)
-							.map(line => line.trim())
-							.filter(Boolean)
-							.map(line => line.split(/\s+/)[1])
-							.filter(Boolean),
-					)];
+					const rawRemotes = await mcpBridge.runGit(folder.uri.fsPath, [
+						"remote",
+						"-v",
+					]);
+
+					const remotes = [
+						...new Set(
+							rawRemotes
+								.split(/\r?\n/)
+								.map((line) => line.trim())
+								.filter(Boolean)
+								.map((line) => line.split(/\s+/)[1])
+								.filter(Boolean)
+						),
+					];
 
 					repos.push({
 						name: folder.name,
@@ -41,11 +50,15 @@ export function registerBrowserTools(server: McpServer): void {
 			}
 
 			return {
-				content: [{
-					type: 'text' as const,
-					text: JSON.stringify(repos, null, 2),
-				}],
+				content: [
+					{
+						type: "text",
+						text: JSON.stringify(repos, null, 2),
+					},
+				],
 			};
-		},
+		}
 	);
+
+
 }

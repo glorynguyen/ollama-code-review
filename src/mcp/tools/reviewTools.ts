@@ -5,10 +5,12 @@ import { filterDiff, getDiffFilterConfig, getFilterSummary } from '../../diffFil
 
 export function registerReviewTools(server: McpServer): void {
 
-	server.tool(
+	server.registerTool(
 		'get_staged_diff',
-		'Get the staged Git diff, filtered to exclude noise (lock files, build output, minified files). Returns the cleaned diff and filter statistics.',
-		{ repository_path: z.string().optional().describe('Path to the git repository. Defaults to the open workspace folder.') },
+		{
+			description: 'Get the staged Git diff, filtered to exclude noise (lock files, build output, minified files). Returns the cleaned diff and filter statistics.',
+			inputSchema: { repository_path: z.string().optional().describe('Path to the git repository. Defaults to the open workspace folder.') },
+		},
 		async ({ repository_path }) => {
 			const repoPath = repository_path || mcpBridge.getRepoPath();
 			mcpBridge.log(`get_staged_diff: repo=${repoPath}`);
@@ -37,12 +39,14 @@ export function registerReviewTools(server: McpServer): void {
 		},
 	);
 
-	server.tool(
+	server.registerTool(
 		'get_commit_diff',
-		'Get the diff of a specific Git commit, filtered to exclude noise.',
 		{
-			commit_sha: z.string().describe('The commit SHA to get the diff for'),
-			repository_path: z.string().optional().describe('Path to the git repository. Defaults to the open workspace folder.'),
+			description: 'Get the diff of a specific Git commit, filtered to exclude noise.',
+			inputSchema: {
+				commit_sha: z.string().describe('The commit SHA to get the diff for'),
+				repository_path: z.string().optional().describe('Path to the git repository. Defaults to the open workspace folder.'),
+			},
 		},
 		async ({ commit_sha, repository_path }) => {
 			const repoPath = repository_path || mcpBridge.getRepoPath();
@@ -76,11 +80,13 @@ export function registerReviewTools(server: McpServer): void {
 		},
 	);
 
-	server.tool(
+	server.registerTool(
 		'get_file_content',
-		'Read a file from the workspace and return its content with language detection.',
 		{
-			file_path: z.string().describe('Absolute or workspace-relative path to the file'),
+			description: 'Read a file from the workspace and return its content with language detection.',
+			inputSchema: {
+				file_path: z.string().describe('Absolute or workspace-relative path to the file'),
+			},
 		},
 		async ({ file_path }) => {
 			mcpBridge.log(`get_file_content: path=${file_path}`);
@@ -124,13 +130,15 @@ export function registerReviewTools(server: McpServer): void {
 		},
 	);
 
-	server.tool(
+	server.registerTool(
 		'get_branch_diff',
-		'Get the diff between two Git branches or refs (e.g., main vs feature-branch), filtered to exclude noise. Includes a file list summary.',
 		{
-			base_ref: z.string().describe('The base branch or ref to compare from (e.g., main)'),
-			target_ref: z.string().describe('The target branch or ref to compare to (e.g., feature-branch)'),
-			repository_path: z.string().optional().describe('Path to the git repository. Defaults to the open workspace folder.'),
+			description: 'Get the diff between two Git branches or refs (e.g., main vs feature-branch), filtered to exclude noise. Includes a file list summary.',
+			inputSchema: {
+				base_ref: z.string().describe('The base branch or ref to compare from (e.g., main)'),
+				target_ref: z.string().describe('The target branch or ref to compare to (e.g., feature-branch)'),
+				repository_path: z.string().optional().describe('Path to the git repository. Defaults to the open workspace folder.'),
+			},
 		},
 		async ({ base_ref, target_ref, repository_path }) => {
 			const repoPath = repository_path || mcpBridge.getRepoPath();

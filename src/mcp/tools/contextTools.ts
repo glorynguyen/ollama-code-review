@@ -53,11 +53,13 @@ async function buildPromptBundleForDiff(
 
 export function registerContextTools(server: McpServer): void {
 
-	server.tool(
+	server.registerTool(
 		'get_review_context',
-		'Gather all review context for the staged diff: related files (imports, tests, types), team knowledge base entries, rules, active profile, and frameworks. Returns structured JSON — no AI calls.',
 		{
-			repository_path: z.string().optional().describe('Path to the git repository. Defaults to the open workspace folder.'),
+			description: 'Gather all review context for the staged diff: related files (imports, tests, types), team knowledge base entries, rules, active profile, and frameworks. Returns structured JSON — no AI calls.',
+			inputSchema: {
+				repository_path: z.string().optional().describe('Path to the git repository. Defaults to the open workspace folder.'),
+			},
 		},
 		async ({ repository_path }) => {
 			const repoPath = repository_path || mcpBridge.getRepoPath();
@@ -170,11 +172,13 @@ export function registerContextTools(server: McpServer): void {
 		},
 	);
 
-	server.tool(
+	server.registerTool(
 		'get_review_prompt',
-		'Assemble the complete review prompt with all context (profile, knowledge base, rules, frameworks, related files) injected. Returns the fully built prompt that can be used directly for AI analysis. No AI calls are made.',
 		{
-			repository_path: z.string().optional().describe('Path to the git repository. Defaults to the open workspace folder.'),
+			description: 'Assemble the complete review prompt with all context (profile, knowledge base, rules, frameworks, related files) injected. Returns the fully built prompt that can be used directly for AI analysis. No AI calls are made.',
+			inputSchema: {
+				repository_path: z.string().optional().describe('Path to the git repository. Defaults to the open workspace folder.'),
+			},
 		},
 		async ({ repository_path }) => {
 			const repoPath = repository_path || mcpBridge.getRepoPath();
@@ -190,11 +194,13 @@ export function registerContextTools(server: McpServer): void {
 		},
 	);
 
-	server.tool(
+	server.registerTool(
 		'get_staged_review_bundle',
-		'Build the staged-review input bundle for browser or agent clients. Returns JSON with the filtered staged diff and the fully built review prompt. No AI calls are made.',
 		{
-			repository_path: z.string().optional().describe('Path to the git repository. Defaults to the open workspace folder.'),
+			description: 'Build the staged-review input bundle for browser or agent clients. Returns JSON with the filtered staged diff and the fully built review prompt. No AI calls are made.',
+			inputSchema: {
+				repository_path: z.string().optional().describe('Path to the git repository. Defaults to the open workspace folder.'),
+			},
 		},
 		async ({ repository_path }) => {
 			const repoPath = repository_path || mcpBridge.getRepoPath();
@@ -215,15 +221,17 @@ export function registerContextTools(server: McpServer): void {
 		},
 	);
 
-	server.tool(
+	server.registerTool(
 		'get_branch_review_bundle',
-		'Build the branch-review input bundle for browser or agent clients. Returns JSON with the filtered branch diff and the fully built review prompt. No AI calls are made.',
 		{
-			base_ref: z.string().describe('The base branch or ref to compare from (e.g., main)'),
-			target_ref: z.string().describe('The target branch or ref to compare to (e.g., feature-branch)'),
-			prompt_mode: z.enum(['default', 'light-check']).optional().describe('Optional prompt mode to tailor the review prompt for the client workflow.'),
-			light_check_criteria: z.array(z.string()).optional().describe('Optional light-check criteria supplied by the client UI.'),
-			repository_path: z.string().optional().describe('Path to the git repository. Defaults to the open workspace folder.'),
+			description: 'Build the branch-review input bundle for browser or agent clients. Returns JSON with the filtered branch diff and the fully built review prompt. No AI calls are made.',
+			inputSchema: {
+				base_ref: z.string().describe('The base branch or ref to compare from (e.g., main)'),
+				target_ref: z.string().describe('The target branch or ref to compare to (e.g., feature-branch)'),
+				prompt_mode: z.enum(['default', 'light-check']).optional().describe('Optional prompt mode to tailor the review prompt for the client workflow.'),
+				light_check_criteria: z.array(z.string()).optional().describe('Optional light-check criteria supplied by the client UI.'),
+				repository_path: z.string().optional().describe('Path to the git repository. Defaults to the open workspace folder.'),
+			},
 		},
 		async ({ base_ref, target_ref, prompt_mode, light_check_criteria, repository_path }) => {
 			const repoPath = repository_path || mcpBridge.getRepoPath();
@@ -246,12 +254,14 @@ export function registerContextTools(server: McpServer): void {
 		},
 	);
 
-	server.tool(
+	server.registerTool(
 		'get_commit_review_bundle',
-		'Build the commit-review input bundle for browser or agent clients. Returns JSON with the filtered commit diff, commit message, and the fully built review prompt. No AI calls are made.',
 		{
-			commit_sha: z.string().describe('The commit SHA to review'),
-			repository_path: z.string().optional().describe('Path to the git repository. Defaults to the open workspace folder.'),
+			description: 'Build the commit-review input bundle for browser or agent clients. Returns JSON with the filtered commit diff, commit message, and the fully built review prompt. No AI calls are made.',
+			inputSchema: {
+				commit_sha: z.string().describe('The commit SHA to review'),
+				repository_path: z.string().optional().describe('Path to the git repository. Defaults to the open workspace folder.'),
+			},
 		},
 		async ({ commit_sha, repository_path }) => {
 			const repoPath = repository_path || mcpBridge.getRepoPath();
