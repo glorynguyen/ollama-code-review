@@ -1,3 +1,10 @@
+# [3.52.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.51.0...v3.52.0) (2026-04-07)
+
+
+### Features
+
+* **chrome-extension:** add Slack notification feature ([e444a21](https://github.com/glorynguyen/ollama-code-review/commit/e444a2142d16c0e02bf74398e1b1c980f9d1e33c))
+
 # [3.51.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.50.0...v3.51.0) (2026-04-07)
 
 
