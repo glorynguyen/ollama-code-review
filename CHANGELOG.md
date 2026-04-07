@@ -1,3 +1,10 @@
+# [3.53.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.52.0...v3.53.0) (2026-04-07)
+
+
+### Features
+
+* **mcp:** add Chrome extension documentation and improve path matching ([128b0d3](https://github.com/glorynguyen/ollama-code-review/commit/128b0d3e6182e13d23681ea900bd250bb50208cc))
+
 # [3.52.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.51.0...v3.52.0) (2026-04-07)
 
 
