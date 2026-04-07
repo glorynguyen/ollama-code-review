@@ -15,6 +15,7 @@ const modelManager = new ModelManager();
 
 const repoMetaEl = getElement<HTMLParagraphElement>('repo-meta');
 const repoPathEl = getElement<HTMLParagraphElement>('repo-path');
+const configZoneEl = getElement<HTMLDivElement>('config-zone');
 const statusEl = getElement<HTMLDivElement>('status');
 const reviewRunnerEl = getElement<HTMLDivElement>('review-runner');
 const reviewProgressLabelEl = getElement<HTMLSpanElement>('review-progress-label');
@@ -28,9 +29,12 @@ const outputPreviewEl = getElement<HTMLDivElement>('output-preview');
 const outputEl = getElement<HTMLPreElement>('output');
 const tokenInput = getElement<HTMLInputElement>('mcp-token-input');
 const modelSelect = getElement<HTMLSelectElement>('model-select');
+const branchPromptModeSelect = getElement<HTMLSelectElement>('branch-prompt-mode-select');
 const baseRefInput = getElement<HTMLInputElement>('base-ref-input');
 const baseRefHintEl = getElement<HTMLElement>('base-ref-hint');
 const targetRefInput = getElement<HTMLInputElement>('target-ref-input');
+const lightCheckCriteriaField = getElement<HTMLElement>('light-check-criteria-field');
+const lightCheckCriteriaInput = getElement<HTMLTextAreaElement>('light-check-criteria-input');
 const commitDraftInput = getElement<HTMLInputElement>('commit-draft-input');
 const saveTokenButton = getElement<HTMLButtonElement>('save-token-btn');
 const testMcpButton = getElement<HTMLButtonElement>('test-mcp-btn');
@@ -41,13 +45,21 @@ const loadModelButton = getElement<HTMLButtonElement>('load-model-btn');
 const reviewStagedButton = getElement<HTMLButtonElement>('review-staged-btn');
 const reviewBranchesButton = getElement<HTMLButtonElement>('review-branches-btn');
 const generateCommitButton = getElement<HTMLButtonElement>('generate-commit-btn');
+const toggleConfigButton = getElement<HTMLButtonElement>('toggle-config-btn');
 const closeButton = getElement<HTMLButtonElement>('close-btn');
 
 let pageContext: PageContext | null = null;
 let outputMarkdown = '';
+let configCollapsed = false;
+const LIGHT_CHECK_CRITERIA_STORAGE_KEY = 'ocr.lightCheckCriteria';
+const DEFAULT_LIGHT_CHECK_CRITERIA = [
+	'Syntax issues',
+	'Naming convention problems',
+];
 
 resetOutput();
 void refreshMcpStatus(false);
+initializeBranchReviewControls();
 
 window.addEventListener('message', (event: MessageEvent) => {
 	if (event.data?.type !== 'OCR_PAGE_CONTEXT') {
@@ -110,12 +122,24 @@ reviewStagedButton.addEventListener('click', () => {
 	void runStagedReview().catch(renderError);
 });
 
+branchPromptModeSelect.addEventListener('change', () => {
+	updateLightCheckCriteriaVisibility();
+});
+
+lightCheckCriteriaInput.addEventListener('input', () => {
+	persistLightCheckCriteria();
+});
+
 reviewBranchesButton.addEventListener('click', () => {
 	void runBranchReview().catch(renderError);
 });
 
 generateCommitButton.addEventListener('click', () => {
 	void runCommitMessageGeneration().catch(renderError);
+});
+
+toggleConfigButton.addEventListener('click', () => {
+	setConfigCollapsed(!configCollapsed);
 });
 
 closeButton.addEventListener('click', () => {
@@ -250,6 +274,8 @@ async function runStagedReview(): Promise<void> {
 async function runBranchReview(): Promise<void> {
 	const baseRef = baseRefInput.value.trim();
 	const targetRef = targetRefInput.value.trim();
+	const promptMode = branchPromptModeSelect.value === 'default' ? 'default' : 'light-check';
+	const lightCheckCriteria = getLightCheckCriteria();
 
 	if (!baseRef || !targetRef) {
 		throw new Error('Both base branch and target branch are required.');
@@ -268,6 +294,8 @@ async function runBranchReview(): Promise<void> {
 			repo: pageContext?.repo,
 			baseRef,
 			targetRef,
+			promptMode,
+			lightCheckCriteria,
 		},
 	};
 
@@ -284,6 +312,8 @@ async function runBranchReview(): Promise<void> {
 			prTitle: pageContext?.prTitle ?? `Branch comparison: ${baseRef} → ${targetRef}`,
 			prDescription: pageContext?.prDescription ?? `Reviewing changes between ${baseRef} and ${targetRef}.`,
 			diff: response.data.diff as string,
+			promptMode,
+			lightCheckCriteria,
 		},
 		`Branch comparison review complete (${baseRef} → ${targetRef}).`,
 	);
@@ -454,6 +484,8 @@ async function runCancelableReview(
 		prTitle: string;
 		prDescription: string;
 		diff: string;
+		promptMode?: 'default' | 'light-check';
+		lightCheckCriteria?: string[];
 	},
 	completionMessage: string,
 ): Promise<void> {
@@ -475,6 +507,67 @@ async function runCancelableReview(
 	} finally {
 		endReviewRun();
 	}
+}
+
+function initializeBranchReviewControls(): void {
+	branchPromptModeSelect.value = 'light-check';
+	lightCheckCriteriaInput.value = loadStoredLightCheckCriteria().join('\n');
+	updateLightCheckCriteriaVisibility();
+	setConfigCollapsed(false);
+}
+
+function updateLightCheckCriteriaVisibility(): void {
+	const isLightCheck = branchPromptModeSelect.value === 'light-check';
+	lightCheckCriteriaField.hidden = !isLightCheck;
+}
+
+function getLightCheckCriteria(): string[] {
+	return lightCheckCriteriaInput.value
+		.split('\n')
+		.map(line => line.trim())
+		.filter(Boolean);
+}
+
+function persistLightCheckCriteria(): void {
+	const criteria = getLightCheckCriteria();
+	try {
+		window.localStorage.setItem(
+			LIGHT_CHECK_CRITERIA_STORAGE_KEY,
+			JSON.stringify(criteria.length > 0 ? criteria : DEFAULT_LIGHT_CHECK_CRITERIA),
+		);
+	} catch {
+		// Ignore localStorage write failures in the overlay.
+	}
+}
+
+function loadStoredLightCheckCriteria(): string[] {
+	try {
+		const stored = window.localStorage.getItem(LIGHT_CHECK_CRITERIA_STORAGE_KEY);
+		if (!stored) {
+			return [...DEFAULT_LIGHT_CHECK_CRITERIA];
+		}
+
+		const parsed = JSON.parse(stored);
+		if (Array.isArray(parsed)) {
+			const criteria = parsed
+				.map(value => typeof value === 'string' ? value.trim() : '')
+				.filter(Boolean);
+			if (criteria.length > 0) {
+				return criteria;
+			}
+		}
+	} catch {
+		// Ignore localStorage read failures and fall back to defaults.
+	}
+
+	return [...DEFAULT_LIGHT_CHECK_CRITERIA];
+}
+
+function setConfigCollapsed(collapsed: boolean): void {
+	configCollapsed = collapsed;
+	configZoneEl.hidden = collapsed;
+	toggleConfigButton.textContent = collapsed ? 'Show Config' : 'Hide Config';
+	toggleConfigButton.setAttribute('aria-expanded', String(!collapsed));
 }
 
 function beginReviewRun(message: string): void {

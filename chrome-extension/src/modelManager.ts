@@ -20,6 +20,8 @@ export interface ReviewProgress {
 	indeterminate?: boolean;
 }
 
+export type ReviewMode = 'default' | 'light-check';
+
 export class ModelManager {
 	private engine: MLCEngine | null = null;
 	private loadedModel = '';
@@ -77,6 +79,8 @@ export class ModelManager {
 		prTitle: string;
 		prDescription: string;
 		diff: string;
+		promptMode?: ReviewMode;
+		lightCheckCriteria?: string[];
 	}, onToken: (token: string) => void, onProgress?: (progress: ReviewProgress) => void): Promise<string> {
 		if (!this.engine || this.loadedModel !== input.modelId) {
 			throw new Error('The selected model is not loaded yet.');
@@ -97,6 +101,8 @@ export class ModelManager {
 					const output = await this.streamSingleReview(
 						input.modelId,
 						input.promptText,
+						input.promptMode ?? 'default',
+						input.lightCheckCriteria ?? [],
 						onToken,
 					);
 				this.throwIfCancelled('Review cancelled.');
@@ -124,6 +130,8 @@ export class ModelManager {
 	private async streamSingleReview(
 		modelId: string,
 		promptText: string,
+		reviewMode: ReviewMode,
+		lightCheckCriteria: string[],
 		onToken: (token: string) => void,
 	): Promise<string> {
 		let output = '';
@@ -134,12 +142,7 @@ export class ModelManager {
 			messages: [
 				{
 					role: 'system',
-					content:
-						'You are an expert software engineer reviewing pull requests. ' +
-						'Respond in markdown with sections: Summary, Findings, Suggestions. ' +
-						'For every finding, include an explicit severity badge using one of: ' +
-						'🔴 Critical, 🟠 High, 🟡 Medium, 🟢 Low. ' +
-						'If there are no significant issues, say so clearly.',
+					content: this.getSystemReviewInstructions(reviewMode, lightCheckCriteria),
 				},
 				{
 					role: 'user',
@@ -167,6 +170,8 @@ export class ModelManager {
 			prTitle: string;
 			prDescription: string;
 			diff: string;
+			promptMode?: ReviewMode;
+			lightCheckCriteria?: string[];
 		},
 		onToken: (token: string) => void,
 		onProgress?: (progress: ReviewProgress) => void,
@@ -195,6 +200,8 @@ export class ModelManager {
 				input.prTitle,
 				input.prDescription,
 				chunk,
+				input.promptMode ?? 'default',
+				input.lightCheckCriteria ?? [],
 			);
 
 			partialReviews.push(`Chunk ${i + 1} review:\n${chunkReview}`);
@@ -215,6 +222,8 @@ export class ModelManager {
 			input.prTitle,
 			input.prDescription,
 			partialReviews,
+			input.promptMode ?? 'default',
+			input.lightCheckCriteria ?? [],
 		);
 		this.throwIfCancelled('Review cancelled during synthesis.');
 		onProgress?.({
@@ -232,6 +241,8 @@ export class ModelManager {
 		prTitle: string,
 		prDescription: string,
 		diffChunk: string,
+		reviewMode: ReviewMode,
+		lightCheckCriteria: string[],
 	): Promise<string> {
 		const response = await this.engine!.chat.completions.create({
 			model: modelId,
@@ -240,12 +251,7 @@ export class ModelManager {
 			messages: [
 				{
 					role: 'system',
-					content:
-						'You are an expert software engineer reviewing one chunk of a pull request diff. ' +
-						'Focus only on the supplied chunk. Return concise markdown with Findings and Suggestions. ' +
-						'For every finding, include an explicit severity badge using one of: ' +
-						'🔴 Critical, 🟠 High, 🟡 Medium, 🟢 Low. ' +
-						'If there are no significant issues, say so clearly.',
+					content: this.getChunkReviewInstructions(reviewMode, lightCheckCriteria),
 				},
 				{
 					role: 'user',
@@ -274,6 +280,8 @@ export class ModelManager {
 		prTitle: string,
 		prDescription: string,
 		partialReviews: string[],
+		reviewMode: ReviewMode,
+		lightCheckCriteria: string[],
 	): Promise<string> {
 		const mergedReviews = this.chunkTextByLength(partialReviews.join('\n\n'), this.chunkTargetChars);
 		let synthesized = '';
@@ -286,11 +294,7 @@ export class ModelManager {
 				messages: [
 					{
 						role: 'system',
-						content:
-							'You are synthesizing chunk-level code review findings into a final concise pull request review. ' +
-							'Return markdown with sections: Summary, Findings, Suggestions. Deduplicate repeated findings. ' +
-							'Preserve or add an explicit severity badge for every finding using one of: ' +
-							'🔴 Critical, 🟠 High, 🟡 Medium, 🟢 Low.',
+						content: this.getSynthesisInstructions(reviewMode, lightCheckCriteria),
 					},
 					{
 						role: 'user',
@@ -324,10 +328,7 @@ export class ModelManager {
 			messages: [
 				{
 					role: 'system',
-					content:
-						'You are refining a combined pull request review. Return one final markdown review with sections: Summary, Findings, Suggestions. ' +
-						'Ensure every finding includes an explicit severity badge using one of: ' +
-						'🔴 Critical, 🟠 High, 🟡 Medium, 🟢 Low.',
+					content: this.getFinalPassInstructions(reviewMode, lightCheckCriteria),
 				},
 				{
 					role: 'user',
@@ -363,6 +364,80 @@ export class ModelManager {
 			throw new Error(message);
 		}
 	}
+
+	private getSystemReviewInstructions(reviewMode: ReviewMode, lightCheckCriteria: string[]): string {
+		if (reviewMode === 'light-check') {
+			return 'You are reviewing a branch comparison in light-check mode. '
+				+ 'Respond in markdown with sections: Summary, Findings, Suggestions. '
+				+ `Only report issues that match these criteria: ${this.formatCriteriaList(lightCheckCriteria)}. `
+				+ 'Do not report issues outside those criteria, and do not add speculative cross-file concerns. '
+				+ 'For every finding, include an explicit severity badge using one of: '
+				+ '🔴 Critical, 🟠 High, 🟡 Medium, 🟢 Low. '
+				+ 'If there are no significant issues matching the selected criteria, say so clearly.';
+		}
+
+		return 'You are an expert software engineer reviewing pull requests. '
+			+ 'Respond in markdown with sections: Summary, Findings, Suggestions. '
+			+ 'For every finding, include an explicit severity badge using one of: '
+			+ '🔴 Critical, 🟠 High, 🟡 Medium, 🟢 Low. '
+			+ 'If there are no significant issues, say so clearly.';
+	}
+
+	private getChunkReviewInstructions(reviewMode: ReviewMode, lightCheckCriteria: string[]): string {
+		if (reviewMode === 'light-check') {
+			return 'You are reviewing one chunk of a branch comparison diff in light-check mode. '
+				+ 'Focus only on the supplied chunk. Return concise markdown with Findings and Suggestions. '
+				+ `Only report issues that match these criteria: ${this.formatCriteriaList(lightCheckCriteria)}. `
+				+ 'Do not report issues outside those criteria, and do not speculate about unrelated files or architecture. '
+				+ 'For every finding, include an explicit severity badge using one of: '
+				+ '🔴 Critical, 🟠 High, 🟡 Medium, 🟢 Low. '
+				+ 'If there are no significant issues matching the selected criteria, say so clearly.';
+		}
+
+		return 'You are an expert software engineer reviewing one chunk of a pull request diff. '
+			+ 'Focus only on the supplied chunk. Return concise markdown with Findings and Suggestions. '
+			+ 'For every finding, include an explicit severity badge using one of: '
+			+ '🔴 Critical, 🟠 High, 🟡 Medium, 🟢 Low. '
+			+ 'If there are no significant issues, say so clearly.';
+	}
+
+	private getSynthesisInstructions(reviewMode: ReviewMode, lightCheckCriteria: string[]): string {
+		if (reviewMode === 'light-check') {
+			return 'You are synthesizing chunk-level light-check findings into a final concise review. '
+				+ 'Return markdown with sections: Summary, Findings, Suggestions. Deduplicate repeated findings. '
+				+ `Keep only findings that match these criteria: ${this.formatCriteriaList(lightCheckCriteria)}. `
+				+ 'Do not add findings outside the selected criteria. '
+				+ 'Preserve or add an explicit severity badge for every finding using one of: '
+				+ '🔴 Critical, 🟠 High, 🟡 Medium, 🟢 Low.';
+		}
+
+		return 'You are synthesizing chunk-level code review findings into a final concise pull request review. '
+			+ 'Return markdown with sections: Summary, Findings, Suggestions. Deduplicate repeated findings. '
+			+ 'Preserve or add an explicit severity badge for every finding using one of: '
+			+ '🔴 Critical, 🟠 High, 🟡 Medium, 🟢 Low.';
+	}
+
+	private getFinalPassInstructions(reviewMode: ReviewMode, lightCheckCriteria: string[]): string {
+		if (reviewMode === 'light-check') {
+			return 'You are refining a combined light-check review. Return one final markdown review with sections: Summary, Findings, Suggestions. '
+				+ `Keep only findings that match these criteria: ${this.formatCriteriaList(lightCheckCriteria)}. `
+				+ 'Do not add findings outside the selected criteria. '
+				+ 'Ensure every finding includes an explicit severity badge using one of: '
+				+ '🔴 Critical, 🟠 High, 🟡 Medium, 🟢 Low.';
+		}
+
+		return 'You are refining a combined pull request review. Return one final markdown review with sections: Summary, Findings, Suggestions. '
+			+ 'Ensure every finding includes an explicit severity badge using one of: '
+			+ '🔴 Critical, 🟠 High, 🟡 Medium, 🟢 Low.';
+	}
+
+	private formatCriteriaList(criteria: string[]): string {
+		const effectiveCriteria = criteria.length > 0
+			? criteria
+			: ['Syntax issues', 'Naming convention problems'];
+		return effectiveCriteria.join('; ');
+	}
+
 	private estimateTokens(charCount: number): number {
 		return Math.ceil(charCount / 4);
 	}

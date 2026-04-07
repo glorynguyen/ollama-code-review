@@ -20,58 +20,75 @@
           </button>
         </div>
       </div>
-      <button id="close-btn" class="ghost">Close</button>
+      <div class="header-actions">
+        <button id="toggle-config-btn" class="ghost" type="button">Hide Config</button>
+        <button id="close-btn" class="ghost" type="button">Close</button>
+      </div>
     </header>
 
-    <section class="panel">
-      <label class="field">
-        <span>MCP token</span>
-        <input id="mcp-token-input" type="password" placeholder="Optional shared token">
-      </label>
-      <div class="actions">
-        <button id="save-token-btn">Save Token</button>
-        <button id="test-mcp-btn" class="ghost">Refresh MCP</button>
-      </div>
-    </section>
+    <div id="config-zone">
+      <section class="panel">
+        <label class="field">
+          <span>MCP token</span>
+          <input id="mcp-token-input" type="password" placeholder="Optional shared token">
+        </label>
+        <div class="actions">
+          <button id="save-token-btn">Save Token</button>
+          <button id="test-mcp-btn" class="ghost">Refresh MCP</button>
+        </div>
+      </section>
 
-    <section class="panel">
-      <label class="field">
-        <span>Model</span>
-        <select id="model-select">
-          <option value="Qwen2.5-Coder-7B-Instruct-q4f32_1-MLC">Qwen2.5 Coder 7B</option>
-          <option value="Llama-3.1-8B-Instruct-q4f32_1-MLC">Llama 3.1 8B</option>
-        </select>
-      </label>
-      <div class="actions">
-        <button id="load-model-btn">Load Model</button>
-        <button id="review-staged-btn" class="ghost">Review Staged</button>
-      </div>
-    </section>
+      <section class="panel">
+        <label class="field">
+          <span>Model</span>
+          <select id="model-select">
+            <option value="Qwen2.5-Coder-7B-Instruct-q4f32_1-MLC">Qwen2.5 Coder 7B</option>
+            <option value="Llama-3.1-8B-Instruct-q4f32_1-MLC">Llama 3.1 8B</option>
+          </select>
+        </label>
+        <div class="actions">
+          <button id="load-model-btn">Load Model</button>
+          <button id="review-staged-btn" class="ghost">Review Staged</button>
+        </div>
+      </section>
 
-    <section class="panel panel-branches">
-      <label class="field">
-        <span>Base branch</span>
-        <input id="base-ref-input" type="text" placeholder="main">
-        <small id="base-ref-hint" class="field-hint">Uses the pull request base branch by default.</small>
-      </label>
-      <label class="field">
-        <span>Target branch</span>
-        <input id="target-ref-input" type="text" placeholder="feature/my-branch">
-      </label>
-      <div class="actions">
-        <button id="review-branches-btn" class="ghost">Review Branches</button>
-      </div>
-    </section>
+      <section class="panel panel-branches">
+        <label class="field field--compact">
+          <span>Prompt mode</span>
+          <select id="branch-prompt-mode-select">
+            <option value="light-check">Light check</option>
+            <option value="default">Default</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Base branch</span>
+          <input id="base-ref-input" type="text" placeholder="main">
+          <small id="base-ref-hint" class="field-hint">Uses the pull request base branch by default.</small>
+        </label>
+        <label class="field">
+          <span>Target branch</span>
+          <input id="target-ref-input" type="text" placeholder="feature/my-branch">
+        </label>
+        <div class="actions">
+          <button id="review-branches-btn" class="ghost">Review Branches</button>
+        </div>
+        <label id="light-check-criteria-field" class="field field--full">
+          <span>Light-check criteria</span>
+          <textarea id="light-check-criteria-input" rows="4" placeholder="One criterion per line"></textarea>
+          <small class="field-hint">Only used for light-check mode. Add one review criterion per line.</small>
+        </label>
+      </section>
 
-    <section class="panel panel-commit">
-      <label class="field">
-        <span>Commit draft</span>
-        <input id="commit-draft-input" type="text" placeholder="Optional intent or draft message">
-      </label>
-      <div class="actions">
-        <button id="generate-commit-btn" class="ghost">Generate Commit Message</button>
-      </div>
-    </section>
+      <section class="panel panel-commit">
+        <label class="field">
+          <span>Commit draft</span>
+          <input id="commit-draft-input" type="text" placeholder="Optional intent or draft message">
+        </label>
+        <div class="actions">
+          <button id="generate-commit-btn" class="ghost">Generate Commit Message</button>
+        </div>
+      </section>
+    </div>
 
     <section id="status" class="status">Ready.</section>
     <section id="review-runner" class="review-runner" hidden>

@@ -81,6 +81,8 @@ export class McpClient {
 		repository_path: string;
 		base_ref: string;
 		target_ref: string;
+		prompt_mode?: 'default' | 'light-check';
+		light_check_criteria?: string[];
 	}): Promise<{ filteredDiff: string; promptText: string; error?: string }> {
 		const result = await this.callTool('get_branch_review_bundle', args);
 		return parseJsonToolText<{ filteredDiff: string; promptText: string; error?: string }>(

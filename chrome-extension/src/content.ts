@@ -44,15 +44,16 @@ function injectReviewButton(): void {
 	].join(';');
 
 	button.addEventListener('click', () => {
-		const iframe = ensureOverlayFrame();
-		iframe.style.display = 'block';
-		iframe.contentWindow?.postMessage({
-			type: 'OCR_PAGE_CONTEXT',
-			payload: getPageContext(),
-		}, '*');
+		openOverlay();
 	});
 
 	document.body.appendChild(button);
+}
+
+function openOverlay(): void {
+	const iframe = ensureOverlayFrame();
+	iframe.style.display = 'block';
+	postPageContext(iframe);
 }
 
 function ensureOverlayFrame(): HTMLIFrameElement {
@@ -77,8 +78,23 @@ function ensureOverlayFrame(): HTMLIFrameElement {
 		'z-index: 2147483647',
 		'box-shadow: 0 24px 80px rgba(15, 23, 42, 0.32)',
 	].join(';');
+	iframe.addEventListener('load', () => {
+		iframe.dataset.ready = 'true';
+		postPageContext(iframe);
+	});
 	document.body.appendChild(iframe);
 	return iframe;
+}
+
+function postPageContext(iframe: HTMLIFrameElement): void {
+	if (iframe.dataset.ready !== 'true') {
+		return;
+	}
+
+	iframe.contentWindow?.postMessage({
+		type: 'OCR_PAGE_CONTEXT',
+		payload: getPageContext(),
+	}, '*');
 }
 
 function handleOverlayMessage(event: MessageEvent): void {

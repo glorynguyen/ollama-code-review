@@ -181,6 +181,8 @@ chrome.runtime.onMessage.addListener((message: BackgroundMessage, _sender, sendR
 				repository_path: repo.path,
 				base_ref: message.payload.baseRef,
 				target_ref: message.payload.targetRef,
+				prompt_mode: message.payload.promptMode ?? 'default',
+				light_check_criteria: message.payload.lightCheckCriteria ?? [],
 			});
 
 			sendResponse({

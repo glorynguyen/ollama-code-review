@@ -15,11 +15,15 @@ import {
 
 export const DEFAULT_REVIEW_PROMPT = "You are an expert software engineer and code reviewer with deep knowledge of the following frameworks and libraries: **${frameworks}**.\nYour task is to analyze the following code changes (in git diff format) and provide constructive, actionable feedback tailored to the conventions, best practices, and common pitfalls of these technologies.\n${skills}\n${profile}\n**How to Read the Git Diff Format:**\n- Lines starting with `---` and `+++` indicate the file names before and after the changes.\n- Lines starting with `@@` (e.g., `@@ -15,7 +15,9 @@`) denote the location of the changes within the file.\n- Lines starting with a `-` are lines that were DELETED.\n- Lines starting with a `+` are lines that were ADDED.\n- Lines without a prefix (starting with a space) are for context and have not been changed. **Please focus your review on the added (`+`) and deleted (`-`) lines.**\n\n**Review Focus:**\n- Potential bugs or logical errors specific to the frameworks/libraries (${frameworks}).\n- Performance optimizations, considering framework-specific patterns.\n- Code style inconsistencies or deviations from ${frameworks} best practices.\n- Security vulnerabilities, especially those common in ${frameworks}.\n- Improvements to maintainability and readability, aligned with ${frameworks} conventions.\n\n**Feedback Requirements:**\n1. Explain any issues clearly and concisely, referencing ${frameworks} where relevant.\n2. Suggest specific code changes or improvements. Include code snippets for examples where appropriate.\n3. Use Markdown for clear formatting.\n\nIf you find no issues, please respond with the single sentence: \"I have reviewed the changes and found no significant issues.\"\n\nHere is the code diff to review:\n---\n${code}\n---";
 
+export type ReviewPromptMode = 'default' | 'light-check';
+
 export interface BuildReviewPromptOptions {
 	context?: vscode.ExtensionContext;
 	contextBundle?: ContextBundle;
 	diff: string;
 	outputChannel?: vscode.OutputChannel;
+	promptMode?: ReviewPromptMode;
+	lightCheckCriteria?: string[];
 }
 
 export async function buildReviewPrompt({
@@ -27,6 +31,8 @@ export async function buildReviewPrompt({
 	contextBundle,
 	diff,
 	outputChannel,
+	promptMode = 'default',
+	lightCheckCriteria = [],
 }: BuildReviewPromptOptions): Promise<string> {
 	const log = (message: string): void => {
 		outputChannel?.appendLine(message);
@@ -72,6 +78,22 @@ export async function buildReviewPrompt({
 
 	if (profileContext && !promptTemplate.includes('${profile}')) {
 		prompt += '\n' + profileContext;
+	}
+
+	if (promptMode === 'light-check') {
+		const criteria = lightCheckCriteria.length > 0
+			? lightCheckCriteria
+			: ['Syntax issues', 'Naming convention problems', 'Security issues'];
+		prompt += [
+			'',
+			'## Light-Check Constraints',
+			'- This review is intentionally lightweight and may be reviewed in chunks.',
+			'- Only check the changed code against the following criteria:',
+			...criteria.map(criteriaItem => `  - ${criteriaItem}`),
+			'- Do not report issues outside the selected criteria.',
+			'- Do not infer hidden runtime bugs unless they are obvious from the diff itself.',
+			'- If no issues matching the selected criteria are visible, respond that no significant issues were found for the selected light-check criteria.',
+		].join('\n');
 	}
 
 	const kbConfig = getKnowledgeBaseConfig();

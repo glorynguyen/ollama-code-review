@@ -48,6 +48,8 @@ export interface FetchBranchReviewBundleMessage {
 		repo?: string;
 		baseRef: string;
 		targetRef: string;
+		promptMode?: 'default' | 'light-check';
+		lightCheckCriteria?: string[];
 	};
 }
 

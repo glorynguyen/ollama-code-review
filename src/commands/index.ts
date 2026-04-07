@@ -319,6 +319,7 @@ interface ReviewGenerationResult {
 
 interface RunReviewOptions {
 	copyPromptOnly?: boolean;
+	promptMode?: import('../reviewPromptBuilder').ReviewPromptMode;
 }
 
 function showScoreStatusBar(score: number): void {
@@ -3966,7 +3967,7 @@ async function runReview(
 			cancellable: false
 		}, async (progress) => {
 			progress.report({ message: 'Building review prompt for MCP...' });
-			const prompt = await buildReviewPrompt(filteredDiff, context, contextBundle);
+			const prompt = await buildReviewPrompt(filteredDiff, context, contextBundle, options.promptMode);
 			await vscode.env.clipboard.writeText(prompt);
 			vscode.window.setStatusBarMessage('$(clippy) Review prompt copied to clipboard for MCP use', 5000);
 			outputChannel.appendLine('[Review] MCP mode enabled for branch comparison. Prompt copied to clipboard instead of sending to an LLM.');
@@ -4504,6 +4505,7 @@ async function buildReviewPrompt(
 	diff: string,
 	context?: vscode.ExtensionContext,
 	contextBundle?: ContextBundle,
+	promptMode: import('../reviewPromptBuilder').ReviewPromptMode = 'default',
 ): Promise<string> {
 	const config = vscode.workspace.getConfiguration('ollama-code-review');
 	const endpoint = config.get<string>('endpoint', 'http://localhost:11434/api/generate');
@@ -4512,6 +4514,7 @@ async function buildReviewPrompt(
 		contextBundle,
 		diff,
 		outputChannel,
+		promptMode,
 	});
 
 	const ragConfig = getRagConfig();

@@ -7,9 +7,13 @@ import { loadKnowledgeBase, getKnowledgeBaseConfig, formatKnowledgeForPrompt, ma
 import { loadRulesDirectory } from '../../rules/loader';
 import { getActiveProfile, buildProfilePromptContext } from '../../profiles';
 import { getEffectiveFrameworks } from '../../config/promptLoader';
-import { buildReviewPrompt } from '../../reviewPromptBuilder';
+import { buildReviewPrompt, type ReviewPromptMode } from '../../reviewPromptBuilder';
 
-async function buildPromptBundleForDiff(diff: string): Promise<{
+async function buildPromptBundleForDiff(
+	diff: string,
+	promptMode: ReviewPromptMode = 'default',
+	lightCheckCriteria: string[] = [],
+): Promise<{
 	filteredDiff: string;
 	promptText: string;
 	stats: ReturnType<typeof filterDiff>['stats'];
@@ -36,6 +40,8 @@ async function buildPromptBundleForDiff(diff: string): Promise<{
 		contextBundle,
 		diff: filteredDiff,
 		outputChannel: mcpBridge.channel || undefined,
+		promptMode,
+		lightCheckCriteria,
 	});
 
 	return {
@@ -179,7 +185,7 @@ export function registerContextTools(server: McpServer): void {
 				return { content: [{ type: 'text' as const, text: 'No staged changes found.' }] };
 			}
 
-			const bundle = await buildPromptBundleForDiff(rawDiff);
+			const bundle = await buildPromptBundleForDiff(rawDiff, 'default');
 			return { content: [{ type: 'text' as const, text: bundle.promptText }] };
 		},
 	);
@@ -215,9 +221,11 @@ export function registerContextTools(server: McpServer): void {
 		{
 			base_ref: z.string().describe('The base branch or ref to compare from (e.g., main)'),
 			target_ref: z.string().describe('The target branch or ref to compare to (e.g., feature-branch)'),
+			prompt_mode: z.enum(['default', 'light-check']).optional().describe('Optional prompt mode to tailor the review prompt for the client workflow.'),
+			light_check_criteria: z.array(z.string()).optional().describe('Optional light-check criteria supplied by the client UI.'),
 			repository_path: z.string().optional().describe('Path to the git repository. Defaults to the open workspace folder.'),
 		},
-		async ({ base_ref, target_ref, repository_path }) => {
+		async ({ base_ref, target_ref, prompt_mode, light_check_criteria, repository_path }) => {
 			const repoPath = repository_path || mcpBridge.getRepoPath();
 			mcpBridge.log(`get_branch_review_bundle: base=${base_ref}, target=${target_ref}, repo=${repoPath}`);
 
@@ -228,7 +236,7 @@ export function registerContextTools(server: McpServer): void {
 				};
 			}
 
-			const bundle = await buildPromptBundleForDiff(rawDiff);
+			const bundle = await buildPromptBundleForDiff(rawDiff, prompt_mode ?? 'default', light_check_criteria ?? []);
 			return {
 				content: [{
 					type: 'text' as const,

@@ -10,7 +10,7 @@ html, body {
 #app {
   height: 100vh;
   display: grid;
-  grid-template-rows: auto auto auto auto auto 1fr;
+  grid-template-rows: auto auto auto auto 1fr;
 }
 
 .app-header,
@@ -27,6 +27,20 @@ html, body {
   align-items: flex-start;
   background: #ffffff;
   border-bottom: 1px solid #e2e8f0;
+}
+
+.header-actions {
+  display: flex;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+#config-zone {
+  display: contents;
+}
+
+#config-zone[hidden] {
+  display: none;
 }
 
 .app-header h1 {
@@ -109,7 +123,9 @@ html, body {
 }
 
 .panel-branches {
-  align-items: stretch;
+  display: grid;
+  grid-template-columns: minmax(140px, 170px) minmax(110px, 1fr) minmax(110px, 1fr) auto;
+  align-items: end;
 }
 
 .panel-commit {
@@ -120,6 +136,16 @@ html, body {
   display: grid;
   gap: 6px;
   flex: 1;
+  min-width: 0;
+}
+
+.field--compact {
+  flex: 0 0 140px;
+}
+
+.field--full {
+  flex-basis: 100%;
+  grid-column: 1 / -1;
 }
 
 .field span {
@@ -133,7 +159,8 @@ html, body {
 }
 
 input,
-select {
+select,
+textarea {
   width: 100%;
   box-sizing: border-box;
   padding: 9px 10px;
@@ -142,9 +169,37 @@ select {
   background: #ffffff;
 }
 
+textarea {
+  resize: vertical;
+  min-height: 88px;
+  font: inherit;
+}
+
+@media (max-width: 760px) {
+  .panel-branches {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .panel-branches .actions {
+    grid-column: 1 / -1;
+  }
+}
+
 .actions {
   display: flex;
   gap: 8px;
+}
+
+section.panel.panel-branches {
+  align-items: start;
+}
+
+.panel-branches .actions {
+  align-self: end;
+}
+
+.panel-branches .actions button {
+  white-space: nowrap;
 }
 
 button {
