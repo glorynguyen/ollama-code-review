@@ -1,3 +1,10 @@
+# [3.54.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.53.0...v3.54.0) (2026-04-07)
+
+
+### Features
+
+* **chrome-extension:** add icons for manifest and action ([b913aa9](https://github.com/glorynguyen/ollama-code-review/commit/b913aa90097a16a84c647a2b6f29e8cfb137be03))
+
 # [3.53.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.52.0...v3.53.0) (2026-04-07)
 
 
