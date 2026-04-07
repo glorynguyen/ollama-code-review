@@ -514,7 +514,7 @@
         },
         {
           "command": "ollama-code-review.generateCommitMessage",
-          "when": "scmProvider == 'git'",
+          "when": "scmProvider == 'git' && !config.ollama-code-review.mcp.enabled",
           "group": "navigation"
         },
         {
@@ -734,6 +734,12 @@
           "default": "",
           "scope": "resource",
           "markdownDescription": "Jira project code prefix for commit messages (e.g., `HWWW`). When set, generated commit messages follow the format `<type>(<scope>): [PROJECT-XXX] <summary>`. The ticket number is extracted from the current branch name if it matches `PROJECT-\\d+`; otherwise `PROJECT-XXX` is used as a placeholder. Can be set per workspace folder via `.vscode/settings.json` to support multi-root workspaces."
+        },
+        "ollama-code-review.defaultBaseBranch": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "markdownDescription": "Default base branch/ref for `Review Changes Between Two Branches` (for example `development` or `main`). When set, the command uses this value automatically and skips the base-branch prompt. Can be configured per workspace folder via `.vscode/settings.json`."
         },
         "ollama-code-review.frameworks": {
           "type": "array",

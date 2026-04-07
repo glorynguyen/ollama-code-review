@@ -318,6 +318,10 @@ interface ReviewGenerationResult {
 	structuredReview: ValidatedStructuredReviewResult;
 }
 
+interface RunReviewOptions {
+	copyPromptOnly?: boolean;
+}
+
 function showScoreStatusBar(score: number): void {
 	if (!scoreStatusBarItem) {
 		return;
@@ -1764,8 +1768,10 @@ export async function activate(context: vscode.ExtensionContext) {
 				return;
 			}
 			const repoPath = repo.rootUri.fsPath;
+			const repoConfig = vscode.workspace.getConfiguration('ollama-code-review', repo.rootUri);
+			const defaultBaseBranch = repoConfig.get<string>('defaultBaseBranch', '').trim();
 
-			const fromRef = await vscode.window.showInputBox({
+			const fromRef = defaultBaseBranch || await vscode.window.showInputBox({
 				prompt: 'Enter the base branch/ref to compare from (e.g., main)',
 				placeHolder: 'main',
 				value: 'main'
@@ -1790,12 +1796,15 @@ export async function activate(context: vscode.ExtensionContext) {
 
 				const filesList = await runGitCommand(repoPath, ['diff', '--name-only', fromRef, toRef]);
 				const filesArray = filesList.trim().split('\n').filter(Boolean);
+				const mcpEnabled = vscode.workspace.getConfiguration('ollama-code-review').get<boolean>('mcp.enabled', false);
 
 				outputChannel.appendLine(`\n--- Changed files between ${fromRef} and ${toRef} (${filesArray.length}) ---`);
 				filesArray.forEach(f => outputChannel.appendLine(f));
 				outputChannel.appendLine('---------------------------------------');
 
-				await runReview(diffResult, context, 'branch-compare');
+				await runReview(diffResult, context, 'branch-compare', {
+					copyPromptOnly: mcpEnabled,
+				});
 			});
 		} catch (error) {
 			handleError(error, 'Failed to review changes between branches.');
@@ -3866,7 +3875,12 @@ function mergeSecretFindingsIntoReview(
 	return { combinedReviewText: secretsMarkdown + reviewText, structuredReview: mergedReview };
 }
 
-async function runReview(diff: string, context: vscode.ExtensionContext, reviewType: import('../reviewScore').ReviewType = 'staged') {
+async function runReview(
+	diff: string,
+	context: vscode.ExtensionContext,
+	reviewType: import('../reviewScore').ReviewType = 'staged',
+	options: RunReviewOptions = {},
+) {
 	if (!diff || !diff.trim()) {
 		vscode.window.showInformationMessage('No code changes found to review in the selected range.');
 		return;
@@ -3944,6 +3958,25 @@ async function runReview(diff: string, context: vscode.ExtensionContext, reviewT
 		} catch (err) {
 			outputChannel.appendLine(`[Context Gathering] Error: ${err}`);
 		}
+	}
+
+	if (options.copyPromptOnly) {
+		await vscode.window.withProgress({
+			location: vscode.ProgressLocation.Notification,
+			title: "Ollama Code Review",
+			cancellable: false
+		}, async (progress) => {
+			progress.report({ message: 'Building review prompt for MCP...' });
+			const prompt = await buildReviewPrompt(filteredDiff, context, contextBundle);
+			await vscode.env.clipboard.writeText(prompt);
+			vscode.window.setStatusBarMessage('$(clippy) Review prompt copied to clipboard for MCP use', 5000);
+			outputChannel.appendLine('[Review] MCP mode enabled for branch comparison. Prompt copied to clipboard instead of sending to an LLM.');
+		});
+
+		vscode.window.showInformationMessage(
+			'MCP is enabled, so the branch comparison review prompt was copied to your clipboard instead of being sent to an LLM.'
+		);
+		return;
 	}
 
 	if (supportsStreaming) {
@@ -4468,12 +4501,13 @@ async function resolveImportsRecursively(
 	return results;
 }
 
-async function getOllamaReview(diff: string, context?: vscode.ExtensionContext, contextBundle?: ContextBundle, _onChunk?: (text: string) => void): Promise<ReviewGenerationResult> {
+async function buildReviewPrompt(
+	diff: string,
+	context?: vscode.ExtensionContext,
+	contextBundle?: ContextBundle,
+): Promise<string> {
 	const config = vscode.workspace.getConfiguration('ollama-code-review');
-	const model = getOllamaModel(config);
 	const endpoint = config.get<string>('endpoint', 'http://localhost:11434/api/generate');
-	const temperature = config.get<number>('temperature', 0);
-	// Resolve frameworks using config hierarchy (settings → .ollama-review.yaml overrides)
 	const frameworksList = (await getEffectiveFrameworks(outputChannel)).join(', ');
 	let skillContext = '';
 
@@ -4487,16 +4521,13 @@ async function getOllamaReview(diff: string, context?: vscode.ExtensionContext, 
 		}
 	}
 
-	// Build profile context
 	let profileContext = '';
 	if (context) {
 		const profile = getActiveProfile(context);
 		profileContext = buildProfilePromptContext(profile);
 	}
 
-	// Resolve review prompt using config hierarchy: default → settings → .ollama-review.yaml
 	const promptTemplate = await getEffectiveReviewPrompt(DEFAULT_REVIEW_PROMPT, outputChannel);
-
 	const variables: Record<string, string> = {
 		code: diff,
 		frameworks: frameworksList,
@@ -4506,23 +4537,19 @@ async function getOllamaReview(diff: string, context?: vscode.ExtensionContext, 
 
 	let prompt = resolvePrompt(promptTemplate, variables);
 
-	// Safety: if the user's custom template omits ${skills} but skills are active, append them
 	if (skillContext && !promptTemplate.includes('${skills}')) {
 		prompt += '\n' + skillContext;
 	}
 
-	// F-008: Append multi-file context if available
 	if (contextBundle && contextBundle.files.length > 0) {
 		const contextSection = formatContextForPrompt(contextBundle);
 		prompt += '\n' + contextSection;
 	}
 
-	// Safety: if the user's custom template omits ${profile} but a non-general profile is active, append it
 	if (profileContext && !promptTemplate.includes('${profile}')) {
 		prompt += '\n' + profileContext;
 	}
 
-	// F-012: Append team knowledge base context if available
 	const kbConfig = getKnowledgeBaseConfig();
 	if (kbConfig.enabled) {
 		try {
@@ -4538,36 +4565,32 @@ async function getOllamaReview(diff: string, context?: vscode.ExtensionContext, 
 				}
 			}
 		} catch (err) {
-			// Non-fatal — continue review without knowledge base
 			outputChannel.appendLine(`[Knowledge Base] Error: ${err}`);
 		}
 	}
 
-	// F-026: Append rules from .ollama-review/rules/*.md (coexists with F-012)
 	try {
 		const rulesSection = await loadRulesDirectory(outputChannel);
 		if (rulesSection) {
 			prompt += rulesSection;
 		}
 	} catch (err) {
-		// Non-fatal — continue review without rules directory
 		outputChannel.appendLine(`[Rules] Error: ${err}`);
 	}
 
-	// F-009: Append RAG context (similar code from the codebase index) if enabled
 	const ragConfig = getRagConfig();
 	if (ragConfig.enabled && ragVectorStore && ragVectorStore.chunkCount > 0) {
 		try {
-			// Lazily determine whether Ollama embeddings are available
 			if (ragUseOllamaEmbeddings === undefined) {
 				ragUseOllamaEmbeddings = await isEmbeddingModelAvailable(ragConfig.embeddingModel, endpoint);
 			}
-			// Extract changed file paths from the diff to avoid returning the files already in view
+
 			const changedFiles: string[] = [];
 			for (const line of diff.split('\n')) {
 				const m = line.match(/^\+\+\+ b\/(.+)$/);
 				if (m) { changedFiles.push(m[1]); }
 			}
+
 			const ragCtx = await getRagContext(
 				diff,
 				changedFiles,
@@ -4581,12 +4604,10 @@ async function getOllamaReview(diff: string, context?: vscode.ExtensionContext, 
 				outputChannel.appendLine(`[RAG] ${ragCtx.summary}`);
 			}
 		} catch (err) {
-			// Non-fatal — continue review without RAG context
 			outputChannel.appendLine(`[RAG] Error: ${err}`);
 		}
 	}
 
-	// F-032: Append Contentstack schema validation context if enabled
 	const csConfig = getContentstackConfig();
 	if (csConfig.enabled) {
 		try {
@@ -4605,10 +4626,19 @@ async function getOllamaReview(diff: string, context?: vscode.ExtensionContext, 
 				}
 			}
 		} catch (err) {
-			// Non-fatal — continue review without Contentstack validation
 			outputChannel.appendLine(`[Contentstack] Error: ${err}`);
 		}
 	}
+
+	return prompt;
+}
+
+async function getOllamaReview(diff: string, context?: vscode.ExtensionContext, contextBundle?: ContextBundle, _onChunk?: (text: string) => void): Promise<ReviewGenerationResult> {
+	const config = vscode.workspace.getConfiguration('ollama-code-review');
+	const model = getOllamaModel(config);
+	const endpoint = config.get<string>('endpoint', 'http://localhost:11434/api/generate');
+	const temperature = config.get<number>('temperature', 0);
+	const prompt = await buildReviewPrompt(diff, context, contextBundle);
 
 	// Copy the full prompt (with all context) to clipboard so the user can paste it into other LLM chats immediately
 	try {
