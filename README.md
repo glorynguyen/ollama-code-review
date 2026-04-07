@@ -500,9 +500,8 @@ The extension includes an optional **MCP (Model Context Protocol) server** that 
 - `review://config`
 
 **Companion Chrome extension**
-- A browser-side companion extension lives in `chrome-extension/`
-- Build it separately with `npm run build:chrome-extension`
-- It is intentionally excluded from the VS Code extension bundle and `.vsix` package
+- See [Section 56: Chrome Extension (Companion)](#56-chrome-extension-companion---local-browser-review-f-045) for details on the browser-side companion.
+- It is intentionally excluded from the VS Code extension bundle and `.vsix` package.
 
 **Example endpoint**
 ```text
@@ -1398,6 +1397,34 @@ Open a native VS Code **diff editor** for any finding in the Findings Explorer, 
 | `ollama-code-review.viewFindingDiff` | Open the VS Code diff editor for a finding's file (HEAD vs working copy) |
 
 > This complements **Quick Fix from Review Findings** (Section 49) — use View Diff to understand the change, then Quick Fix to resolve it.
+
+### 56. Chrome Extension (Companion) - Local Browser Review (F-045)
+
+The **OCR Browser Review** extension is a companion Chrome extension that allows you to review GitHub Pull Requests and GitLab Merge Requests directly in your browser using local context from your VS Code workspace.
+
+**Key Features:**
+- **Automatic Detection**: Automatically detects GitHub PR and GitLab MR pages.
+- **Review with AI Button**: Adds a "Review with AI" button directly to the PR/MR interface.
+- **Local Context**: Connects to the VS Code MCP server to fetch repository-specific context (diffs, files) without manual copy-pasting.
+- **Browser-Side Inference**: Uses **WebLLM + WebGPU** to run AI models directly in your browser for maximum privacy and speed.
+
+**Setup Instructions:**
+
+1. **Build the Extension**:
+   ```bash
+   npm run build:chrome-extension
+   ```
+2. **Load in Chrome**:
+   - Open `chrome://extensions` and enable **Developer mode**.
+   - Click **Load unpacked** and select the `chrome-extension/` folder in this repository.
+3. **Configure VS Code**:
+   - Enable `ollama-code-review.mcp.enabled` in VS Code settings.
+   - (Optional) Set `ollama-code-review.mcp.authToken` for extra security.
+4. **Use**:
+   - Navigate to any GitHub PR or GitLab MR.
+   - Click the **Review with AI** button that appears on the page.
+
+> **Note**: The browser extension requires the corresponding repository to be open in VS Code to fetch the necessary context via the MCP server.
 
 ---
 

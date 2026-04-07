@@ -7,6 +7,8 @@ import { resolvePrompt } from '../../utils';
 
 const DEFAULT_COMMIT_MESSAGE_PROMPT = "You are an expert at writing git commit messages for Semantic Release.\nGenerate a commit message based on the git diff below following the Conventional Commits specification.\n\n### Structural Requirements:\n1. **Subject Line**: <type>(<scope>): <short description>\n   - Keep under 50 characters.\n   - Use imperative mood (\"add\" not \"added\").\n   - Types: feat (new feature), fix (bug fix), docs, style, refactor, perf, test, build, ci, chore, revert.\n2. **Body**: Explain 'what' and 'why'. Required if the change is complex.\n3. **Breaking Changes**: If the diff contains breaking changes, the footer MUST start with \"BREAKING CHANGE:\" followed by a description.\n\n### Rules:\n- If the user's draft mentions a breaking change, prioritize documenting it in the footer.\n- Semantic Release triggers: 'feat' for MINOR, 'fix' for PATCH, and 'BREAKING CHANGE' in footer for MAJOR.\n- Output ONLY the raw commit message text. No markdown blocks, no \"Here is your message,\" no preamble.\n\nDeveloper's draft message (may reflect intent):\n${draftMessage}\n\nStaged git diff:\n---\n${diff}\n---";
 
+const MCP_COMMIT_HINT = "\n\nIMPORTANT: After generating the commit message, you MUST call the 'set_commit_message' tool with your final message to update the user's VS Code interface.";
+
 async function buildCommitPromptBundle(diff: string, draftMessage: string) {
 	const filterConfig = getDiffFilterConfig();
 	const { filteredDiff } = filterDiff(diff, filterConfig);
@@ -20,7 +22,7 @@ async function buildCommitPromptBundle(diff: string, draftMessage: string) {
 	return {
 		draftMessage,
 		diffText: effectiveDiff,
-		promptText,
+		promptText: promptText + MCP_COMMIT_HINT,
 	};
 }
 
@@ -29,7 +31,7 @@ export function registerCommitTools(server: McpServer): void {
 	server.registerTool(
 		'get_commit_prompt',
 		{
-			description: 'Assemble the full commit message prompt with the staged diff and template. Returns the prompt ready for AI analysis — no AI calls are made.',
+			description: 'Assemble the full commit message prompt with the staged diff and template. Returns the prompt ready for AI analysis — no AI calls are made. Instructs the AI to call set_commit_message once complete.',
 			inputSchema: {
 				repository_path: z.string().optional().describe('Path to the git repository. Defaults to the open workspace folder.'),
 				existing_message: z.string().optional().describe('Optional draft message to refine'),
@@ -54,7 +56,7 @@ export function registerCommitTools(server: McpServer): void {
 	server.registerTool(
 		'get_commit_prompt_bundle',
 		{
-			description: 'Assemble the commit message prompt bundle with a filtered staged diff. Returns JSON containing the final prompt, filtered diff, and draft message. No AI calls are made.',
+			description: 'Assemble the commit message prompt bundle with a filtered staged diff. Returns JSON containing the final prompt (with tool-use instruction), filtered diff, and draft message. No AI calls are made.',
 			inputSchema: {
 				repository_path: z.string().optional().describe('Path to the git repository. Defaults to the open workspace folder.'),
 				existing_message: z.string().optional().describe('Optional draft message to refine'),

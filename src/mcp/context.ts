@@ -77,9 +77,15 @@ export class McpExtensionBridge {
 		}
 
 		const gitApi = gitExtension.getAPI(1);
-		const repo = gitApi?.repositories?.find((candidate: { rootUri?: { fsPath?: string }; }) =>
-			candidate.rootUri?.fsPath === repoPath,
-		);
+		
+		// Normalize paths for robust matching (handles casing and trailing slashes)
+		const normalize = (p: string) => p.replace(/[\\/]+$/, '').toLowerCase();
+		const target = normalize(repoPath);
+
+		const repo = gitApi?.repositories?.find((candidate: { rootUri?: { fsPath?: string }; }) => {
+			const candidatePath = candidate.rootUri?.fsPath;
+			return candidatePath && normalize(candidatePath) === target;
+		});
 
 		if (!repo?.inputBox) {
 			throw new Error(`Could not find a Git repository input box for ${repoPath}.`);
