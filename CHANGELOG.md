@@ -1,3 +1,10 @@
+# [3.55.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.54.0...v3.55.0) (2026-04-09)
+
+
+### Features
+
+* **chrome-extension:** add message handlers for MCP tools and chat functionality ([0b7171e](https://github.com/glorynguyen/ollama-code-review/commit/0b7171ef1a1f32a31ee05862f0caf3ee084d1afd))
+
 # [3.54.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.53.0...v3.54.0) (2026-04-07)
 
 
