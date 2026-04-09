@@ -118,6 +118,24 @@ export interface NotifySlackMessage {
 	};
 }
 
+export interface CallMcpToolMessage {
+	type: 'CALL_MCP_TOOL';
+	payload: {
+		name: string;
+		args: Record<string, unknown>;
+	};
+}
+
+export interface ListMcpToolsMessage {
+	type: 'LIST_MCP_TOOLS';
+	payload?: {};
+}
+
+export interface OpenOverlayWindowMessage {
+	type: 'OPEN_OVERLAY_WINDOW';
+	payload?: {};
+}
+
 export type BackgroundMessage =
 	| FetchPrDiffMessage
 	| FetchBranchDiffMessage
@@ -130,4 +148,7 @@ export type BackgroundMessage =
 	| FetchStagedDiffMessage
 	| SetMcpTokenMessage
 	| TestMcpConnectionMessage
-	| NotifySlackMessage;
+	| NotifySlackMessage
+	| CallMcpToolMessage
+	| ListMcpToolsMessage
+	| OpenOverlayWindowMessage;

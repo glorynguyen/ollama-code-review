@@ -350,6 +350,48 @@ export class ModelManager {
 		return finalPass.choices?.[0]?.message?.content ?? synthesized ?? 'No final synthesis was produced.';
 	}
 
+	async chat(
+		input: {
+			modelId: string;
+			messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>;
+		},
+		onToken: (token: string) => void,
+	): Promise<string> {
+		if (!this.engine || this.loadedModel !== input.modelId) {
+			throw new Error('The selected model is not loaded yet.');
+		}
+
+		this.status = 'generating';
+		this.generationCancelled = false;
+		let output = '';
+
+		try {
+			const stream = await this.engine.chat.completions.create({
+				model: input.modelId,
+				stream: true,
+				temperature: 0.7,
+				messages: input.messages,
+			});
+
+			for await (const chunk of stream) {
+				const token = chunk.choices?.[0]?.delta?.content ?? '';
+				if (!token) {
+					continue;
+				}
+				output += token;
+				onToken(token);
+			}
+
+			this.status = 'ready';
+			return output;
+		} catch (error) {
+			this.status = this.generationCancelled ? 'ready' : 'error';
+			throw error;
+		} finally {
+			this.generationCancelled = false;
+		}
+	}
+
 	async cancelGeneration(): Promise<void> {
 		if (!this.engine || this.status !== 'generating') {
 			return;

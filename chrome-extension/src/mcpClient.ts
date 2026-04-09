@@ -61,6 +61,10 @@ export class McpClient {
 		return parseJsonToolText<WorkspaceRepo[]>(result, 'get_workspace_repos');
 	}
 
+	async listTools(): Promise<any> {
+		return this.request('tools/list', {});
+	}
+
 	async getBranchDiff(args: {
 		repository_path: string;
 		base_ref: string;

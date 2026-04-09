@@ -21,6 +21,7 @@
         </div>
       </div>
       <div class="header-actions">
+        <button id="popout-btn" class="ghost" type="button" title="Open in a separate window">Pop out</button>
         <button id="toggle-config-btn" class="ghost" type="button">Hide Config</button>
         <button id="close-btn" class="ghost" type="button">Close</button>
       </div>
@@ -90,10 +91,25 @@
       </section>
 
       <section class="panel panel-slack">
-        <label class="field">
-          <span>Slack Webhook URL</span>
+        <div class="field">
+          <p class="panel-intro">Notify your team about review progress and completed commit messages directly in Slack.</p>
+          <div class="field-label-row">
+            <span>Slack Webhook URL</span>
+            <button id="slack-help-btn" class="help-icon-btn" type="button" title="How to get a Slack Webhook URL?">?</button>
+          </div>
           <input id="slack-webhook-input" type="password" placeholder="https://hooks.slack.com/...">
-        </label>
+          <div id="slack-instructions" class="instructions-panel" hidden>
+            <p><strong>How to create a Slack Workflow with Webhook:</strong></p>
+            <ol>
+              <li>Open Slack and click your workspace name > <strong>Tools</strong> > <strong>Workflow Builder</strong>.</li>
+              <li>Click <strong>Create Workflow</strong> and choose <strong>From scratch</strong>.</li>
+              <li>Select <strong>Webhook</strong> as the trigger.</li>
+              <li>Add a <strong>Send a message</strong> step. Select a channel and customize the message.</li>
+              <li><strong>Publish</strong> the workflow and copy the <strong>Weblink URL</strong>.</li>
+            </ol>
+            <p><small>Note: You can also use traditional Slack Apps with Incoming Webhooks if preferred.</small></p>
+          </div>
+        </div>
         <div class="actions">
           <button id="save-slack-btn">Save Slack Config</button>
         </div>
@@ -119,9 +135,22 @@
       <div class="output-tabs">
         <button id="preview-tab-btn" class="tab-button active">Preview</button>
         <button id="markdown-tab-btn" class="tab-button ghost">Markdown</button>
+        <button id="chat-tab-btn" class="tab-button ghost">AI Chat</button>
       </div>
       <div id="output-preview" class="output-preview"></div>
       <pre id="output" class="output" hidden></pre>
+      <div id="chat-container" class="chat-container" hidden>
+        <div class="chat-header">
+          <button id="clear-chat-btn" class="ghost small-btn" type="button">Clear Conversation</button>
+        </div>
+        <div id="chat-messages" class="chat-messages">
+          <div class="chat-message system">Talk with the local AI model. Use <code>/list</code> to see MCP tools or <code>tool_name {"arg": "val"}</code> to call one directly.</div>
+        </div>
+        <div class="chat-input-row">
+          <input id="chat-input" type="text" placeholder="Ask AI, type /list, or call a tool...">
+          <button id="chat-send-btn">Send</button>
+        </div>
+      </div>
     </section>
   </main>
 

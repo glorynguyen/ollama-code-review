@@ -397,6 +397,37 @@ chrome.runtime.onMessage.addListener((message: BackgroundMessage, _sender, sendR
 			return;
 		}
 
+		if (message.type === 'LIST_MCP_TOOLS') {
+			const stored = await chrome.storage.local.get('mcpToken');
+			mcpClient.setToken((stored.mcpToken as string | undefined) ?? '');
+			await mcpClient.initialize();
+
+			const result = await mcpClient.listTools();
+			sendResponse({ ok: true, data: result });
+			return;
+		}
+
+		if (message.type === 'CALL_MCP_TOOL') {
+			const stored = await chrome.storage.local.get('mcpToken');
+			mcpClient.setToken((stored.mcpToken as string | undefined) ?? '');
+			await mcpClient.initialize();
+
+			const result = await mcpClient.callTool(message.payload.name, message.payload.args);
+			sendResponse({ ok: true, data: result });
+			return;
+		}
+
+		if (message.type === 'OPEN_OVERLAY_WINDOW') {
+			await chrome.windows.create({
+				url: chrome.runtime.getURL('ui/overlay.html'),
+				type: 'popup',
+				width: 580,
+				height: 800,
+			});
+			sendResponse({ ok: true });
+			return;
+		}
+
 		sendResponse({ ok: false, error: 'Unsupported message type.' });
 	})().catch((error: unknown) => {
 		sendResponse({

@@ -37,27 +37,45 @@ const lightCheckCriteriaField = getElement<HTMLElement>('light-check-criteria-fi
 const lightCheckCriteriaInput = getElement<HTMLTextAreaElement>('light-check-criteria-input');
 const commitDraftInput = getElement<HTMLInputElement>('commit-draft-input');
 const slackWebhookInput = getElement<HTMLInputElement>('slack-webhook-input');
+const slackHelpButton = getElement<HTMLButtonElement>('slack-help-btn');
+const slackInstructionsEl = getElement<HTMLDivElement>('slack-instructions');
 const saveTokenButton = getElement<HTMLButtonElement>('save-token-btn');
 const saveSlackButton = getElement<HTMLButtonElement>('save-slack-btn');
 const testMcpButton = getElement<HTMLButtonElement>('test-mcp-btn');
 const closeMcpResultButton = getElement<HTMLButtonElement>('close-mcp-result-btn');
 const previewTabButton = getElement<HTMLButtonElement>('preview-tab-btn');
 const markdownTabButton = getElement<HTMLButtonElement>('markdown-tab-btn');
+const chatTabButton = getElement<HTMLButtonElement>('chat-tab-btn');
+const chatContainerEl = getElement<HTMLDivElement>('chat-container');
+const chatMessagesEl = getElement<HTMLDivElement>('chat-messages');
+const chatInputEl = getElement<HTMLInputElement>('chat-input');
+const chatSendButton = getElement<HTMLButtonElement>('chat-send-btn');
+const clearChatButton = getElement<HTMLButtonElement>('clear-chat-btn');
 const loadModelButton = getElement<HTMLButtonElement>('load-model-btn');
 const reviewStagedButton = getElement<HTMLButtonElement>('review-staged-btn');
 const reviewBranchesButton = getElement<HTMLButtonElement>('review-branches-btn');
 const generateCommitButton = getElement<HTMLButtonElement>('generate-commit-btn');
 const toggleConfigButton = getElement<HTMLButtonElement>('toggle-config-btn');
+const popoutButton = getElement<HTMLButtonElement>('popout-btn');
 const closeButton = getElement<HTMLButtonElement>('close-btn');
 
 let pageContext: PageContext | null = null;
 let outputMarkdown = '';
 let configCollapsed = false;
+let aiChatHistory: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+	{ role: 'system', content: 'You are a helpful AI assistant integrated into a code review browser extension.' },
+];
 const LIGHT_CHECK_CRITERIA_STORAGE_KEY = 'ocr.lightCheckCriteria';
+const PAGE_CONTEXT_STORAGE_KEY = 'ocr.lastPageContext';
 const DEFAULT_LIGHT_CHECK_CRITERIA = [
 	'Syntax issues',
 	'Naming convention problems',
 ];
+
+if (window.self === window.top) {
+	popoutButton.hidden = true;
+	void hydratePageContextFromStorage();
+}
 
 resetOutput();
 void refreshMcpStatus(false);
@@ -69,14 +87,32 @@ window.addEventListener('message', (event: MessageEvent) => {
 	}
 
 	pageContext = event.data.payload as PageContext;
-	repoMetaEl.textContent = `${pageContext.owner}/${pageContext.repo} · ${pageContext.baseRef} → ${pageContext.headRef}`;
+	void persistPageContext(pageContext);
+	updateUiFromPageContext(pageContext);
+});
+
+async function persistPageContext(context: PageContext): Promise<void> {
+	await chrome.storage.local.set({ [PAGE_CONTEXT_STORAGE_KEY]: context });
+}
+
+async function hydratePageContextFromStorage(): Promise<void> {
+	const stored = await chrome.storage.local.get(PAGE_CONTEXT_STORAGE_KEY);
+	if (stored[PAGE_CONTEXT_STORAGE_KEY]) {
+		pageContext = stored[PAGE_CONTEXT_STORAGE_KEY] as PageContext;
+		updateUiFromPageContext(pageContext);
+		statusEl.textContent = 'PR context loaded from storage.';
+	}
+}
+
+function updateUiFromPageContext(context: PageContext): void {
+	repoMetaEl.textContent = `${context.owner}/${context.repo} · ${context.baseRef} → ${context.headRef}`;
 	repoPathEl.hidden = true;
-	baseRefInput.value = pageContext.baseRef;
-	updateBaseRefHint(`Using pull request base branch: ${pageContext.baseRef}`);
-	targetRefInput.value = pageContext.headRef;
+	baseRefInput.value = context.baseRef;
+	updateBaseRefHint(`Using pull request base branch: ${context.baseRef}`);
+	targetRefInput.value = context.headRef;
 	statusEl.textContent = 'PR context received from the current page.';
 	void hydrateRepoDefaults().catch(renderError);
-});
+}
 
 void hydrateToken();
 void hydrateSlackConfig();
@@ -87,6 +123,16 @@ saveTokenButton.addEventListener('click', () => {
 
 saveSlackButton.addEventListener('click', () => {
 	void saveSlackConfig().catch(renderError);
+});
+
+popoutButton.addEventListener('click', () => {
+	void chrome.runtime.sendMessage({ type: 'OPEN_OVERLAY_WINDOW' }).catch(renderError);
+});
+
+slackHelpButton.addEventListener('click', () => {
+	slackInstructionsEl.hidden = !slackInstructionsEl.hidden;
+	slackHelpButton.textContent = slackInstructionsEl.hidden ? '?' : '×';
+	slackHelpButton.title = slackInstructionsEl.hidden ? 'How to get a Slack Webhook URL?' : 'Close instructions';
 });
 
 testMcpButton.addEventListener('click', () => {
@@ -117,6 +163,24 @@ previewTabButton.addEventListener('click', () => {
 
 markdownTabButton.addEventListener('click', () => {
 	setActiveOutputTab('markdown');
+});
+
+chatTabButton.addEventListener('click', () => {
+	setActiveOutputTab('chat');
+});
+
+chatSendButton.addEventListener('click', () => {
+	void handleChatSend().catch(renderError);
+});
+
+clearChatButton.addEventListener('click', () => {
+	clearChatHistory();
+});
+
+chatInputEl.addEventListener('keypress', (e) => {
+	if (e.key === 'Enter') {
+		void handleChatSend().catch(renderError);
+	}
 });
 
 loadModelButton.addEventListener('click', () => {
@@ -425,14 +489,143 @@ function renderOutput(): void {
 	outputPreviewEl.innerHTML = renderMarkdown(outputMarkdown);
 }
 
-function setActiveOutputTab(tab: 'preview' | 'markdown'): void {
+function setActiveOutputTab(tab: 'preview' | 'markdown' | 'chat'): void {
 	const previewActive = tab === 'preview';
+	const markdownActive = tab === 'markdown';
+	const chatActive = tab === 'chat';
+
 	outputPreviewEl.hidden = !previewActive;
-	outputEl.hidden = previewActive;
+	outputEl.hidden = !markdownActive;
+	chatContainerEl.hidden = !chatActive;
+
 	previewTabButton.classList.toggle('active', previewActive);
-	markdownTabButton.classList.toggle('active', !previewActive);
+	markdownTabButton.classList.toggle('active', markdownActive);
+	chatTabButton.classList.toggle('active', chatActive);
+
 	previewTabButton.classList.toggle('ghost', !previewActive);
-	markdownTabButton.classList.toggle('ghost', previewActive);
+	markdownTabButton.classList.toggle('ghost', !markdownActive);
+	chatTabButton.classList.toggle('ghost', !chatActive);
+
+	if (chatActive) {
+		chatInputEl.focus();
+	}
+}
+
+async function handleChatSend(): Promise<void> {
+	const text = chatInputEl.value.trim();
+	if (!text) {
+		return;
+	}
+
+	addChatMessage('user', text);
+	chatInputEl.value = '';
+
+	if (text === '/list' || isMcpCommand(text)) {
+		try {
+			await processMcpCommand(text);
+		} catch (error) {
+			addChatMessage('error', `Error: ${error instanceof Error ? error.message : String(error)}`);
+		}
+		return;
+	}
+
+	aiChatHistory.push({ role: 'user', content: text });
+
+	try {
+		await modelManager.ensureLoaded(modelSelect.value, updateProgress);
+		const assistantMsg = document.createElement('div');
+		assistantMsg.className = 'chat-message assistant';
+		chatMessagesEl.appendChild(assistantMsg);
+		chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
+
+		let fullResponse = '';
+		await modelManager.chat(
+			{
+				modelId: modelSelect.value,
+				messages: aiChatHistory,
+			},
+			(token) => {
+				fullResponse += token;
+				assistantMsg.textContent = fullResponse;
+				chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
+			},
+		);
+		aiChatHistory.push({ role: 'assistant', content: fullResponse });
+	} catch (error) {
+		addChatMessage('error', `Error: ${error instanceof Error ? error.message : String(error)}`);
+	}
+}
+
+function isMcpCommand(text: string): boolean {
+	// Matches tool_name {json_args} or just tool_name if it looks like a tool
+	const firstSpace = text.indexOf(' ');
+	const potentialName = firstSpace === -1 ? text : text.slice(0, firstSpace);
+	return /^[a-z_][a-z0-9_]*$/.test(potentialName) && (firstSpace === -1 || text.slice(firstSpace).trim().startsWith('{'));
+}
+
+function addChatMessage(role: 'user' | 'assistant' | 'mcp' | 'system' | 'error', text: string): void {
+	const msg = document.createElement('div');
+	msg.className = `chat-message ${role}`;
+	if (role === 'system') {
+		msg.innerHTML = text;
+	} else {
+		msg.textContent = text;
+	}
+	chatMessagesEl.appendChild(msg);
+	chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
+}
+
+function clearChatHistory(): void {
+	aiChatHistory = [
+		{ role: 'system', content: 'You are a helpful AI assistant integrated into a code review browser extension.' },
+	];
+	// Remove all children except the first one (the initial system message)
+	while (chatMessagesEl.children.length > 1) {
+		chatMessagesEl.removeChild(chatMessagesEl.lastChild!);
+	}
+	statusEl.textContent = 'Chat history cleared.';
+}
+
+async function processMcpCommand(text: string): Promise<void> {
+	if (text === '/list') {
+		const response = await chrome.runtime.sendMessage({ type: 'LIST_MCP_TOOLS' });
+		if (!response?.ok) {
+			throw new Error(response?.error ?? 'Failed to list tools.');
+		}
+
+		const tools = response.data.tools ?? [];
+		if (tools.length === 0) {
+			addChatMessage('mcp', 'No tools found.');
+			return;
+		}
+
+		const toolsList = tools.map((t: any) => `- ${t.name}: ${t.description}`).join('\n');
+		addChatMessage('mcp', `Available Tools:\n${toolsList}`);
+		return;
+	}
+
+	const firstSpace = text.indexOf(' ');
+	const toolName = firstSpace === -1 ? text : text.slice(0, firstSpace);
+	const argsStr = firstSpace === -1 ? '{}' : text.slice(firstSpace).trim();
+
+	let args: Record<string, unknown> = {};
+	try {
+		args = JSON.parse(argsStr);
+	} catch {
+		throw new Error('Invalid JSON arguments. Usage: tool_name {"arg": "val"}');
+	}
+
+	const response = await chrome.runtime.sendMessage({
+		type: 'CALL_MCP_TOOL',
+		payload: { name: toolName, args },
+	});
+
+	if (!response?.ok) {
+		throw new Error(response?.error ?? `Failed to call tool ${toolName}.`);
+	}
+
+	const resultText = response.data.content?.find((c: any) => c.type === 'text')?.text ?? 'No response text.';
+	addChatMessage('mcp', resultText);
 }
 
 function getElement<T extends HTMLElement>(id: string): T {
