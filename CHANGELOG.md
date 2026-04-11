@@ -1,3 +1,10 @@
+# [3.57.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.56.0...v3.57.0) (2026-04-11)
+
+
+### Features
+
+* **mcp:** enhance MCP mode to copy prompts for branch and file reviews ([7b0f051](https://github.com/glorynguyen/ollama-code-review/commit/7b0f0518873df6add9b91886d3b5dd89e525317f))
+
 # [3.56.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.55.0...v3.56.0) (2026-04-11)
 
 
