@@ -1,3 +1,10 @@
+# [3.56.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.55.0...v3.56.0) (2026-04-11)
+
+
+### Features
+
+* **impact-analysis:** implement Dependency Registry and impact analysis tools for MCP server ([949233a](https://github.com/glorynguyen/ollama-code-review/commit/949233a058385cedc036dd702c81ae7ec831bb7b))
+
 # [3.55.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.54.0...v3.55.0) (2026-04-09)
 
 
