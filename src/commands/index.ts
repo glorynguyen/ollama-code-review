@@ -1804,9 +1804,7 @@ export async function activate(context: vscode.ExtensionContext) {
 				filesArray.forEach(f => outputChannel.appendLine(f));
 				outputChannel.appendLine('---------------------------------------');
 
-				await runReview(diffResult, context, 'branch-compare', {
-					copyPromptOnly: mcpEnabled,
-				});
+				await runReview(diffResult, context, 'branch-compare');
 			});
 		} catch (error) {
 			handleError(error, 'Failed to review changes between branches.');
@@ -4051,7 +4049,10 @@ async function runReview(
 		}
 	}
 
-	if (options.copyPromptOnly) {
+	// MCP Mode: Copy prompt only (F-029)
+	const mcpEnabled = options.copyPromptOnly ?? vscode.workspace.getConfiguration('ollama-code-review').get<boolean>('mcp.enabled', false);
+
+	if (mcpEnabled) {
 		await vscode.window.withProgress({
 			location: vscode.ProgressLocation.Notification,
 			title: "Ollama Code Review",
@@ -4061,11 +4062,11 @@ async function runReview(
 			const prompt = await buildReviewPrompt(filteredDiff, context, contextBundle, options.promptMode);
 			await vscode.env.clipboard.writeText(prompt);
 			vscode.window.setStatusBarMessage('$(clippy) Review prompt copied to clipboard for MCP use', 5000);
-			outputChannel.appendLine('[Review] MCP mode enabled for branch comparison. Prompt copied to clipboard instead of sending to an LLM.');
+			outputChannel.appendLine(`[Review] MCP mode enabled for ${reviewType}. Prompt copied to clipboard instead of sending to an LLM.`);
 		});
 
 		vscode.window.showInformationMessage(
-			'MCP is enabled, so the branch comparison review prompt was copied to your clipboard instead of being sent to an LLM.'
+			`MCP is enabled, so the ${reviewType.replace('-', ' ')} review prompt was copied to your clipboard instead of being sent to an LLM.`
 		);
 		return;
 	}
@@ -4299,6 +4300,27 @@ async function runFileReview(content: string, label: string, context: vscode.Ext
 	}
 
 	const reviewStartTime = Date.now();
+	const mcpEnabled = vscode.workspace.getConfiguration('ollama-code-review').get<boolean>('mcp.enabled', false);
+
+	if (mcpEnabled) {
+		await vscode.window.withProgress({
+			location: vscode.ProgressLocation.Notification,
+			title: "Ollama Code Review",
+			cancellable: false,
+		}, async (progress) => {
+			progress.report({ message: `Building review prompt for ${label}...` });
+			// Get the raw prompt instead of calling AI
+			const prompt = await getOllamaFileReview(content, label, context, true);
+			await vscode.env.clipboard.writeText(prompt);
+			vscode.window.setStatusBarMessage('$(clippy) Review prompt copied to clipboard for MCP use', 5000);
+			outputChannel.appendLine(`[File Review] MCP mode enabled for ${label}. Prompt copied to clipboard.`);
+		});
+
+		vscode.window.showInformationMessage(
+			`MCP is enabled, so the review prompt for '${label}' was copied to your clipboard instead of being sent to an LLM.`
+		);
+		return;
+	}
 
 	await vscode.window.withProgress({
 		location: vscode.ProgressLocation.Notification,
@@ -4356,7 +4378,7 @@ async function runFileReview(content: string, label: string, context: vscode.Ext
  * Build and execute a file-review prompt (no git diff context).
  * Reuses the AI provider routing from getOllamaReview().
  */
-async function getOllamaFileReview(content: string, label: string, context?: vscode.ExtensionContext): Promise<string> {
+async function getOllamaFileReview(content: string, label: string, context?: vscode.ExtensionContext, returnPromptOnly: boolean = false): Promise<string> {
 	const config = vscode.workspace.getConfiguration('ollama-code-review');
 	const model = getOllamaModel(config);
 	const endpoint = config.get<string>('endpoint', 'http://localhost:11434/api/generate');
@@ -4444,6 +4466,10 @@ Code to review:
 \`\`\`
 ${content}
 \`\`\``;
+
+	if (returnPromptOnly) {
+		return prompt;
+	}
 
 	// Copy the full prompt to clipboard so the user can paste it into other LLM chats immediately
 	try {
