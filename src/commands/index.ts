@@ -62,12 +62,14 @@ import {
 import type { SeverityAssessment } from '../preCommitGuard';
 import {
 	gatherContext,
-	formatContextForPrompt,
 	getContextGatheringConfig,
 	ContextBundle,
 	parseImports,
 	resolveImport,
 	readFileContent,
+	DependencyRegistry,
+	toRelativePath,
+	getSignatureHash,
 } from '../context';
 import { sendNotifications, type NotificationPayload } from '../notifications';
 import {
@@ -2556,6 +2558,95 @@ export async function activate(context: vscode.ExtensionContext) {
 		},
 		outputChannel,
 	);
+
+	// Phase 1-4: Impact Graph Agent Initialization
+	const depRegistry = DependencyRegistry.getInstance();
+	depRegistry.setOutputChannel(outputChannel);
+	void depRegistry.indexWorkspace(); // Initial background indexing
+
+	const impactStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 94);
+	impactStatusBarItem.tooltip = 'Impact Graph: Number of downstream files importing this file';
+	context.subscriptions.push(impactStatusBarItem);
+
+	function updateImpactStatusBar(uri: vscode.Uri, signatureChange: boolean = false) {
+		const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
+		if (!workspaceFolder) {
+			impactStatusBarItem.hide();
+			return;
+		}
+		const relPath = toRelativePath(uri, workspaceFolder.uri);
+		const importers = depRegistry.getImporters(relPath);
+		if (importers.length > 0) {
+			const warning = signatureChange ? ' ⚠️ (API Change)' : '';
+			impactStatusBarItem.text = `$(graph) ${importers.length} Impact${importers.length > 1 ? 's' : ''}${warning}`;
+			impactStatusBarItem.backgroundColor = signatureChange ? new vscode.ThemeColor('statusBarItem.warningBackground') : undefined;
+			impactStatusBarItem.command = signatureChange ? 'ollama-code-review.showImpactedFiles' : undefined;
+			impactStatusBarItem.show();
+		} else {
+			impactStatusBarItem.hide();
+		}
+	}
+
+	// Internal state for signature checks
+	const signatureStates = new Map<string, string>(); // relPath -> hash
+
+	const showImpactedFilesCommand = vscode.commands.registerCommand('ollama-code-review.showImpactedFiles', async () => {
+		const editor = vscode.window.activeTextEditor;
+		if (!editor) { return; }
+		const workspaceFolder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
+		if (!workspaceFolder) { return; }
+		const relPath = toRelativePath(editor.document.uri, workspaceFolder.uri);
+		const importers = depRegistry.getImporters(relPath);
+
+		if (importers.length > 0) {
+			outputChannel.appendLine(`\n[Impact Agent] Downstream consumers of ${relPath}:`);
+			importers.forEach(imp => outputChannel.appendLine(`  - ${imp}`));
+			outputChannel.show();
+			vscode.window.showInformationMessage(`Impact Analysis: ${importers.length} files depend on ${path.basename(relPath)}. See Output channel for details.`);
+		}
+	});
+	context.subscriptions.push(showImpactedFilesCommand);
+
+	// Update impact status bar when switching editors
+	context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(editor => {
+		if (editor) { 
+			updateImpactStatusBar(editor.document.uri); 
+		} else { 
+			impactStatusBarItem.hide(); 
+		}
+	}));
+
+	// Smart Agentic Listener: Detect signature changes and update registry
+	context.subscriptions.push(vscode.workspace.onDidSaveTextDocument(async (doc) => {
+		// Only track code files
+		if (!/\.(ts|tsx|js|jsx|mts|mjs)$/.test(doc.fileName)) { return; }
+
+		const workspaceFolder = vscode.workspace.getWorkspaceFolder(doc.uri);
+		if (!workspaceFolder) { return; }
+
+		const relPath = toRelativePath(doc.uri, workspaceFolder.uri);
+		const lastHash = context.globalState.get<string>(`sig_hash_${relPath}`, '');
+		const currentContent = doc.getText();
+		const currentHash = getSignatureHash(currentContent);
+
+		let hasSigChange = false;
+		if (lastHash && lastHash !== currentHash) {
+			hasSigChange = true;
+			outputChannel.appendLine(`[Impact Agent] Public API signature changed in ${relPath}`);
+		}
+
+		// Update registry (Phase 1)
+		await depRegistry.handleFileSave(doc.uri);
+		
+		// Persist hash for next check
+		context.globalState.update(`sig_hash_${relPath}`, currentHash);
+		updateImpactStatusBar(doc.uri, hasSigChange);
+	}));
+
+	// Initial check for current editor
+	if (vscode.window.activeTextEditor) {
+		updateImpactStatusBar(vscode.window.activeTextEditor.document.uri);
+	}
 
 	const toggleAutoReviewCommand = vscode.commands.registerCommand(
 		'ollama-code-review.toggleAutoReview',

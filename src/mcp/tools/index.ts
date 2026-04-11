@@ -4,6 +4,7 @@ import { registerContextTools } from './contextTools';
 import { registerCommitTools } from './commitTools';
 import { registerUtilityTools } from './scoreTools';
 import { registerBrowserTools } from './browserTools';
+import { registerImpactTools } from './impactTools';
 
 /**
  * Register all MCP tools on the server.
@@ -15,4 +16,5 @@ export function registerAllTools(server: McpServer): void {
 	registerCommitTools(server);       // get_commit_prompt, get_commit_prompt_bundle
 	registerUtilityTools(server);      // score_review, parse_findings, list_profiles, get_config
 	registerBrowserTools(server);      // get_workspace_repos
+	registerImpactTools(server);       // get_impacted_files (Phase 3: Impact Graph Agent)
 }

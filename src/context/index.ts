@@ -21,3 +21,5 @@ export {
 export { parseImports, extractChangedFiles } from './importParser';
 export { resolveImport, readFileContent, toRelativePath } from './fileResolver';
 export { findTestFiles } from './testDiscovery';
+export { DependencyRegistry } from './dependencyRegistry';
+export { hasSignificantSignatureChange, getSignatureHash } from './signatureHeuristics';
