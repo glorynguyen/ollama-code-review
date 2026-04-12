@@ -1,3 +1,15 @@
+# [3.60.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.59.0...v3.60.0) (2026-04-12)
+
+
+### Bug Fixes
+
+* **imports:** handle multi-line import/export statements ([ad7b12b](https://github.com/glorynguyen/ollama-code-review/commit/ad7b12b627cc95242650d22cac809a700412732d))
+
+
+### Features
+
+* **context:** add symbol-based code extraction for imports ([5516c6a](https://github.com/glorynguyen/ollama-code-review/commit/5516c6a37856a0b8f4211580d4220282d4eda600))
+
 # [3.59.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.58.0...v3.59.0) (2026-04-12)
 
 
