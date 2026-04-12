@@ -514,7 +514,7 @@
         },
         {
           "command": "ollama-code-review.generateCommitMessage",
-          "when": "scmProvider == 'git' && !config.ollama-code-review.mcp.enabled",
+          "when": "scmProvider == 'git'",
           "group": "navigation"
         },
         {

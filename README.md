@@ -40,15 +40,8 @@ You can reopen the guide at any time via the Command Palette: `Ollama Code Revie
 
 You must have the following software installed and configured for this extension to work.
 
-#### For Local Ollama Models
-1.  **[Ollama](https://ollama.com/)**: Download and install from the official website.
-2.  **An Ollama Model**: Pull a model tuned for coding:
-    ```bash
-    ollama pull kimi-k2.5:cloud
-    ```
-
-#### For Cloud Models (No Local Setup Required)
-Pick **one** of the following providers and configure its API key:
+#### LLM Provider Setup
+You do not need to install Ollama locally. You can use any of the supported cloud AI providers or an OpenAI-compatible server. Configure your preferred API key in the extension settings:
 
 | Provider | API Key Setting | Get API Key |
 |----------|----------------|-------------|
@@ -58,11 +51,25 @@ Pick **one** of the following providers and configure its API key:
 | **GLM** (free tier) | `glmApiKey` | [open.bigmodel.cn](https://open.bigmodel.cn/) |
 | **MiniMax** | `minimaxApiKey` | [platform.minimaxi.com](https://platform.minimaxi.com/) |
 | **Hugging Face** | `hfApiKey` | [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) |
-| **OpenAI-Compatible** | `openaiCompatible.apiKey` | Depends on server (optional for local) |
+| **OpenAI-Compatible** | `openaiCompatible.apiKey` | Depends on server |
+| **Ollama** (Local) | N/A | [ollama.com](https://ollama.com/) |
 
 #### General Requirements
 1.  **[Git](https://git-scm.com/)**: Git must be installed and available in your system's PATH.
 2.  **VS Code Built-in Git Extension**: This extension must be enabled (it is by default).
+
+---
+
+## MCP Mode (External Chat Integration)
+
+If you prefer to use your own LLM chat interface (e.g., ChatGPT, Claude.ai, or Gemini web) rather than the extension's integrated review panel:
+
+1. Enable **MCP Mode** in your settings (`ollama-code-review.mcp.mode = true` or via the Command Palette).
+2. Run a review command (e.g., `Ollama: Review Staged Changes`).
+3. The extension will automatically stop after generating the structured prompt (including diff, project context, skills, and profiles) and copy it directly to your clipboard.
+4. Simply paste the content into your preferred LLM chat interface.
+
+Additionally, the extension includes a built-in **MCP (Model Context Protocol) server**. When enabled (`ollama-code-review.mcp.enabled`), it allows external MCP-compatible tools (like Claude Code) to directly access your local workspace context (diffs, files, branches) without manual copying.
 
 ---
 

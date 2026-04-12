@@ -1851,6 +1851,10 @@ export async function activate(context: vscode.ExtensionContext) {
 				const commitMessage = await getOllamaCommitMessage(diffResult, repo.inputBox.value?.trim(), ticketId);
 				if (token.isCancellationRequested) { return; }
 
+				if (commitMessage === 'PROMPT_COPIED') {
+					return;
+				}
+
 				if (commitMessage) {
 					repo.inputBox.value = commitMessage;
 					vscode.window.showInformationMessage('Commit message generated and populated!');
@@ -4732,8 +4736,9 @@ async function getOllamaReview(diff: string, context?: vscode.ExtensionContext, 
 	};
 }
 
-async function getOllamaCommitMessage(diff: string, existingMessage?: string, ticketId?: string): Promise<string> {
+async function getOllamaCommitMessage(diff: string, existingMessage?: string, ticketId?: string): Promise<string | 'PROMPT_COPIED'> {
 	const config = vscode.workspace.getConfiguration('ollama-code-review');
+	const mcpEnabled = config.get<boolean>('mcp.enabled', false);
 	const model = getOllamaModel(config);
 	const endpoint = config.get<string>('endpoint', 'http://localhost:11434/api/generate');
 	const temperature = config.get<number>('temperature', 0.2); // Slightly more creative for commit messages
@@ -4751,6 +4756,12 @@ async function getOllamaCommitMessage(diff: string, existingMessage?: string, ti
 	// Inject Jira ticket ID formatting rule into the prompt
 	if (ticketId) {
 		prompt += `\n\n### Jira Ticket Convention:\nThe subject line MUST include the ticket ID in square brackets immediately after the colon and space.\nFormat: <type>(<scope>): [${ticketId}] <short description>\nExample: feat(ui): [${ticketId}] add login button\nThis is mandatory — every commit message must include [${ticketId}] in the subject line.`;
+	}
+
+	if (mcpEnabled) {
+		await vscode.env.clipboard.writeText(prompt);
+		vscode.window.showInformationMessage('Commit message prompt copied to clipboard!');
+		return 'PROMPT_COPIED';
 	}
 
 	try {
