@@ -32,6 +32,11 @@ const builds = [
 		outfile: path.join(scriptDir, 'dist/overlay.js'),
 		...common,
 	},
+	{
+		entryPoints: [path.join(scriptDir, 'src/claudeUsage.ts')],
+		outfile: path.join(scriptDir, 'dist/claudeUsage.js'),
+		...common,
+	},
 ];
 
 if (watch) {

@@ -9,7 +9,8 @@
     "http://localhost:19840/*",
     "https://github.com/*",
     "https://gitlab.com/*",
-    "*://*/-/merge_requests/*"
+    "*://*/-/merge_requests/*",
+    "https://claude.ai/*"
   ],
   "icons": {
     "16": "icons/icon-16.png",
@@ -32,6 +33,13 @@
         "*://*/-/merge_requests/*"
       ],
       "js": ["dist/content.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://claude.ai/settings/usage"
+      ],
+      "js": ["dist/claudeUsage.js"],
       "run_at": "document_idle"
     }
   ],
