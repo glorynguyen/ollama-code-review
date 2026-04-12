@@ -1,3 +1,10 @@
+# [3.58.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.57.0...v3.58.0) (2026-04-12)
+
+
+### Features
+
+* **readme:** update LLM provider setup instructions and add MCP mode details ([f169ee7](https://github.com/glorynguyen/ollama-code-review/commit/f169ee73724877de4d72dc7e7a9de7eaaa8cf5e8))
+
 # [3.57.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.56.0...v3.57.0) (2026-04-11)
 
 
