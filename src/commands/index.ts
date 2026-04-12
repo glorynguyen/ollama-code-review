@@ -174,6 +174,12 @@ import { mcpBridge, createMcpServer, type McpServerInstance } from '../mcp';
 export { checkActiveModels, getLastPerformanceMetrics, clearPerformanceMetrics };
 export type { PerformanceMetrics };
 
+const V0_MODELS = [{ label: 'v0-auto', description: 'v0 Auto - Automatically selects the best model for the task' },
+{ label: 'v0-mini', description: 'v0 Mini - Fastest response time, ideal for quick fixes' },
+{ label: 'v0-pro', description: 'v0 Pro - Balanced performance and intelligence' },
+{ label: 'v0-max', description: 'v0 Max - Most powerful model for complex logic and architecture' },
+{ label: 'v0-max-fast', description: 'v0 Max Fast - High-performance version of the Max model' }];
+
 const DEFAULT_COMMIT_MESSAGE_PROMPT = "You are an expert at writing git commit messages for Semantic Release.\nGenerate a commit message based on the git diff below following the Conventional Commits specification.\n\n### Structural Requirements:\n1. **Subject Line**: <type>(<scope>): <short description>\n   - Keep under 50 characters.\n   - Use imperative mood (\"add\" not \"added\").\n   - Types: feat (new feature), fix (bug fix), docs, style, refactor, perf, test, build, ci, chore, revert.\n2. **Body**: Explain 'what' and 'why'. Required if the change is complex.\n3. **Breaking Changes**: If the diff contains breaking changes, the footer MUST start with \"BREAKING CHANGE:\" followed by a description.\n\n### Rules:\n- If the user's draft mentions a breaking change, prioritize documenting it in the footer.\n- Semantic Release triggers: 'feat' for MINOR, 'fix' for PATCH, and 'BREAKING CHANGE' in footer for MAJOR.\n- Output ONLY the raw commit message text. No markdown blocks, no \"Here is your message,\" no preamble.\n\nDeveloper's draft message (may reflect intent):\n${draftMessage}\n\nStaged git diff:\n---\n${diff}\n---";
 
 // ---------------------------------------------------------------------------
@@ -924,6 +930,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
 		// Cloud models (remote APIs) that won't appear in local Ollama
 		const cloudModels = [
+			...V0_MODELS,
 			{ label: 'kimi-k2.5:cloud', description: 'Kimi cloud model (Default)' },
 			{ label: 'qwen3-coder:480b-cloud', description: 'Cloud coding model' },
 			{ label: 'glm-4.7:cloud', description: 'GLM cloud model' },
@@ -3702,6 +3709,7 @@ ${diff.slice(0, 12000)}
 				// Build the list of available models for the QuickPick
 				const config = vscode.workspace.getConfiguration('ollama-code-review');
 				const allModels = [
+					...V0_MODELS,
 					{ label: 'kimi-k2.5:cloud', description: 'Kimi cloud model' },
 					{ label: 'qwen3-coder:480b-cloud', description: 'Cloud coding model' },
 					{ label: 'glm-4.7:cloud', description: 'GLM cloud model' },

@@ -637,6 +637,11 @@
             "codestral-latest",
             "MiniMax-M2.5",
             "openai-compatible",
+            "v0-auto",
+            "v0-mini",
+            "v0-pro",
+            "v0-max",
+            "v0-max-fast",
             "qwen2.5-coder:14b-instruct-q4_0",
             "claude-sonnet-4-20250514",
             "claude-opus-4-20250514",
@@ -696,6 +701,11 @@
           "type": "string",
           "default": "",
           "description": "Your MiniMax API key. Get one at https://platform.minimaxi.com/"
+        },
+        "ollama-code-review.v0ApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Your v0 API key for v0 models. Get one at https://v0.dev/chat/settings/keys"
         },
         "ollama-code-review.openaiCompatible.endpoint": {
           "type": "string",
@@ -1364,7 +1374,8 @@
     "@octokit/rest": "^22.0.1",
     "axios": "^1.11.0",
     "js-yaml": "^4.1.1",
-    "node-fetch": "^3.3.2"
+    "node-fetch": "^3.3.2",
+    "v0-sdk": "^0.16.4"
   },
   "release": {
     "branches": [

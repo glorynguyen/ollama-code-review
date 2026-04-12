@@ -25,7 +25,7 @@ export interface PerformanceMetrics {
 	tokensPerSecond?: number;
 	totalDurationSeconds?: number;
 	model?: string;
-	provider?: 'ollama' | 'claude' | 'glm' | 'huggingface' | 'gemini' | 'mistral' | 'minimax' | 'openai-compatible';
+	provider?: 'ollama' | 'claude' | 'glm' | 'huggingface' | 'gemini' | 'mistral' | 'minimax' | 'openai-compatible' | 'v0';
 	activeModel?: {
 		name: string;
 		sizeVram?: number;
@@ -155,6 +155,10 @@ export function isMiniMaxModel(model: string): boolean {
  */
 export function isOpenAICompatibleModel(model: string): boolean {
 	return model === 'openai-compatible';
+}
+
+export function isV0Model(model: string): boolean {
+	return model.startsWith('v0-');
 }
 
 /**
@@ -797,6 +801,67 @@ export async function callOpenAICompatibleAPI(prompt: string, config: vscode.Wor
 		}
 		throw error;
 	}
+}
+
+
+// ---------------------------------------------------------------------------
+// v0 provider
+// ---------------------------------------------------------------------------
+
+export async function callV0API(prompt: string, config: vscode.WorkspaceConfiguration, captureMetrics = false): Promise<string> {
+	const model = getOllamaModel(config);
+	const apiKey = config.get<string>('v0ApiKey', '');
+
+	if (!apiKey) {
+		throw new Error('v0 API key is not configured. Please set it in Settings > Ollama Code Review > V0 Api Key');
+	}
+
+	// eslint-disable-next-line @typescript-eslint/no-var-requires
+	const { createClient } = require('v0-sdk');
+	const client = createClient({ apiKey });
+
+	const modelId = model as 'v0-auto' | 'v0-mini' | 'v0-pro' | 'v0-max' | 'v0-max-fast';
+
+	const startTime = Date.now();
+	const response = await client.chats.create({
+		message: prompt,
+		system: 'You are an expert software engineer and code reviewer. Provide detailed, actionable code review feedback. Do not generate UI components.',
+		modelConfiguration: { modelId },
+		responseMode: 'sync',
+		chatPrivacy: 'private'
+	});
+
+	const durationMs = Date.now() - startTime;
+	const chatDetail = response as { id: string; text?: string; messages?: Array<{ role: string; content: string }> };
+
+	if (captureMetrics) {
+		lastPerformanceMetrics = {
+			provider: 'v0',
+			model: model,
+			totalDurationSeconds: durationMs / 1000,
+		};
+	}
+
+	// Primary: use .text property
+	if (chatDetail.text) {
+		return chatDetail.text.trim();
+	}
+
+	// Fallback: last assistant message content
+	const assistantMessages = chatDetail.messages?.filter((m: { role: string }) => m.role === 'assistant');
+	if (assistantMessages && assistantMessages.length > 0) {
+		return assistantMessages[assistantMessages.length - 1].content?.trim() || '';
+	}
+
+	if (chatDetail.id) {
+		try {
+			await client.chats.delete({ chatId: chatDetail.id });
+		} catch (err) {
+            // We don't throw here so the user still gets their review results
+		}
+	}
+
+	return '';
 }
 
 

@@ -6,6 +6,7 @@ import { MiniMaxProvider } from './minimax';
 import { MistralProvider } from './mistral';
 import { OllamaProvider } from './ollama';
 import { OpenAICompatibleProvider } from './openaiCompatible';
+import { V0Provider } from './v0';
 import type { ModelProvider } from './types';
 
 export class ProviderRegistry {
@@ -46,6 +47,7 @@ export function createDefaultProviderRegistry(): ProviderRegistry {
 	registry.register(new GeminiProvider());
 	registry.register(new MistralProvider());
 	registry.register(new MiniMaxProvider());
+	registry.register(new V0Provider());
 	registry.register(new OpenAICompatibleProvider());
 	registry.register(new OllamaProvider());
 	return registry;

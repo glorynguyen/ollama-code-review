@@ -50,6 +50,7 @@ You do not need to install Ollama locally. You can use any of the supported clou
 | **Mistral** | `mistralApiKey` | [console.mistral.ai](https://console.mistral.ai/) |
 | **GLM** (free tier) | `glmApiKey` | [open.bigmodel.cn](https://open.bigmodel.cn/) |
 | **MiniMax** | `minimaxApiKey` | [platform.minimaxi.com](https://platform.minimaxi.com/) |
+| **v0** | `v0ApiKey` | [v0.dev/chat/settings/keys](https://v0.dev/chat/settings/keys) |
 | **Hugging Face** | `hfApiKey` | [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) |
 | **OpenAI-Compatible** | `openaiCompatible.apiKey` | Depends on server |
 | **Ollama** (Local) | N/A | [ollama.com](https://ollama.com/) |
@@ -241,7 +242,22 @@ To use Hugging Face models:
 - `meta-llama/Llama-3.1-8B-Instruct`
 - `deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct`
 
-### 18. OpenAI-Compatible Server Support
+### 18. v0 Support
+Use Vercel's v0 platform for AI-powered code reviews:
+- **v0-auto** - Automatic model selection (recommended)
+- **v0-mini** - Fast, lightweight reviews
+- **v0-pro** - Higher quality analysis
+- **v0-max** - Most capable model
+- **v0-max-fast** - Maximum capability with faster responses
+
+To use v0 models:
+1. Go to [v0.app/chat/settings/keys](https://v0.app/chat/settings/keys) and create an API key
+2. Set your API key in VS Code settings: `ollama-code-review.v0ApiKey`
+3. Select any `v0-*` model from the model picker (e.g., `v0-auto`)
+
+> **Note:** v0 is primarily designed for UI/React generation. When used for code reviews, it will provide feedback but may occasionally include component-oriented suggestions. The extension configures a system prompt to steer it toward review behavior.
+
+### 19. OpenAI-Compatible Server Support
 Use any server that exposes an OpenAI-compatible `/v1/chat/completions` endpoint — no individual integration required:
 
 | Server | Type | Default Endpoint |
@@ -1452,6 +1468,7 @@ This extension contributes the following settings to your VS Code `settings.json
 * `ollama-code-review.geminiApiKey`: Your Google AI Studio API key for Gemini models.
 * `ollama-code-review.mistralApiKey`: Your Mistral AI API key for Mistral models.
 * `ollama-code-review.minimaxApiKey`: Your MiniMax API key for MiniMax models.
+* `ollama-code-review.v0ApiKey`: Your v0 API key for v0 models. Get one at [v0.dev/chat/settings/keys](https://v0.dev/chat/settings/keys).
 * `ollama-code-review.openaiCompatible.endpoint`: Base URL for any OpenAI-compatible server.
     * **Default**: `"http://localhost:1234/v1"` (LM Studio default)
     * Examples: `http://localhost:8080/v1` (LocalAI), `https://api.groq.com/openai/v1` (Groq), `https://openrouter.ai/api/v1` (OpenRouter)
