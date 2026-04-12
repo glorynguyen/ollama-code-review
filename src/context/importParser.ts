@@ -51,6 +51,63 @@ const PATTERNS = {
 };
 
 // ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Collapse multi-line import/export brace blocks into a single line so that
+ * the line-by-line regex pass can match them correctly.
+ *
+ * Example — turns:
+ *   export {
+ *       gatherContext,
+ *       formatContextForPrompt,
+ *   } from './contextGatherer';
+ *
+ * into:
+ *   export { gatherContext, formatContextForPrompt, } from './contextGatherer';
+ */
+function normalizeMultilineBlocks(content: string): string {
+	const lines = content.split('\n');
+	const result: string[] = [];
+	let accumulator: string | null = null;
+
+	for (const line of lines) {
+		if (accumulator !== null) {
+			// Strip inline comments before processing so `}` inside a comment
+			// doesn't prematurely close the block.
+			const cleanLine = line.replace(/\/\/.*$/, '').trim();
+
+			if (cleanLine) {
+				accumulator += ' ' + cleanLine;
+			}
+
+			// Check if the real code (not a comment) contains the closing brace.
+			if (line.replace(/\/\/.*$/, '').includes('}')) {
+				result.push(accumulator.replace(/\s+/g, ' ').trim());
+				accumulator = null;
+			}
+		} else {
+			const opensBlock = /^\s*(?:export|import)\s+(?:type\s+)?\{/.test(line);
+			// Check for `}` only in non-comment code.
+			const closesOnSameLine = line.replace(/\/\/.*$/, '').includes('}');
+
+			if (opensBlock && !closesOnSameLine) {
+				accumulator = line.trimEnd();
+			} else {
+				result.push(line);
+			}
+		}
+	}
+
+	if (accumulator !== null) {
+		result.push(accumulator);
+	}
+
+	return result.join('\n');
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -61,7 +118,7 @@ const PATTERNS = {
  * @returns Array of parsed imports, one per unique specifier.
  */
 export function parseImports(content: string): ParsedImport[] {
-	const lines = content.split('\n');
+	const lines = normalizeMultilineBlocks(content).split('\n');
 	const seen = new Set<string>();
 	const imports: ParsedImport[] = [];
 

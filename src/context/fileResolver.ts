@@ -44,7 +44,6 @@ export async function resolveImport(
 	sourceFile: string,
 	workspaceRoot: vscode.Uri,
 ): Promise<vscode.Uri | undefined> {
-	const sourceDir = path.posix.dirname(sourceFile);
 	let resolved: string;
 	if (specifier.startsWith('src/')) {
 		resolved = specifier;
