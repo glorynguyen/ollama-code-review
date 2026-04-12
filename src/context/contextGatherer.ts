@@ -24,6 +24,7 @@ import { parseImports, extractChangedFiles } from './importParser';
 import { resolveImport, readFileContent, toRelativePath } from './fileResolver';
 import { findTestFiles } from './testDiscovery';
 import { getDiffFilterConfig, shouldIgnoreFile } from '../diffFilter';
+import { extractSymbolBlocks } from './codeExtractor';
 
 // ---------------------------------------------------------------------------
 // Defaults
@@ -159,9 +160,89 @@ export async function gatherContext(
 		return true;
 	};
 
+	/**
+	 * Add a context file with symbol-level extraction (tree-shaking).
+	 *
+	 * If `isNamespace` is false and `symbols` is non-empty, only the blocks
+	 * for those symbols are extracted from the file. Falls back to the full
+	 * file content when extraction produces no output (e.g. the symbol is
+	 * defined via a pattern the heuristic cannot match).
+	 */
+	const tryAddWithSymbols = async (
+		uri: vscode.Uri,
+		reason: ContextFile['reason'],
+		sourceFile: string,
+		symbols: Set<string>,
+		isNamespace: boolean,
+	): Promise<boolean> => {
+		const relPath = toRelativePath(uri, workspaceRoot);
+		if (includedPaths.has(relPath)) {
+			return false;
+		}
+		if (contextFiles.length >= config.maxFiles) {
+			stats.filesSkipped++;
+			return false;
+		}
+		if (totalChars >= TOTAL_CHAR_BUDGET) {
+			stats.filesSkipped++;
+			return false;
+		}
+
+		const remaining = TOTAL_CHAR_BUDGET - totalChars;
+		const charLimit = Math.min(PER_FILE_CHAR_LIMIT, remaining);
+
+		// Read the full file so symbol extraction can reach any definition.
+		const fullContent = await readFileContent(uri);
+		if (!fullContent) {
+			return false;
+		}
+
+		let content: string;
+
+		if (!isNamespace && symbols.size > 0) {
+			// Attempt tree-shaking: extract only the imported symbol blocks.
+			const extracted = extractSymbolBlocks(fullContent, [...symbols]);
+			if (extracted.trim().length > 0) {
+				content =
+					extracted.length > charLimit
+						? extracted.slice(0, charLimit) + '\n// … truncated for review context'
+						: extracted;
+			} else {
+				// Extraction found nothing — fall back to the full file content.
+				content =
+					fullContent.length > charLimit
+						? fullContent.slice(0, charLimit) + '\n// … truncated for review context'
+						: fullContent;
+			}
+		} else {
+			// Namespace import or no symbol info: include the full file.
+			content =
+				fullContent.length > charLimit
+					? fullContent.slice(0, charLimit) + '\n// … truncated for review context'
+					: fullContent;
+		}
+
+		includedPaths.add(relPath);
+		const charCount = content.length;
+		totalChars += charCount;
+		contextFiles.push({ relativePath: relPath, content, reason, sourceFile, charCount });
+		return true;
+	};
+
 	// -----------------------------------------------------------------------
-	// Phase 1: Resolve imports from changed files
+	// Phase 1: Resolve imports from changed files (with symbol-level extraction)
 	// -----------------------------------------------------------------------
+	// Collect all imports across changed files, merging symbol lists for the
+	// same resolved file so that a file imported by multiple changed files is
+	// read only once and all required symbols are extracted in one pass.
+	type ImportEntry = {
+		uri: vscode.Uri;
+		symbols: Set<string>;
+		isNamespace: boolean;
+		sourceFile: string; // first changed file that imports this dependency
+	};
+	const importMap = new Map<string, ImportEntry>();
+
 	for (const changedFile of changedPaths) {
 		const fileUri = vscode.Uri.joinPath(workspaceRoot, changedFile);
 		const fileContent = await readFileContent(fileUri);
@@ -176,15 +257,39 @@ export async function gatherContext(
 			if (!imp.isRelative) {
 				continue; // Skip node_modules / bare specifiers
 			}
-			if (contextFiles.length >= config.maxFiles || totalChars >= TOTAL_CHAR_BUDGET) {
-				break;
-			}
 
 			const resolved = await resolveImport(imp.specifier, changedFile, workspaceRoot);
-			if (resolved) {
-				await tryAdd(resolved, 'import', changedFile);
+			if (!resolved) {
+				continue;
+			}
+
+			const key = resolved.path;
+			const existing = importMap.get(key);
+			if (existing) {
+				// Merge: if any importer uses a namespace import, keep it that way.
+				if (imp.isNamespace) {
+					existing.isNamespace = true;
+				}
+				for (const s of imp.symbols) {
+					existing.symbols.add(s);
+				}
+			} else {
+				importMap.set(key, {
+					uri: resolved,
+					symbols: new Set(imp.symbols),
+					isNamespace: imp.isNamespace,
+					sourceFile: changedFile,
+				});
 			}
 		}
+	}
+
+	// Add resolved import files, applying tree-shaking where possible.
+	for (const entry of importMap.values()) {
+		if (contextFiles.length >= config.maxFiles || totalChars >= TOTAL_CHAR_BUDGET) {
+			break;
+		}
+		await tryAddWithSymbols(entry.uri, 'import', entry.sourceFile, entry.symbols, entry.isNamespace);
 	}
 
 	// -----------------------------------------------------------------------

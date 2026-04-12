@@ -23,3 +23,4 @@ export { resolveImport, readFileContent, toRelativePath } from './fileResolver';
 export { findTestFiles } from './testDiscovery';
 export { DependencyRegistry } from './dependencyRegistry';
 export { hasSignificantSignatureChange, getSignatureHash } from './signatureHeuristics';
+export { extractSymbolBlocks } from './codeExtractor';

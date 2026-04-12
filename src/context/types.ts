@@ -34,6 +34,22 @@ export interface ParsedImport {
 	isRelative: boolean;
 	/** Line number (1-based) of the import statement. */
 	line: number;
+	/**
+	 * Named symbols imported from this module.
+	 *
+	 * Examples:
+	 * - `import { fetchUser, updateProfile }` → `['fetchUser', 'updateProfile']`
+	 * - `import DefaultExport` → `['default']`
+	 * - `import * as ns` → `[]` (check `isNamespace` instead)
+	 * - `import './side-effect'` → `[]`
+	 */
+	symbols: string[];
+	/**
+	 * True when the import is a namespace import (`import * as foo` or
+	 * `import * from '...'`). When true, the gatherer should include the
+	 * full file content rather than attempting symbol extraction.
+	 */
+	isNamespace: boolean;
 }
 
 // ---------------------------------------------------------------------------

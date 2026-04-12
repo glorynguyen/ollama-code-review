@@ -14,26 +14,11 @@ import { ParsedImport } from './types';
 // ---------------------------------------------------------------------------
 
 /**
- * Regex patterns for different import styles.
- * Each pattern is applied line-by-line for simplicity and reliability.
+ * Regex patterns for import styles that cannot be handled by the richer
+ * ES6 clause parser (CommonJS `require` and dynamic `import()`).
+ * ES6 static imports and re-exports are handled by `tryParseEs6Line`.
  */
 const PATTERNS = {
-	/**
-	 * ES6 static imports:
-	 *   import foo from 'module'
-	 *   import { foo } from 'module'
-	 *   import * as foo from 'module'
-	 *   import 'module'  (side-effect)
-	 */
-	es6Import: /^\s*import\s+(?:(?:[\w*{}\s,]+)\s+from\s+)?['"]([^'"]+)['"]/,
-
-	/**
-	 * ES6 re-exports:
-	 *   export { foo } from 'module'
-	 *   export * from 'module'
-	 */
-	es6ReExport: /^\s*export\s+(?:\{[^}]*\}|\*)\s+from\s+['"]([^'"]+)['"]/,
-
 	/**
 	 * CommonJS require:
 	 *   const foo = require('module')
@@ -49,6 +34,116 @@ const PATTERNS = {
 	 */
 	dynamicImport: /import\s*\(\s*['"]([^'"]+)['"]\s*\)/,
 };
+
+// ---------------------------------------------------------------------------
+// ES6 clause helpers
+// ---------------------------------------------------------------------------
+
+/** Intermediate result from parsing one ES6 import/export line. */
+interface Es6ParseResult {
+	specifier: string;
+	symbols: string[];
+	isNamespace: boolean;
+}
+
+/**
+ * Attempt to parse an ES6 static import or re-export line.
+ *
+ * Handles:
+ *   import 'side-effect'
+ *   import type 'module'
+ *   import Foo from 'module'
+ *   import { foo, bar as baz } from 'module'
+ *   import type { Foo } from 'module'
+ *   import * as ns from 'module'
+ *   import Foo, { bar } from 'module'
+ *   export { foo, bar } from 'module'
+ *   export * from 'module'
+ *   export * as ns from 'module'
+ *   export type { Foo } from 'module'
+ *
+ * @param line - A single (possibly normalized) source line.
+ * @returns Parsed result, or `null` if the line is not an ES6 import/export.
+ */
+function tryParseEs6Line(line: string): Es6ParseResult | null {
+	const trimmed = line.trim();
+	if (!trimmed.startsWith('import') && !trimmed.startsWith('export')) {
+		return null;
+	}
+
+	// Import with a `from` clause
+	const fromMatch = trimmed.match(/\bfrom\s+['"]([^'"]+)['"]/);
+	if (fromMatch) {
+		const specifier = fromMatch[1];
+		// Extract the import clause: everything between the leading keyword
+		// and the `from '...'` section.
+		const clauseText = trimmed
+			.replace(/^(?:import|export)\s+(?:type\s+)?/, '')
+			.replace(/\s*\bfrom\s+['"][^'"]+['"].*$/, '')
+			.trim();
+		return { specifier, ...parseImportClause(clauseText) };
+	}
+
+	// Side-effect import: import 'module' (no clause, no `from`)
+	const sideEffectMatch = trimmed.match(/^import\s+(?:type\s+)?['"]([^'"]+)['"]/);
+	if (sideEffectMatch) {
+		return { specifier: sideEffectMatch[1], symbols: [], isNamespace: false };
+	}
+
+	return null;
+}
+
+/**
+ * Parse the import clause (the portion between `import`/`export` and `from`)
+ * and extract imported symbol names.
+ *
+ * @param clause - Raw clause text, e.g. `{ foo, bar as baz }`, `* as ns`, `Default`.
+ * @returns Symbol names and a namespace flag.
+ */
+function parseImportClause(clause: string): { symbols: string[]; isNamespace: boolean } {
+	if (!clause) {
+		return { symbols: [], isNamespace: false };
+	}
+
+	// Namespace import/export: * as foo  or  *
+	if (clause.includes('*')) {
+		return { symbols: [], isNamespace: true };
+	}
+
+	const symbols: string[] = [];
+
+	// Default import: starts with a bare identifier (not a `{`)
+	// e.g. `DefaultImport` or `DefaultImport, { named }`
+	if (!clause.trim().startsWith('{') && /^[\w$]/.test(clause.trim())) {
+		symbols.push('default');
+	}
+
+	// Named imports: { foo, bar as baz, type Qux }
+	const namedMatch = clause.match(/\{([^}]+)\}/);
+	if (namedMatch) {
+		const named = namedMatch[1]
+			.split(',')
+			.map(s =>
+				s.trim()
+					.replace(/^type\s+/, '')        // strip TypeScript "type" modifier
+					.replace(/\s+as\s+[\w$]+$/, '') // strip "as alias" renaming
+					.trim(),
+			)
+			.filter(s => s.length > 0);
+		symbols.push(...named);
+	}
+
+	return { symbols, isNamespace: false };
+}
+
+/** Return true when `specifier` refers to a workspace-relative path. */
+function isRelativeSpecifier(specifier: string): boolean {
+	return (
+		specifier.startsWith('.') ||
+		specifier.startsWith('src/') ||
+		specifier.startsWith('@/')
+	);
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -131,20 +226,35 @@ export function parseImports(content: string): ParsedImport[] {
 			continue;
 		}
 
-		// Try each pattern against the line
-		for (const pattern of Object.values(PATTERNS)) {
-			const match = line.match(pattern);
-			if (match && match[1]) {
-				const specifier = match[1];
-				if (!seen.has(specifier)) {
-					seen.add(specifier);
-					imports.push({
-						specifier,
-						isRelative: specifier.startsWith('.') || specifier.startsWith('src/') || specifier.startsWith('@/'),
-						line: i + 1,
-					});
-				}
+		// ES6 static import / re-export (captures symbol names)
+		const es6Result = tryParseEs6Line(line);
+		if (es6Result) {
+			if (!seen.has(es6Result.specifier)) {
+				seen.add(es6Result.specifier);
+				imports.push({
+					specifier: es6Result.specifier,
+					isRelative: isRelativeSpecifier(es6Result.specifier),
+					line: i + 1,
+					symbols: es6Result.symbols,
+					isNamespace: es6Result.isNamespace,
+				});
 			}
+			continue; // don't double-count with CJS/dynamic patterns below
+		}
+
+		// CommonJS require / dynamic import — include full file (no symbol info)
+		const cjsMatch = line.match(PATTERNS.commonjsRequire);
+		const dynMatch = cjsMatch ? null : line.match(PATTERNS.dynamicImport);
+		const m = cjsMatch ?? dynMatch;
+		if (m && m[1] && !seen.has(m[1])) {
+			seen.add(m[1]);
+			imports.push({
+				specifier: m[1],
+				isRelative: isRelativeSpecifier(m[1]),
+				line: i + 1,
+				symbols: [],
+				isNamespace: true, // always include the full file for CJS/dynamic
+			});
 		}
 	}
 
