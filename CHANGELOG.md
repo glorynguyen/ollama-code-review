@@ -1,3 +1,10 @@
+# [3.59.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.58.0...v3.59.0) (2026-04-12)
+
+
+### Features
+
+* **provider:** add v0 AI provider support ([6f9eb88](https://github.com/glorynguyen/ollama-code-review/commit/6f9eb882611fe6f6acb2f02360d538636c670851))
+
 # [3.58.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.57.0...v3.58.0) (2026-04-12)
 
 
