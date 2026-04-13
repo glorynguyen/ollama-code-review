@@ -80,6 +80,21 @@ export class OllamaReviewPanel {
           case 'discussReview':
             await this._handleDiscussReview();
             break;
+          case 'ignoreFinding':
+            if (message.finding && typeof message.finding.id === 'string') {
+              await vscode.commands.executeCommand('ollama-code-review.ignoreFinding', message.finding);
+              // Update local state and sync with webview
+              if (this._structuredReview && this._structuredReview.findings) {
+                this._structuredReview.findings = this._structuredReview.findings.filter(f => f.id !== message.finding.id);
+                this._panel.webview.postMessage({ command: 'updateFindings', findings: this._structuredReview.findings });
+              }
+            }
+            break;
+          case 'quickFix':
+            if (message.finding) {
+              await vscode.commands.executeCommand('ollama-code-review.fixFinding', message.finding);
+            }
+            break;
           case 'copyDiff':
             await vscode.env.clipboard.writeText(this._originalDiff);
             vscode.window.showInformationMessage('Original git diff copied to clipboard!');
@@ -490,12 +505,19 @@ export class OllamaReviewPanel {
     // Pass the current history as a JSON string for the very first render
     const initialData = JSON.stringify(this._conversationHistory);
     const metricsData = JSON.stringify(this._metrics);
+    const structuredReviewData = JSON.stringify(this._structuredReview);
 
     return `
 <!DOCTYPE html>
 <html>
 <head>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; 
+        script-src 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; 
+        style-src 'unsafe-inline' https://cdnjs.cloudflare.com; 
+        img-src https:; 
+        connect-src https:;">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/11.1.1/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.8/purify.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
@@ -511,6 +533,25 @@ export class OllamaReviewPanel {
         .input-area { padding: 20px; border-top: 1px solid #333; display: flex; gap: 10px; }
         input { flex: 1; background: #222; color: white; border: 1px solid #444; padding: 8px; }
         #loading { display: none; color: gray; margin-left: 20px; }
+
+        /* Findings Styles */
+        .findings-container { margin-top: 24px; border-top: 2px solid #333; padding-top: 20px; }
+        .findings-title { font-size: 16px; font-weight: 600; margin-bottom: 16px; color: var(--vscode-descriptionForeground); display: flex; align-items: center; gap: 8px; }
+        .finding-item { background: var(--vscode-editor-inactiveSelectionBackground); border-radius: 6px; padding: 12px; margin-bottom: 12px; border-left: 4px solid #555; }
+        .finding-item.critical { border-left-color: #f44336; }
+        .finding-item.high { border-left-color: #ff9800; }
+        .finding-item.medium { border-left-color: #ffc107; }
+        .finding-item.low { border-left-color: #4caf50; }
+        .finding-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+        .finding-meta { font-size: 11px; opacity: 0.7; font-family: var(--vscode-editor-font-family); }
+        .finding-msg { font-size: 13px; line-height: 1.4; margin-bottom: 10px; }
+        .finding-actions { display: flex; gap: 8px; }
+        .action-btn { font-size: 11px; padding: 2px 8px; border-radius: 3px; cursor: pointer; border: 1px solid #444; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
+        .action-btn:hover { background: var(--vscode-button-secondaryHoverBackground); }
+        .action-btn.ignore-btn { color: #f44336; border-color: rgba(244, 67, 54, 0.4); }
+        .action-btn.ignore-btn:hover { background: rgba(244, 67, 54, 0.1); }
+        .action-btn.fix-btn { background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; }
+        .action-btn.fix-btn:hover { background: var(--vscode-button-hoverBackground); }
 
         /* Mermaid Diagram Styles */
         .mermaid { background: #1e1e1e; border-radius: 6px; padding: 16px; margin: 12px 0; overflow-x: auto; }
@@ -616,6 +657,7 @@ export class OllamaReviewPanel {
         const vscode = acquireVsCodeApi();
         let chatHistory = ${initialData};
         let metrics = ${metricsData};
+        let structuredReview = ${structuredReviewData};
         let metricsExpanded = true;
 
         function formatBytes(bytes) {
@@ -732,17 +774,123 @@ export class OllamaReviewPanel {
             vscode.postMessage({ command: 'copyReviewPrompt' });
         };
 
+        // Configure DOMPurify
+        const purifyConfig = {
+            ALLOWED_TAGS: [
+                'p', 'br', 'b', 'i', 'em', 'strong', 'a', 'ul', 'ol', 'li', 
+                'code', 'pre', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote',
+                'table', 'thead', 'tbody', 'tr', 'th', 'td', 'img'
+            ],
+            ALLOWED_ATTR: ['href', 'src', 'alt', 'title', 'class']
+        };
+
         function render() {
-            const container = document.getElementById('chat');
-            container.innerHTML = chatHistory.map(m => \`
+            // 1. Update Chat History
+            const chatContainer = document.getElementById('chat');
+            // Only update if chat container exists, otherwise it's initial load
+            if (chatContainer) {
+              chatContainer.innerHTML = chatHistory.map(m => \`
                 <div class="message \${m.role}">
                     <strong>\${m.role === 'user' ? 'You' : 'Ollama'}</strong>
-                    <div>\${marked.parse(m.content)}</div>
+                    <div>\${DOMPurify.sanitize(marked.parse(m.content), purifyConfig)}</div>
                 </div>
             \`).join('');
-            document.querySelectorAll('pre code').forEach(hljs.highlightElement);
-            container.scrollTop = container.scrollHeight;
+            }
+            
+            // 2. Update Findings Section
+            renderFindings();
+
+            // Highlight only new elements
+            document.querySelectorAll('#chat pre code:not([data-highlighted])').forEach(el => {
+                hljs.highlightElement(el);
+                el.setAttribute('data-highlighted', 'true');
+            });
+            
+            if (chatContainer) {
+                chatContainer.scrollTop = chatContainer.scrollHeight;
+            }
         }
+
+        function renderFindings() {
+            let wrapper = document.getElementById('findings-wrapper');
+            if (!wrapper) {
+                wrapper = document.createElement('div');
+                wrapper.id = 'findings-wrapper';
+                document.getElementById('chat').appendChild(wrapper);
+            }
+
+            if (!structuredReview?.findings || structuredReview.findings.length === 0) {
+                wrapper.innerHTML = '';
+                return;
+            }
+
+            const findingsHtml = \`
+                <div class="findings-container" id="findings-list">
+                  <div class="findings-title">
+                    <span>📋 Review Findings (\${structuredReview.findings.length})</span>
+                  </div>
+                  \${structuredReview.findings.map((f) => {
+                    const file = f.anchor?.file || '';
+                    const line = f.anchor?.line;
+                    const safeId = encodeURIComponent(f.id);
+                    return \`
+                      <div class="finding-item \${(f.severity || 'medium').toLowerCase()}">
+                        <div class="finding-header">
+                          <span class="finding-meta">\${file || 'General'}\${line ? ' : L' + line : ''}</span>
+                          <span class="finding-meta" style="font-weight: bold;">\${(f.severity || 'medium').toUpperCase()}</span>
+                        </div>
+                        <div class="finding-msg">\${DOMPurify.sanitize(marked.parse(f.summary), purifyConfig)}</div>
+                        <div class="finding-actions">
+                          \${file ? \`<button class="action-btn fix-btn" data-action="quickFix" data-id="\${safeId}">Quick Fix</button>\` : ''}
+                          <button class="action-btn ignore-btn" data-action="ignoreFinding" data-id="\${safeId}">Ignore</button>
+                        </div>
+                      </div>
+                    \`;
+                  }).join('')}
+                </div>
+            \`;
+            wrapper.innerHTML = findingsHtml;
+            
+            // Highlight findings code
+            document.querySelectorAll('#findings-wrapper pre code:not([data-highlighted])').forEach(el => {
+                hljs.highlightElement(el);
+                el.setAttribute('data-highlighted', 'true');
+            });
+        }
+
+        // Global event delegation for findings and other interactive elements
+        document.getElementById('chat').addEventListener('click', (e) => {
+          const btn = e.target.closest('button[data-action]');
+          if (!btn) return;
+          
+          const action = btn.getAttribute('data-action');
+          const id = decodeURIComponent(btn.getAttribute('data-id'));
+          
+          if (action === 'ignoreFinding') {
+            ignoreFinding(id);
+          } else if (action === 'quickFix') {
+            quickFix(id);
+          }
+        });
+
+        window.ignoreFinding = function(id) {
+          if (!structuredReview?.findings) return;
+          const finding = structuredReview.findings.find(f => f.id === id);
+          if (finding) {
+            vscode.postMessage({ command: 'ignoreFinding', finding });
+            // Remove from local list
+            structuredReview.findings = structuredReview.findings.filter(f => f.id !== id);
+            render();
+          }
+        };
+
+        window.quickFix = function(id) {
+          if (!structuredReview?.findings) return;
+          const finding = structuredReview.findings.find(f => f.id === id);
+          if (finding) {
+            vscode.postMessage({ command: 'quickFix', finding });
+          }
+        };
 
         window.exportReview = function(format) {
             vscode.postMessage({ command: 'exportReview', format: format });
