@@ -1,3 +1,10 @@
+# [3.62.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.61.0...v3.62.0) (2026-04-13)
+
+
+### Features
+
+* **findings:** add ignore finding functionality ([4e5d085](https://github.com/glorynguyen/ollama-code-review/commit/4e5d085f30a0964098056b60fc9a46bf7ef5e12a))
+
 # [3.61.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.60.0...v3.61.0) (2026-04-13)
 
 
