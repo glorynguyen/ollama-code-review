@@ -1,3 +1,10 @@
+# [3.63.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.62.0...v3.63.0) (2026-04-13)
+
+
+### Features
+
+* **findings:** implement ignore and quick fix actions for review findings ([4cfaf57](https://github.com/glorynguyen/ollama-code-review/commit/4cfaf57774d3266c0905ff220d541b4b4201f780))
+
 # [3.62.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.61.0...v3.62.0) (2026-04-13)
 
 
