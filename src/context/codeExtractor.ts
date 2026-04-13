@@ -75,6 +75,55 @@ export function extractSymbolBlocks(content: string, symbols: string[]): string 
 	return blocks.join('\n\n');
 }
 
+/**
+ * Identifies the exported symbols (functions / classes / const / etc.) whose
+ * definitions contain at least one of the modified lines.
+ *
+ * The algorithm mirrors the one used by {@link extractSymbolBlocks}:
+ * 1. Strip comments and string literals to avoid false bracket matches.
+ * 2. Scan each line for an `export` declaration to record `{ name, start, end }`.
+ * 3. For each named symbol, check whether any changed line falls within its range.
+ *
+ * @param content      - Full source file text.
+ * @param changedLines - Set of 1-based line numbers that were modified.
+ * @returns Names of affected exported symbols (may include `"default"`).
+ */
+export function findAffectedSymbols(content: string, changedLines: Set<number>): string[] {
+	const strippedContent = stripCommentsAndStrings(content);
+	const strippedLines = strippedContent.split('\n');
+
+	const symbolsInFile: { name: string; start: number; end: number }[] = [];
+
+	for (let i = 0; i < strippedLines.length; i++) {
+		const line = strippedLines[i];
+		const match = line.match(
+			/export\s+(?:declare\s+)?(?:async\s+)?(?:abstract\s+)?(?:function\s*\*?|class|const|let|var|interface|type|enum)\s+([\w$]+)/,
+		);
+
+		if (match) {
+			const name = match[1];
+			const end = findBlockEnd(strippedLines, i);
+			symbolsInFile.push({ name, start: i, end });
+		} else if (/^\s*export\s+default\b/.test(line)) {
+			const end = findBlockEnd(strippedLines, i);
+			symbolsInFile.push({ name: 'default', start: i, end });
+		}
+	}
+
+	const affected = new Set<string>();
+	for (const symbol of symbolsInFile) {
+		for (const lineNum of changedLines) {
+			// lineNum is 1-based; start/end are 0-based indices
+			if (lineNum >= symbol.start + 1 && lineNum <= symbol.end + 1) {
+				affected.add(symbol.name);
+				break;
+			}
+		}
+	}
+
+	return Array.from(affected);
+}
+
 // ---------------------------------------------------------------------------
 // Internal helpers — block location
 // ---------------------------------------------------------------------------

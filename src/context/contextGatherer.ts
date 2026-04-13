@@ -20,11 +20,11 @@ import {
 	ContextGatheringConfig,
 	ContextGatheringStats,
 } from './types';
-import { parseImports, extractChangedFiles } from './importParser';
+import { parseImports, extractChangedFiles, extractChangedLines } from './importParser';
 import { resolveImport, readFileContent, toRelativePath } from './fileResolver';
 import { findTestFiles } from './testDiscovery';
 import { getDiffFilterConfig, shouldIgnoreFile } from '../diffFilter';
-import { extractSymbolBlocks } from './codeExtractor';
+import { extractSymbolBlocks, findAffectedSymbols } from './codeExtractor';
 
 // ---------------------------------------------------------------------------
 // Defaults
@@ -228,6 +228,64 @@ export async function gatherContext(
 		contextFiles.push({ relativePath: relPath, content, reason, sourceFile, charCount });
 		return true;
 	};
+
+	// -----------------------------------------------------------------------
+	// Phase 0: Self-context extraction — extract only the changed symbols from
+	// the changed files themselves so the AI sees the exact code that was edited
+	// rather than the full (potentially large) file.
+	// -----------------------------------------------------------------------
+	const changedLinesMap = extractChangedLines(diff);
+	outputChannel?.appendLine(`\n--- Phase 0: Self-Context Extraction ---`);
+
+	// Run all file reads and symbol extractions in parallel, then apply budget
+	// sequentially to keep totalChars / contextFiles.length state consistent.
+	type Phase0Result = { relPath: string; affectedSymbols: string[]; extractedCode: string };
+	const phase0Results = (
+		await Promise.all(
+			changedPaths.map(async (relPath): Promise<Phase0Result | null> => {
+				const changedLines = changedLinesMap.get(relPath);
+				if (!changedLines) {
+					return null;
+				}
+
+				const fileUri = vscode.Uri.joinPath(workspaceRoot, relPath);
+				const fullContent = await readFileContent(fileUri);
+				if (!fullContent) {
+					return null;
+				}
+
+				const affectedSymbols = findAffectedSymbols(fullContent, changedLines);
+				if (affectedSymbols.length === 0) {
+					return null;
+				}
+
+				const extractedCode = extractSymbolBlocks(fullContent, affectedSymbols);
+				if (!extractedCode.trim()) {
+					return null;
+				}
+
+				return { relPath, affectedSymbols, extractedCode };
+			}),
+		)
+	).filter((r): r is Phase0Result => r !== null);
+
+	for (const { relPath, affectedSymbols, extractedCode } of phase0Results) {
+		if (contextFiles.length >= config.maxFiles || totalChars >= TOTAL_CHAR_BUDGET) {
+			break;
+		}
+
+		outputChannel?.appendLine(`  ${relPath}: affected symbols — ${affectedSymbols.join(', ')}`);
+
+		const remaining = TOTAL_CHAR_BUDGET - totalChars;
+		const content =
+			extractedCode.length > remaining
+				? extractedCode.slice(0, remaining) + '\n// … truncated for review context'
+				: extractedCode;
+
+		const charCount = content.length;
+		totalChars += charCount;
+		contextFiles.push({ relativePath: relPath, content, reason: 'import', sourceFile: relPath, charCount });
+	}
 
 	// -----------------------------------------------------------------------
 	// Phase 1: Resolve imports from changed files (with symbol-level extraction)

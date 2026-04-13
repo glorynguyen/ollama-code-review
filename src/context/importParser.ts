@@ -280,3 +280,58 @@ export function extractChangedFiles(diff: string): string[] {
 
 	return files;
 }
+
+/**
+ * Parses the diff to identify exactly which lines were modified in each file.
+ *
+ * For added lines (`+`), the new file's line number is recorded.
+ * For removed lines (`-`), the current position in the new file is recorded
+ * as "affected" so callers can map deletions to the surrounding symbol.
+ *
+ * @param diff - Unified diff text (e.g. `git diff` output).
+ * @returns Map from workspace-relative path to the set of 1-based line numbers
+ *   that were touched by the diff.
+ */
+export function extractChangedLines(diff: string): Map<string, Set<number>> {
+	const lineMap = new Map<string, Set<number>>();
+	const fileDiffs = diff.split(/(?=^diff --git)/m);
+
+	for (const fileDiff of fileDiffs) {
+		const match = fileDiff.match(/^diff --git a\/.*? b\/(.+?)$/m);
+		if (!match) {
+			continue;
+		}
+		const filePath = match[1];
+		const changedLines = new Set<number>();
+
+		const hunks = fileDiff.split(/(?=^@@)/m);
+		for (const hunk of hunks) {
+			const headerMatch = hunk.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+			if (!headerMatch) {
+				continue;
+			}
+
+			let currentLine = parseInt(headerMatch[1], 10);
+			const lines = hunk.split('\n').slice(1); // Skip hunk header
+
+			for (const line of lines) {
+				if (line.startsWith('+')) {
+					changedLines.add(currentLine);
+					currentLine++;
+				} else if (line.startsWith(' ')) {
+					currentLine++;
+				} else if (line.startsWith('-')) {
+					// Line removed: flag the current position as "affected" so the
+					// wrapping symbol is still identified for context.
+					changedLines.add(currentLine);
+				}
+			}
+		}
+
+		if (changedLines.size > 0) {
+			lineMap.set(filePath, changedLines);
+		}
+	}
+
+	return lineMap;
+}

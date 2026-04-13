@@ -297,10 +297,11 @@ export async function buildFunctionContext(
 	const imports = _extractImports(doc.getText());
 
 	// BFS call-graph expansion (same algorithm as buildSmartContext).
-	const COPY_MAX_DEPTH = 3;
-	const COPY_MAX_FUNCTIONS = 15;
-	const COPY_CHAR_BUDGET = 64_000;
-	const COPY_PER_FN = 8_000;
+	const config = vscode.workspace.getConfiguration('ollama-code-review');
+	const COPY_MAX_DEPTH = Math.max(1, config.get<number>('copyFunction.maxDepth') ?? 3);
+	const COPY_MAX_FUNCTIONS = Math.max(1, config.get<number>('copyFunction.maxFunctions') ?? 15);
+	const COPY_CHAR_BUDGET = Math.max(1000, config.get<number>('copyFunction.characterBudget') ?? 64_000);
+	const COPY_PER_FN = Math.max(100, config.get<number>('copyFunction.maxCharsPerFunction') ?? 8_000);
 
 	const entries: FunctionContextEntry[] = [];
 	let totalChars = 0;

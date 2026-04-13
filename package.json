@@ -1099,6 +1099,30 @@
           "default": "",
           "markdownDescription": "**F-015** — GitLab Personal Access Token with `api` scope for reviewing MRs and posting comments. Get one at your GitLab instance under **Settings > Access Tokens**."
         },
+        "ollama-code-review.copyFunction.maxDepth": {
+          "type": "integer",
+          "default": 3,
+          "minimum": 1,
+          "description": "Maximum depth for BFS call-graph traversal when copying functions."
+        },
+        "ollama-code-review.copyFunction.maxFunctions": {
+          "type": "integer",
+          "default": 15,
+          "minimum": 1,
+          "description": "Maximum total number of functions to include in the bundle (target + dependencies)."
+        },
+        "ollama-code-review.copyFunction.characterBudget": {
+          "type": "integer",
+          "default": 64000,
+          "minimum": 1000,
+          "description": "Total character limit for the copied function bundle."
+        },
+        "ollama-code-review.copyFunction.maxCharsPerFunction": {
+          "type": "integer",
+          "default": 8000,
+          "minimum": 100,
+          "description": "Maximum character limit for an individual function's body. Longer functions will be truncated."
+        },
         "ollama-code-review.gitlab.baseUrl": {
           "type": "string",
           "default": "https://gitlab.com",
