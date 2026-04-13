@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { escapeHtml } from '../utils';
+import { type ReviewFinding } from '../github/commentMapper';
 
 /**
  * Code Action Provider for "Fix This Issue" functionality
@@ -133,6 +134,7 @@ export class FixPreviewPanel {
 	private _fixedCode: string;
 	private _explanation: string;
 	private _issue: string;
+	private _finding?: ReviewFinding;
 
 	private constructor(
 		panel: vscode.WebviewPanel,
@@ -142,7 +144,8 @@ export class FixPreviewPanel {
 		fixedCode: string,
 		explanation: string,
 		issue: string,
-		languageId: string
+		languageId: string,
+		finding?: ReviewFinding
 	) {
 		this._panel = panel;
 		this._editor = editor;
@@ -151,6 +154,7 @@ export class FixPreviewPanel {
 		this._fixedCode = fixedCode;
 		this._explanation = explanation;
 		this._issue = issue;
+		this._finding = finding;
 
 		this._panel.webview.html = this._getHtmlForWebview(originalCode, fixedCode, explanation, issue, languageId);
 
@@ -161,6 +165,14 @@ export class FixPreviewPanel {
 				switch (message.command) {
 					case 'applyFix':
 						await this._applyFix();
+						break;
+					case 'ignoreFinding':
+						if (this._finding) {
+							await vscode.commands.executeCommand('ollama-code-review.ignoreFinding', this._finding);
+							this.dispose();
+						} else {
+							vscode.window.showInformationMessage('No structured finding associated with this fix to ignore.');
+						}
 						break;
 					case 'dismiss':
 						this.dispose();
@@ -179,7 +191,8 @@ export class FixPreviewPanel {
 		fixedCode: string,
 		explanation: string,
 		issue: string,
-		languageId: string
+		languageId: string,
+		finding?: ReviewFinding
 	) {
 		const column = vscode.ViewColumn.Beside;
 
@@ -191,6 +204,7 @@ export class FixPreviewPanel {
 			FixPreviewPanel.currentPanel._fixedCode = fixedCode;
 			FixPreviewPanel.currentPanel._explanation = explanation;
 			FixPreviewPanel.currentPanel._issue = issue;
+			FixPreviewPanel.currentPanel._finding = finding;
 			FixPreviewPanel.currentPanel._panel.webview.html =
 				FixPreviewPanel.currentPanel._getHtmlForWebview(originalCode, fixedCode, explanation, issue, languageId);
 			return;
@@ -211,7 +225,8 @@ export class FixPreviewPanel {
 			fixedCode,
 			explanation,
 			issue,
-			languageId
+			languageId,
+			finding
 		);
 	}
 
@@ -250,6 +265,7 @@ export class FixPreviewPanel {
 		const escapedFixed = escapeHtml(fixedCode);
 		const escapedExplanation = escapeHtml(explanation);
 		const escapedIssue = escapeHtml(issue);
+		const showIgnore = this._finding !== undefined;
 
 		return `
 <!DOCTYPE html>
@@ -309,6 +325,14 @@ export class FixPreviewPanel {
 		}
 		button.secondary:hover {
 			background: var(--vscode-button-secondaryHoverBackground);
+		}
+		button.danger {
+			background: var(--vscode-errorForeground);
+			color: #fff;
+			opacity: 0.85;
+		}
+		button.danger:hover {
+			opacity: 1;
 		}
 		.diff-container {
 			display: grid;
@@ -371,6 +395,7 @@ export class FixPreviewPanel {
 	</div>
 	<div class="actions">
 		<button onclick="applyFix()">Apply Fix</button>
+		${showIgnore ? `<button class="danger" onclick="ignoreFinding()">Ignore Finding</button>` : ''}
 		<button class="secondary" onclick="dismiss()">Dismiss</button>
 	</div>
 	<div class="diff-container">
@@ -396,6 +421,10 @@ export class FixPreviewPanel {
 
 		function applyFix() {
 			vscode.postMessage({ command: 'applyFix' });
+		}
+
+		function ignoreFinding() {
+			vscode.postMessage({ command: 'ignoreFinding' });
 		}
 
 		function dismiss() {

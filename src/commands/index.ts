@@ -163,6 +163,7 @@ import {
 	toLegacyReviewFinding,
 	type ValidatedStructuredReviewResult,
 } from '../reviewFindings';
+import { type ReviewFinding } from '../github/commentMapper';
 import { scanDiffForSecrets, toStructuredFindings, type SecretFinding } from '../secretScanner';
 import { getModelRecommendation, extractLanguagesFromDiff, bucketDiffSize } from '../modelAdvisor';
 import type { ModelAdvisorInput } from '../modelAdvisor';
@@ -594,6 +595,7 @@ export async function activate(context: vscode.ExtensionContext) {
 							result.explanation,
 							issue,
 							languageId,
+							finding as ReviewFinding
 						);
 					}
 				);
@@ -604,6 +606,37 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 	);
 	context.subscriptions.push(fixFindingCommand);
+
+	// F-033: Ignore Finding (removes from UI and recalculates score)
+	const ignoreFindingCommand = vscode.commands.registerCommand(
+		'ollama-code-review.ignoreFinding',
+		async (finding: ReviewFinding) => {
+			if (!finding) { return; }
+
+			// 1. Remove from decorations manager
+			ReviewDecorationsManager.getInstance().removeFinding(finding);
+
+			// 2. Remove from tree provider
+			findingsTreeProvider?.removeFinding(finding);
+
+			// 3. Recalculate and update the current score
+			const summary = ReviewDecorationsManager.getInstance().getFindingSummary();
+			const scoreResult = computeScore(summary);
+			showScoreStatusBar(scoreResult.score);
+
+			// 4. Update the history store and history panel if open
+			if (extensionGlobalStoragePath) {
+				const store = ReviewScoreStore.getInstance(extensionGlobalStoragePath);
+				store.updateLastScore(summary);
+				if (ReviewHistoryPanel.currentPanel) {
+					ReviewHistoryPanel.createOrShow(store.getAllScores());
+				}
+			}
+
+			vscode.window.setStatusBarMessage(`$(check) Finding ignored. New score: ${scoreResult.score}/100`, 3000);
+		}
+	);
+	context.subscriptions.push(ignoreFindingCommand);
 
 	// F-038: Conversational follow-up for a finding (Ask AI)
 	const askFindingCommand = vscode.commands.registerCommand(

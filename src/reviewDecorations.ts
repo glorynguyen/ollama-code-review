@@ -180,11 +180,30 @@ export class ReviewDecorationsManager {
 		this.clearAllEditorDecorations();
 	}
 
+	/** Remove a specific finding and re-apply decorations. */
+	removeFinding(finding: ReviewFinding): void {
+		const index = this.currentFindings.findIndex(f =>
+			f.file === finding.file &&
+			f.line === finding.line &&
+			f.severity === finding.severity &&
+			f.message === finding.message
+		);
+
+		if (index !== -1) {
+			this.currentFindings.splice(index, 1);
+			this.buildFileDecorations();
+			this.clearAllEditorDecorations();
+			if (this.annotationsVisible) {
+				this.applyToAllVisibleEditors();
+			}
+		}
+	}
+
 	/** Get the current finding count by severity. */
 	getFindingSummary(): Record<Severity, number> {
 		const counts: Record<Severity, number> = { critical: 0, high: 0, medium: 0, low: 0, info: 0 };
 		for (const f of this.currentFindings) {
-			if (f.file) { counts[f.severity]++; }
+			counts[f.severity]++;
 		}
 		return counts;
 	}

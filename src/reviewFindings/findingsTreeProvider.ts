@@ -86,6 +86,22 @@ export class FindingsTreeProvider implements vscode.TreeDataProvider<TreeElement
 		this._onDidChangeTreeData.fire();
 	}
 
+	/** Remove a specific finding and refresh the tree. */
+	removeFinding(finding: ReviewFinding): void {
+		const index = this.findings.findIndex(f =>
+			f.file === finding.file &&
+			f.line === finding.line &&
+			f.severity === finding.severity &&
+			f.message === finding.message
+		);
+
+		if (index !== -1) {
+			this.findings.splice(index, 1);
+			this.buildTree();
+			this._onDidChangeTreeData.fire();
+		}
+	}
+
 	/** Get all current findings (for external consumers). */
 	getFindings(): readonly ReviewFinding[] {
 		return this.findings;

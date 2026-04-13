@@ -145,6 +145,19 @@ export class ReviewScoreStore {
 		this._save();
 	}
 
+	/** Update the most recent score entry with new counts (e.g. after ignoring a finding). */
+	updateLastScore(counts: FindingCounts): void {
+		if (this._scores.length > 0) {
+			const scoreResult = computeScore(counts);
+			this._scores[0] = {
+				...this._scores[0],
+				...scoreResult,
+				findingCounts: { ...counts }
+			};
+			this._save();
+		}
+	}
+
 	getAllScores(): ReviewScore[] {
 		return this._scores;
 	}
