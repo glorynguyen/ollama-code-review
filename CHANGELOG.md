@@ -1,3 +1,10 @@
+# [3.61.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.60.0...v3.61.0) (2026-04-13)
+
+
+### Features
+
+* **context:** add self-context extraction and configurable copy limits ([b7cadb6](https://github.com/glorynguyen/ollama-code-review/commit/b7cadb6506abdaa5f8bc05edf2c8f518fe9fad03))
+
 # [3.60.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.59.0...v3.60.0) (2026-04-12)
 
 
