@@ -2,28 +2,19 @@ import * as vscode from 'vscode';
 import axios from 'axios';
 import * as path from 'path';
 import { OllamaReviewPanel } from '../reviewProvider';
-import { ChatSidebarProvider } from '../chat/sidebarProvider';
 import { SkillsService } from '../skillsService';
 import { SkillsBrowserPanel } from '../skillsBrowserPanel';
 import { getOllamaModel, resolvePrompt } from '../utils';
 import { filterDiff, getFilterSummary, getDiffFilterConfigWithYaml } from '../diffFilter';
-import { maybeShowSetupGuide, showSetupGuide } from '../setupGuide';
 import {
 	getEffectiveReviewPrompt,
 	getEffectiveCommitPrompt,
 	getEffectiveFrameworks,
-	clearProjectConfigCache
 } from '../config/promptLoader';
 import {
-	ReviewProfile,
-	BUILTIN_PROFILES,
-	COMPLIANCE_PROFILES,
 	getAllProfiles,
 	getActiveProfileName,
-	setActiveProfileName,
 	getActiveProfile,
-	saveCustomProfile,
-	deleteCustomProfile,
 	buildProfilePromptContext
 } from '../profiles';
 import {
@@ -85,7 +76,6 @@ import { generateMermaidDiagram } from '../diagramGenerator';
 import { parseIssueCategories, extractFilesFromDiff, AnalyticsDashboardPanel } from '../analytics';
 import {
 	loadKnowledgeBase,
-	clearKnowledgeCache,
 	getKnowledgeBaseConfig,
 	formatKnowledgeForPrompt,
 	matchKnowledge,
@@ -113,10 +103,9 @@ import {
 	isEmbeddingModelAvailable,
 	DEFAULT_RAG_CONFIG,
 } from '../rag';
-import { loadRulesDirectory, clearRulesCache } from '../rules/loader';
+import { loadRulesDirectory } from '../rules/loader';
 import {
 	loadContentstackSchemas,
-	clearSchemaCache,
 	getContentstackConfig,
 	parseContentstackAccesses,
 	validateFieldAccesses,
@@ -138,10 +127,6 @@ import {
 	OllamaSuggestionProvider,
 	updateModelStatusBar,
 	updateProfileStatusBar,
-	distinctByProperty,
-	addRecentHfModel,
-	showHfModelPicker,
-	showOpenAICompatiblePicker,
 } from './uiHelpers';
 import {
 	getOllamaSuggestion,
@@ -163,7 +148,6 @@ import {
 	toLegacyReviewFinding,
 	type ValidatedStructuredReviewResult,
 } from '../reviewFindings';
-import { type ReviewFinding } from '../github/commentMapper';
 import { scanDiffForSecrets, toStructuredFindings, type SecretFinding } from '../secretScanner';
 import { getModelRecommendation, extractLanguagesFromDiff, bucketDiffSize } from '../modelAdvisor';
 import type { ModelAdvisorInput } from '../modelAdvisor';
@@ -171,6 +155,10 @@ import { AutoReviewManager } from '../autoReview';
 import { MonorepoResolver } from '../autoReview/monorepo';
 import { buildFunctionContext, type FunctionContextEntry } from '../autoReview/smartContext';
 import { mcpBridge, createMcpServer, type McpServerInstance } from '../mcp';
+import { type CommandContext } from './commandContext';
+import { registerFindingsCommands } from './findingsCommands';
+import { registerReloadCommands } from './reloadCommands';
+import { registerSettingsCommands } from './settingsCommands';
 
 export { checkActiveModels, getLastPerformanceMetrics, clearPerformanceMetrics };
 export type { PerformanceMetrics };
@@ -382,884 +370,31 @@ export async function activate(context: vscode.ExtensionContext) {
 	profileStatusBarItem.show();
 	context.subscriptions.push(profileStatusBarItem);
 
-	// F-031: Register Findings Explorer tree view
-	findingsTreeProvider = new FindingsTreeProvider();
-	const findingsTreeView = vscode.window.createTreeView('ai-review.findings-explorer', {
-		treeDataProvider: findingsTreeProvider,
-		showCollapseAll: true,
-	});
-	context.subscriptions.push(findingsTreeView);
+	const commandContext: CommandContext = {
+		extensionContext: context,
+		outputChannel,
+		getGlobalStoragePath: () => extensionGlobalStoragePath,
+		showScoreStatusBar,
+		suggestionProvider,
+	};
 
-	// F-031: Go to finding command (navigates to file:line)
-	const goToFindingCommand = vscode.commands.registerCommand(
-		'ollama-code-review.goToFinding',
-		async (filePath: string, line?: number) => {
-			if (!filePath) { return; }
-			// Try to find the file in the workspace
-			const workspaceFolders = vscode.workspace.workspaceFolders;
-			let fileUri: vscode.Uri | undefined;
-
-			if (workspaceFolders) {
-				for (const folder of workspaceFolders) {
-					const candidateUri = vscode.Uri.joinPath(folder.uri, filePath);
-					try {
-						await vscode.workspace.fs.stat(candidateUri);
-						fileUri = candidateUri;
-						break;
-					} catch {
-						// File not found in this folder, try next
-					}
-				}
-			}
-
-			if (!fileUri) {
-				// Try as absolute path
-				try {
-					fileUri = vscode.Uri.file(filePath);
-					await vscode.workspace.fs.stat(fileUri);
-				} catch {
-					vscode.window.showWarningMessage(`Could not find file: ${filePath}`);
-					return;
-				}
-			}
-
-			const lineNum = line ? Math.max(0, line - 1) : 0;
-			const doc = await vscode.workspace.openTextDocument(fileUri);
-			const editor = await vscode.window.showTextDocument(doc, {
-				selection: new vscode.Range(lineNum, 0, lineNum, 0),
-				preserveFocus: false,
-			});
-			editor.revealRange(
-				new vscode.Range(lineNum, 0, lineNum, 0),
-				vscode.TextEditorRevealType.InCenter,
-			);
-		}
-	);
-	context.subscriptions.push(goToFindingCommand);
-
-	// F-031: Clear findings command
-	const clearFindingsCommand = vscode.commands.registerCommand(
-		'ollama-code-review.clearFindings',
-		() => {
-			findingsTreeProvider?.clear();
-			vscode.commands.executeCommand('setContext', 'ollama-code-review.hasFindings', false);
-		}
-	);
-	context.subscriptions.push(clearFindingsCommand);
-
-	// F-034: Filter findings by severity
-	const filterFindingsCommand = vscode.commands.registerCommand(
-		'ollama-code-review.filterFindings',
-		async () => {
-			if (!findingsTreeProvider || findingsTreeProvider.count === 0) {
-				vscode.window.showInformationMessage('No findings to filter. Run a review first.');
-				return;
-			}
-			await findingsTreeProvider.showFilterPicker();
-			void vscode.commands.executeCommand('setContext', 'ollama-code-review.findingsFiltered', findingsTreeProvider.isFiltered);
-			if (findingsTreeProvider.isFiltered) {
-				findingsTreeView.description = `Showing ${findingsTreeProvider.filteredCount} of ${findingsTreeProvider.count}`;
-			} else {
-				findingsTreeView.description = undefined;
-			}
-		}
-	);
-	context.subscriptions.push(filterFindingsCommand);
-
-	// F-034: Show all findings (clear filter)
-	const showAllFindingsCommand = vscode.commands.registerCommand(
-		'ollama-code-review.showAllFindings',
-		() => {
-			if (!findingsTreeProvider) { return; }
-			findingsTreeProvider.showAll();
-			void vscode.commands.executeCommand('setContext', 'ollama-code-review.findingsFiltered', false);
-			findingsTreeView.description = undefined;
-		}
-	);
-	context.subscriptions.push(showAllFindingsCommand);
-
-	// F-034: Export findings as Markdown
-	const exportFindingsCommand = vscode.commands.registerCommand(
-		'ollama-code-review.exportFindings',
-		async () => {
-			if (!findingsTreeProvider || findingsTreeProvider.count === 0) {
-				vscode.window.showInformationMessage('No findings to export. Run a review first.');
-				return;
-			}
-			const markdown = findingsTreeProvider.exportAsMarkdown();
-			const choice = await vscode.window.showQuickPick(
-				[
-					{ label: '$(clippy) Copy to Clipboard', action: 'clipboard' },
-					{ label: '$(markdown) Save as Markdown File', action: 'save' },
-				],
-				{ placeHolder: 'Export findings as...' }
-			);
-			if (!choice) { return; }
-			if (choice.action === 'clipboard') {
-				await vscode.env.clipboard.writeText(markdown);
-				vscode.window.showInformationMessage(`Copied ${findingsTreeProvider.filteredCount} findings to clipboard.`);
-			} else {
-				const uri = await vscode.window.showSaveDialog({
-					defaultUri: vscode.Uri.file('review-findings.md'),
-					filters: { 'Markdown': ['md'] },
-				});
-				if (uri) {
-					await vscode.workspace.fs.writeFile(uri, Buffer.from(markdown, 'utf8'));
-					const doc = await vscode.workspace.openTextDocument(uri);
-					await vscode.window.showTextDocument(doc);
-				}
-			}
-		}
-	);
-	context.subscriptions.push(exportFindingsCommand);
-
-	// F-033: Quick Fix from Review Findings
-	const fixFindingCommand = vscode.commands.registerCommand(
-		'ollama-code-review.fixFinding',
-		async (findingOrElement?: unknown) => {
-			try {
-				// Resolve the finding from either a direct finding object, tree element, or tree provider
-				let finding: { severity: string; message: string; file?: string; line?: number; suggestion?: string } | undefined;
-
-				if (findingOrElement && typeof findingOrElement === 'object' && 'message' in findingOrElement && 'severity' in findingOrElement) {
-					// Direct finding object (from command link or programmatic call)
-					finding = findingOrElement as { severity: string; message: string; file?: string; line?: number; suggestion?: string };
-				} else if (findingOrElement && findingsTreeProvider) {
-					// Tree element from inline button — extract via provider
-					finding = findingsTreeProvider.getFindingFromElement(findingOrElement);
-				}
-
-				if (!finding || !finding.file) {
-					vscode.window.showWarningMessage('No file reference found for this finding. Cannot generate a fix.');
-					return;
-				}
-
-				// Resolve the file URI in the workspace
-				const workspaceFolders = vscode.workspace.workspaceFolders;
-				let fileUri: vscode.Uri | undefined;
-				if (workspaceFolders) {
-					for (const folder of workspaceFolders) {
-						const candidateUri = vscode.Uri.joinPath(folder.uri, finding.file);
-						try {
-							await vscode.workspace.fs.stat(candidateUri);
-							fileUri = candidateUri;
-							break;
-						} catch { /* try next folder */ }
-					}
-				}
-				if (!fileUri) {
-					try {
-						fileUri = vscode.Uri.file(finding.file);
-						await vscode.workspace.fs.stat(fileUri);
-					} catch {
-						vscode.window.showWarningMessage(`Could not find file: ${finding.file}`);
-						return;
-					}
-				}
-
-				// Open the document and extract surrounding code
-				const doc = await vscode.workspace.openTextDocument(fileUri);
-				const targetLine = finding.line ? Math.max(0, finding.line - 1) : 0;
-				const contextLines = 15; // lines of context above and below
-				const startLine = Math.max(0, targetLine - contextLines);
-				const endLine = Math.min(doc.lineCount - 1, targetLine + contextLines);
-				const codeRange = new vscode.Range(startLine, 0, endLine, doc.lineAt(endLine).text.length);
-				const codeSnippet = doc.getText(codeRange);
-				const languageId = doc.languageId;
-
-				// Build the issue description from the finding
-				const issue = `[${finding.severity.toUpperCase()}] ${finding.message}${finding.suggestion ? '\n\nSuggested fix:\n' + finding.suggestion : ''}`;
-
-				// Show the file in the editor
-				const editor = await vscode.window.showTextDocument(doc, {
-					selection: new vscode.Range(targetLine, 0, targetLine, 0),
-					preserveFocus: false,
-				});
-				editor.revealRange(
-					new vscode.Range(targetLine, 0, targetLine, 0),
-					vscode.TextEditorRevealType.InCenter,
-				);
-
-				// Call AI to generate the fix
-				await vscode.window.withProgress(
-					{ location: vscode.ProgressLocation.Notification, title: 'Generating fix for finding...', cancellable: false },
-					async () => {
-						const result = await generateFix(codeSnippet, issue, languageId);
-
-						// Show fix preview panel
-						FixPreviewPanel.createOrShow(
-							editor,
-							codeRange,
-							codeSnippet,
-							result.code,
-							result.explanation,
-							issue,
-							languageId,
-							finding as ReviewFinding
-						);
-					}
-				);
-			} catch (err) {
-				vscode.window.showErrorMessage(`Failed to generate fix: ${err instanceof Error ? err.message : String(err)}`);
-				outputChannel.appendLine(`[F-033 fixFinding] Error: ${err}`);
-			}
-		}
-	);
-	context.subscriptions.push(fixFindingCommand);
-
-	// F-033: Ignore Finding (removes from UI and recalculates score)
-	const ignoreFindingCommand = vscode.commands.registerCommand(
-		'ollama-code-review.ignoreFinding',
-		async (finding: ReviewFinding) => {
-			if (!finding) { return; }
-
-			// 1. Remove from decorations manager
-			ReviewDecorationsManager.getInstance().removeFinding(finding);
-
-			// 2. Remove from tree provider
-			findingsTreeProvider?.removeFinding(finding);
-
-			// 3. Recalculate and update the current score
-			const summary = ReviewDecorationsManager.getInstance().getFindingSummary();
-			const scoreResult = computeScore(summary);
-			showScoreStatusBar(scoreResult.score);
-
-			// 4. Update the history store and history panel if open
-			if (extensionGlobalStoragePath) {
-				const store = ReviewScoreStore.getInstance(extensionGlobalStoragePath);
-				store.updateLastScore(summary);
-				if (ReviewHistoryPanel.currentPanel) {
-					ReviewHistoryPanel.createOrShow(store.getAllScores());
-				}
-			}
-
-			vscode.window.setStatusBarMessage(`$(check) Finding ignored. New score: ${scoreResult.score}/100`, 3000);
-		}
-	);
-	context.subscriptions.push(ignoreFindingCommand);
-
-	// F-038: Conversational follow-up for a finding (Ask AI)
-	const askFindingCommand = vscode.commands.registerCommand(
-		'ollama-code-review.askFinding',
-		async (findingOrElement?: unknown) => {
-			try {
-				const provider = ChatSidebarProvider.getInstance();
-				if (!provider) {
-					vscode.window.showErrorMessage('Chat sidebar is not available yet. Please reopen the extension.');
-					return;
-				}
-
-				// Resolve the finding from either a direct finding object or tree element
-				let finding: { severity: string; message: string; file?: string; line?: number; suggestion?: string } | undefined;
-				if (findingOrElement && typeof findingOrElement === 'object' && 'message' in findingOrElement && 'severity' in findingOrElement) {
-					finding = findingOrElement as { severity: string; message: string; file?: string; line?: number; suggestion?: string };
-				} else if (findingOrElement && findingsTreeProvider) {
-					finding = findingsTreeProvider.getFindingFromElement(findingOrElement);
-				}
-
-				if (!finding) {
-					vscode.window.showWarningMessage('No finding selected.');
-					return;
-				}
-
-				const detailLines = [
-					'Finding Details:',
-					`Severity: ${finding.severity}`,
-					`Message: ${finding.message}`,
-					finding.file && finding.file !== '(no file reference)' ? `File: ${finding.file}` : '',
-					finding.line ? `Line: ${finding.line}` : '',
-					finding.suggestion ? `Suggestion: ${finding.suggestion}` : '',
-				].filter(Boolean);
-
-				let context = detailLines.join('\n');
-
-				if (finding.file && finding.file !== '(no file reference)') {
-					const workspaceFolders = vscode.workspace.workspaceFolders;
-					let fileUri: vscode.Uri | undefined;
-					if (workspaceFolders) {
-						for (const folder of workspaceFolders) {
-							const candidateUri = vscode.Uri.joinPath(folder.uri, finding.file);
-							try {
-								await vscode.workspace.fs.stat(candidateUri);
-								fileUri = candidateUri;
-								break;
-							} catch { /* try next folder */ }
-						}
-					}
-					if (!fileUri) {
-						try {
-							fileUri = vscode.Uri.file(finding.file);
-							await vscode.workspace.fs.stat(fileUri);
-						} catch {
-							vscode.window.showWarningMessage(`Could not find file: ${finding.file}. Starting chat without code snippet.`);
-						}
-					}
-
-					if (fileUri) {
-						const doc = await vscode.workspace.openTextDocument(fileUri);
-						if (doc.lineCount > 0) {
-							const contextLines = 8;
-							const targetLine = finding.line && finding.line >= 1 && finding.line <= doc.lineCount
-								? finding.line - 1
-								: 0;
-							const startLine = Math.max(0, targetLine - contextLines);
-							const endLine = Math.min(doc.lineCount - 1, targetLine + contextLines);
-							const codeRange = new vscode.Range(startLine, 0, endLine, doc.lineAt(endLine).text.length);
-							const codeSnippet = doc.getText(codeRange);
-							if (codeSnippet.trim()) {
-								const rangeLabel = `${finding.file}:${startLine + 1}-${endLine + 1}`;
-								context += `\n\nCode Snippet (${rangeLabel}):\n\`\`\`${doc.languageId}\n${codeSnippet}\n\`\`\``;
-							}
-						}
-					}
-				}
-
-				const titleBase = finding.message.replace(/\s+/g, ' ').trim();
-				const titleSuffix = titleBase.length > 48 ? `${titleBase.slice(0, 45)}...` : titleBase;
-				const title = titleSuffix ? `Finding (${finding.severity}): ${titleSuffix}` : 'Finding Follow-up';
-
-				await provider.handleDiscussFinding(context, title);
-			} catch (err) {
-				vscode.window.showErrorMessage(`Failed to open chat for finding: ${err instanceof Error ? err.message : String(err)}`);
-				outputChannel.appendLine(`[F-038 askFinding] Error: ${err}`);
-			}
-		}
-	);
-	context.subscriptions.push(askFindingCommand);
-
-	// F-044: View Diff for a finding — opens VS Code's native diff editor
-	let lastDiffBeforeUri: vscode.Uri | undefined;
-	const viewFindingDiffCommand = vscode.commands.registerCommand(
-		'ollama-code-review.viewFindingDiff',
-		async (findingOrElement?: unknown) => {
-			try {
-				// Resolve the finding from direct object, FindingNode, or FileNode
-				let finding: { severity: string; message: string; file?: string; line?: number } | undefined;
-				let filePath: string | undefined;
-
-				if (findingOrElement && typeof findingOrElement === 'object' && 'message' in findingOrElement && 'severity' in findingOrElement) {
-					finding = findingOrElement as { severity: string; message: string; file?: string; line?: number };
-					filePath = finding.file;
-				} else if (findingOrElement && findingsTreeProvider) {
-					finding = findingsTreeProvider.getFindingFromElement(findingOrElement);
-					if (finding) {
-						filePath = finding.file;
-					} else {
-						// FileNode: get file path and first finding for scroll target
-						filePath = findingsTreeProvider.getFilePathFromElement(findingOrElement);
-						finding = findingsTreeProvider.getFirstFindingForFile(findingOrElement);
-					}
-				}
-
-				if (!filePath || filePath === '(no file reference)') {
-					vscode.window.showWarningMessage('No file reference found for this finding.');
-					return;
-				}
-
-				// Resolve the file URI in the workspace
-				const workspaceFolders = vscode.workspace.workspaceFolders;
-				let fileUri: vscode.Uri | undefined;
-				if (workspaceFolders) {
-					for (const folder of workspaceFolders) {
-						const candidateUri = vscode.Uri.joinPath(folder.uri, filePath);
-						try {
-							await vscode.workspace.fs.stat(candidateUri);
-							fileUri = candidateUri;
-							break;
-						} catch { /* try next folder */ }
-					}
-				}
-				if (!fileUri) {
-					try {
-						fileUri = vscode.Uri.file(filePath);
-						await vscode.workspace.fs.stat(fileUri);
-					} catch {
-						vscode.window.showWarningMessage(`Could not find file: ${filePath}`);
-						return;
-					}
-				}
-
-				// Determine repo root and relative path
-				const workspaceFolder = vscode.workspace.getWorkspaceFolder(fileUri);
-				const repoRoot = workspaceFolder?.uri.fsPath;
-				if (!repoRoot) {
-					vscode.window.showWarningMessage('Could not determine workspace root.');
-					return;
-				}
-				const relativePath = path.relative(repoRoot, fileUri.fsPath).replace(/\\/g, '/');
-
-				// Get "before" content from git HEAD
-				let beforeContent = '';
-				try {
-					beforeContent = await runGitCommand(repoRoot, ['show', `HEAD:${relativePath}`]);
-				} catch {
-					// File is new/untracked — empty "before" shows all lines as additions
-					beforeContent = '';
-				}
-
-				// Clean up previous virtual document
-				if (lastDiffBeforeUri) {
-					suggestionProvider.deleteContent(lastDiffBeforeUri);
-				}
-
-				// Create virtual URI for "before" content using existing provider
-				const ts = Date.now();
-				const beforeUri = vscode.Uri.parse(`ollama-suggestion:diff-before/${path.basename(filePath)}?ts=${ts}`);
-				suggestionProvider.setContent(beforeUri, beforeContent);
-				lastDiffBeforeUri = beforeUri;
-
-				// Open the native diff editor
-				const severity = finding?.severity ? ` [${finding.severity.toUpperCase()}]` : '';
-				const diffTitle = `${filePath}${severity} — Review Diff`;
-				await vscode.commands.executeCommand('vscode.diff', beforeUri, fileUri, diffTitle, {
-					preview: true,
-				});
-
-				// Scroll to the finding's line after the diff editor opens
-				if (finding?.line) {
-					setTimeout(() => {
-						const editor = vscode.window.activeTextEditor;
-						if (editor) {
-							const lineNum = Math.max(0, finding!.line! - 1);
-							const range = new vscode.Range(lineNum, 0, lineNum, 0);
-							editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
-						}
-					}, 300);
-				}
-			} catch (err) {
-				vscode.window.showErrorMessage(`Failed to open diff viewer: ${err instanceof Error ? err.message : String(err)}`);
-				outputChannel.appendLine(`[F-044 viewFindingDiff] Error: ${err}`);
-			}
-		}
-	);
-	context.subscriptions.push(viewFindingDiffCommand);
+	const findingsCommands = registerFindingsCommands(commandContext);
+	findingsTreeProvider = findingsCommands.provider;
+	context.subscriptions.push(...findingsCommands.disposables);
 
 	// Register profile selection command
-	const selectProfileCommand = vscode.commands.registerCommand('ollama-code-review.selectProfile', async () => {
-		const profiles = getAllProfiles(context);
-		const currentName = getActiveProfileName(context);
-
-		const makeItem = (p: ReviewProfile) => ({
-			label: p.name === currentName ? `$(check) ${p.name}` : p.name,
-			description: p.description,
-			detail: `${p.severity} severity | ${p.focusAreas.length} focus areas${p.includeExplanations ? ' | detailed explanations' : ''}`,
-			profileName: p.name,
-			kind: vscode.QuickPickItemKind.Default
-		});
-
-		// Partition profiles into built-in, compliance, and custom groups
-		const builtinNames = new Set(BUILTIN_PROFILES.map(p => p.name));
-		const complianceNames = new Set(COMPLIANCE_PROFILES.map(p => p.name));
-		const builtinItems = profiles.filter(p => builtinNames.has(p.name)).map(makeItem);
-		const complianceItems = profiles.filter(p => complianceNames.has(p.name)).map(makeItem);
-		const customItems = profiles.filter(p => !builtinNames.has(p.name) && !complianceNames.has(p.name)).map(makeItem);
-
-		const items: Array<{ label: string; description?: string; detail?: string; profileName: string; kind?: vscode.QuickPickItemKind }> = [
-			...builtinItems,
-			{ label: 'Compliance', profileName: '', kind: vscode.QuickPickItemKind.Separator },
-			...complianceItems,
-		];
-
-		if (customItems.length > 0) {
-			items.push({ label: 'Custom', profileName: '', kind: vscode.QuickPickItemKind.Separator });
-			items.push(...customItems);
-		}
-
-		// Add management options at the bottom
-		items.push(
-			{ label: '', description: '', detail: '', profileName: '', kind: vscode.QuickPickItemKind.Separator },
-			{ label: '$(add) Create Custom Profile...', description: 'Define a new review profile', detail: '', profileName: '__create__' },
-			{ label: '$(trash) Delete Custom Profile...', description: 'Remove a user-defined profile', detail: '', profileName: '__delete__' }
-		);
-
-		const selected = await vscode.window.showQuickPick(items, {
-			placeHolder: `Current: ${currentName} | Select a review profile`,
-			matchOnDescription: true,
-			matchOnDetail: true
-		});
-
-		if (!selected || !selected.profileName) {
-			return;
-		}
-
-		if (selected.profileName === '__create__') {
-			const name = await vscode.window.showInputBox({
-				prompt: 'Profile name (lowercase, no spaces)',
-				placeHolder: 'e.g., api-review',
-				validateInput: (v) => {
-					if (!v || !v.trim()) { return 'Name is required'; }
-					if (/\s/.test(v)) { return 'No spaces allowed'; }
-					if (v !== v.toLowerCase()) { return 'Must be lowercase'; }
-					return undefined;
-				}
-			});
-			if (!name) { return; }
-
-			const description = await vscode.window.showInputBox({
-				prompt: 'Short description',
-				placeHolder: 'e.g., Focus on REST API design and error handling'
-			});
-			if (description === undefined) { return; }
-
-			const focusInput = await vscode.window.showInputBox({
-				prompt: 'Focus areas (comma-separated)',
-				placeHolder: 'e.g., REST conventions, Error responses, Input validation'
-			});
-			if (!focusInput) { return; }
-
-			const severityPick = await vscode.window.showQuickPick(
-				['lenient', 'balanced', 'strict'],
-				{ placeHolder: 'Severity level' }
-			);
-			if (!severityPick) { return; }
-
-			const newProfile: ReviewProfile = {
-				name,
-				description: description || name,
-				focusAreas: focusInput.split(',').map(s => s.trim()).filter(Boolean),
-				severity: severityPick as 'lenient' | 'balanced' | 'strict',
-				includeExplanations: severityPick !== 'strict'
-			};
-
-			await saveCustomProfile(context, newProfile);
-			await setActiveProfileName(context, name);
-			updateProfileStatusBar(profileStatusBarItem, context);
-			vscode.window.showInformationMessage(`Created and activated profile: ${name}`);
-			return;
-		}
-
-		if (selected.profileName === '__delete__') {
-			const customProfiles = getAllProfiles(context).filter(
-				p => !BUILTIN_PROFILES.some(b => b.name === p.name) && !COMPLIANCE_PROFILES.some(c => c.name === p.name)
-			);
-			if (customProfiles.length === 0) {
-				vscode.window.showInformationMessage('No custom profiles to delete.');
-				return;
-			}
-			const toDelete = await vscode.window.showQuickPick(
-				customProfiles.map(p => ({ label: p.name, description: p.description })),
-				{ placeHolder: 'Select a custom profile to delete' }
-			);
-			if (toDelete) {
-				const deleted = await deleteCustomProfile(context, toDelete.label);
-				if (deleted) {
-					updateProfileStatusBar(profileStatusBarItem, context);
-					vscode.window.showInformationMessage(`Deleted profile: ${toDelete.label}`);
-				}
-			}
-			return;
-		}
-
-		await setActiveProfileName(context, selected.profileName);
-		updateProfileStatusBar(profileStatusBarItem, context);
-		vscode.window.showInformationMessage(`Review profile changed to: ${selected.profileName}`);
+	const settingsCommands = registerSettingsCommands({
+		commandContext,
+		skillsService,
+		modelStatusBarItem,
+		profileStatusBarItem,
+		v0Models: V0_MODELS,
 	});
-	context.subscriptions.push(selectProfileCommand);
+	context.subscriptions.push(...settingsCommands);
 
-	// Register model selection command
-	const selectModelCommand = vscode.commands.registerCommand('ollama-code-review.selectModel', async () => {
-		const config = vscode.workspace.getConfiguration('ollama-code-review');
-		const currentModel = getOllamaModel(config);
+	const reloadCommands = registerReloadCommands(commandContext);
+	context.subscriptions.push(...reloadCommands);
 
-		// Cloud models (remote APIs) that won't appear in local Ollama
-		const cloudModels = [
-			...V0_MODELS,
-			{ label: 'kimi-k2.5:cloud', description: 'Kimi cloud model (Default)' },
-			{ label: 'qwen3-coder:480b-cloud', description: 'Cloud coding model' },
-			{ label: 'glm-4.7:cloud', description: 'GLM cloud model' },
-			{ label: 'glm-4.7-flash', description: 'GLM 4.7 Flash - Free tier (Z.AI)' },
-			{ label: 'huggingface', description: 'Hugging Face Inference API (select model →)' },
-			{ label: 'gemini-2.5-flash', description: 'Gemini 2.5 Flash - Free tier (Google AI)' },
-			{ label: 'gemini-2.5-pro', description: 'Gemini 2.5 Pro - Free tier (Google AI)' },
-			{ label: 'mistral-large-latest', description: 'Mistral Large - Most capable (Mistral AI)' },
-			{ label: 'mistral-small-latest', description: 'Mistral Small - Fast & efficient (Mistral AI)' },
-			{ label: 'codestral-latest', description: 'Codestral - Optimized for code (Mistral AI)' },
-			{ label: 'MiniMax-M2.5', description: 'MiniMax M2.5 (MiniMax)' },
-			{ label: 'openai-compatible', description: 'OpenAI-compatible endpoint (LM Studio, vLLM, LocalAI, Groq, OpenRouter…)' },
-			{ label: 'claude-sonnet-4-20250514', description: 'Claude Sonnet 4 (Anthropic)' },
-			{ label: 'claude-opus-4-20250514', description: 'Claude Opus 4 (Anthropic)' },
-			{ label: 'claude-3-7-sonnet-20250219', description: 'Claude 3.7 Sonnet (Anthropic)' }
-		];
-
-		try {
-			// Derive the tags endpoint from the configured generate endpoint
-			const endpoint = config.get<string>('endpoint', 'http://localhost:11434/api/generate');
-			const baseUrl = endpoint.replace(/\/api\/generate\/?$/, '').replace(/\/$/, '');
-			const tagsUrl = `${baseUrl}/api/tags`;
-
-			// Fetch with timeout
-			const controller = new AbortController();
-			const timeout = setTimeout(() => controller.abort(), 5000);
-
-			const response = await fetch(tagsUrl, { signal: controller.signal });
-			clearTimeout(timeout);
-
-			if (!response.ok) {
-				throw new Error(`${response.status}: ${response.statusText}`);
-			}
-
-			const data = await response.json() as {
-				models: Array<{
-					name: string;
-					modified_at?: string;
-					size?: number;
-					details?: {
-						parameter_size?: string;
-						family?: string;
-						format?: string;
-						quantized_level?: string;
-					}
-				}>
-			};
-
-			// Transform Ollama models to QuickPick items
-			const localModels = data.models.map((model) => {
-				const details: string[] = [];
-
-				if (model.details?.family) {
-					details.push(model.details.family);
-				}
-				if (model.details?.parameter_size) {
-					details.push(model.details.parameter_size);
-				}
-				if (model.size) {
-					const sizeGB = (model.size / (1024 ** 3)).toFixed(1);
-					details.push(`${sizeGB}GB`);
-				}
-
-				return {
-					label: model.name,
-					description: details.join(' • ') || 'Local Ollama model'
-				};
-			});
-
-			// Sort alphabetically
-			localModels.sort((a, b) => a.label.localeCompare(b.label));
-
-			// F-037: Get model recommendation
-			let recommendedItem: { label: string; description: string; detail?: string } | undefined;
-			try {
-				const advisorInput: ModelAdvisorInput = { taskType: 'review', languages: [], contentLength: 0 };
-				const advice = await getModelRecommendation(advisorInput, config);
-				recommendedItem = {
-					label: advice.recommended.modelId,
-					description: `⭐ Recommended — ${advice.recommended.reason}`,
-					detail: `Score: ${Math.round(advice.recommended.score * 100)}%`,
-				};
-			} catch {
-				// Non-fatal: skip recommendation
-			}
-
-			// Combine cloud + local + custom
-			const allItems = [
-				...cloudModels,
-				...localModels,
-				{ label: 'custom', description: 'Use custom model from settings' }
-			];
-			// Prepend recommended item (if it's not a duplicate)
-			if (recommendedItem && !allItems.find(m => m.label === recommendedItem!.label && m.description?.startsWith('⭐'))) {
-				allItems.unshift(recommendedItem);
-			}
-			const models = distinctByProperty(allItems, 'label');
-
-			const currentItem = models.find(m => m.label === currentModel);
-			const selected = await vscode.window.showQuickPick(models, {
-				placeHolder: `Current: ${currentItem?.label || currentModel || 'None'} | Select Ollama model`,
-				matchOnDescription: true
-			});
-
-			if (selected) {
-				// If Hugging Face is selected, show the HF model picker
-				if (selected.label === 'huggingface') {
-					const hfModel = await showHfModelPicker(context, config);
-					if (hfModel) {
-						await config.update('model', 'huggingface', vscode.ConfigurationTarget.Global);
-						await config.update('hfModel', hfModel, vscode.ConfigurationTarget.Global);
-						await addRecentHfModel(context, hfModel);
-						updateModelStatusBar(modelStatusBarItem);
-						vscode.window.showInformationMessage(`Hugging Face model changed to: ${hfModel}`);
-					}
-					return;
-				}
-
-				// If OpenAI-compatible is selected, prompt for endpoint and model
-				if (selected.label === 'openai-compatible') {
-					await showOpenAICompatiblePicker(config);
-					await config.update('model', 'openai-compatible', vscode.ConfigurationTarget.Global);
-					updateModelStatusBar(modelStatusBarItem);
-					return;
-				}
-
-				await config.update('model', selected.label, vscode.ConfigurationTarget.Global);
-				updateModelStatusBar(modelStatusBarItem);
-				vscode.window.showInformationMessage(`Ollama model changed to: ${selected.label}`);
-			}
-
-		} catch (error) {
-			// Fallback if Ollama is not running
-			vscode.window.showWarningMessage(
-				`Could not connect to Ollama (${error}). Showing available cloud options.`
-			);
-
-			const fallbackModels = [
-				...cloudModels,
-				{ label: 'custom', description: 'Use custom model from settings' }
-			];
-
-			// Add current model to list if it's not already there
-			if (currentModel && !fallbackModels.find(m => m.label === currentModel)) {
-				fallbackModels.unshift({
-					label: currentModel,
-					description: 'Currently configured'
-				});
-			}
-
-			const currentItem = fallbackModels.find(m => m.label === currentModel);
-			const selected = await vscode.window.showQuickPick(fallbackModels, {
-				placeHolder: `Current: ${currentItem?.label || currentModel || 'None'} | Select model (Ollama unreachable)`
-			});
-
-			if (selected) {
-				// If Hugging Face is selected, show the HF model picker
-				if (selected.label === 'huggingface') {
-					const hfModel = await showHfModelPicker(context, config);
-					if (hfModel) {
-						await config.update('model', 'huggingface', vscode.ConfigurationTarget.Global);
-						await config.update('hfModel', hfModel, vscode.ConfigurationTarget.Global);
-						await addRecentHfModel(context, hfModel);
-						updateModelStatusBar(modelStatusBarItem);
-						vscode.window.showInformationMessage(`Hugging Face model changed to: ${hfModel}`);
-					}
-					return;
-				}
-
-				// If OpenAI-compatible is selected, prompt for endpoint and model
-				if (selected.label === 'openai-compatible') {
-					await showOpenAICompatiblePicker(config);
-					await config.update('model', 'openai-compatible', vscode.ConfigurationTarget.Global);
-					updateModelStatusBar(modelStatusBarItem);
-					return;
-				}
-
-				await config.update('model', selected.label, vscode.ConfigurationTarget.Global);
-				updateModelStatusBar(modelStatusBarItem);
-				vscode.window.showInformationMessage(`Ollama model changed to: ${selected.label}`);
-			}
-		}
-	});
-
-	context.subscriptions.push(selectModelCommand);
-
-	// Register setup guide command
-	const setupGuideCommand = vscode.commands.registerCommand(
-		'ollama-code-review.openSetupGuide',
-		() => showSetupGuide(context),
-	);
-	context.subscriptions.push(setupGuideCommand);
-
-	// Show first-run setup guide (non-blocking)
-	maybeShowSetupGuide(context);
-
-	// Listen for configuration changes to update status bar
-	context.subscriptions.push(
-		vscode.workspace.onDidChangeConfiguration(e => {
-			if (e.affectsConfiguration('ollama-code-review.model') ||
-				e.affectsConfiguration('ollama-code-review.customModel')) {
-				updateModelStatusBar(modelStatusBarItem);
-			}
-		})
-	);
-
-	const browseSkillsCommand = vscode.commands.registerCommand(
-		'ollama-code-review.browseAgentSkills',
-		async () => {
-			try {
-				await vscode.window.withProgress({
-					location: vscode.ProgressLocation.Notification,
-					title: 'Loading Agent Skills',
-					cancellable: false
-				}, async (progress) => {
-					progress.report({ message: 'Fetching skills from configured repositories...' });
-
-					const skills = await skillsService.fetchAvailableSkillsFromAllRepos(true);
-
-					progress.report({ message: 'Opening skills browser...' });
-					await SkillsBrowserPanel.createOrShow(skillsService, skills);
-				});
-			} catch (error) {
-				vscode.window.showErrorMessage(
-					`Failed to load agent skills: ${error}`
-				);
-			}
-		}
-	);
-
-	// Apply Skill to Code Review Command (supports multiple skills)
-	const applySkillCommand = vscode.commands.registerCommand(
-		'ollama-code-review.applySkillToReview',
-		async () => {
-			const cachedSkills = skillsService.listCachedSkills();
-
-			if (cachedSkills.length === 0) {
-				const browse = await vscode.window.showInformationMessage(
-					'No skills installed. Would you like to browse available skills?',
-					'Browse Skills',
-					'Cancel'
-				);
-
-				if (browse === 'Browse Skills') {
-					vscode.commands.executeCommand('ollama-code-review.browseAgentSkills');
-				}
-				return;
-			}
-
-			// Get currently selected skills to pre-select them
-			const currentlySelected = context.globalState.get<any[]>('selectedSkills', []);
-			const currentlySelectedNames = new Set(currentlySelected.map(s => `${s.repository}/${s.name}`));
-
-			const selectedSkills = await vscode.window.showQuickPick(
-				cachedSkills.map(skill => ({
-					label: skill.name,
-					description: `${skill.description} (${skill.repository})`,
-					skill: skill,
-					picked: currentlySelectedNames.has(`${skill.repository}/${skill.name}`)
-				})),
-				{
-					placeHolder: 'Select skills to apply to code review (multiple allowed)',
-					canPickMany: true
-				}
-			);
-
-			if (selectedSkills && selectedSkills.length > 0) {
-				const skillNames = selectedSkills.map(s => s.skill.name).join(', ');
-				vscode.window.showInformationMessage(
-					`${selectedSkills.length} skill(s) will be applied to next review: ${skillNames}`
-				);
-				// Store selected skills array for next review
-				context.globalState.update('selectedSkills', selectedSkills.map(s => s.skill));
-			} else if (selectedSkills && selectedSkills.length === 0) {
-				// User explicitly deselected all skills
-				vscode.window.showInformationMessage('All skills have been deselected');
-				context.globalState.update('selectedSkills', []);
-			}
-		}
-	);
-
-	// Clear Selected Skills Command
-	const clearSkillsCommand = vscode.commands.registerCommand(
-		'ollama-code-review.clearSelectedSkills',
-		async () => {
-			const currentSkills = context.globalState.get<any[]>('selectedSkills', []);
-			if (currentSkills.length === 0) {
-				vscode.window.showInformationMessage('No skills are currently selected');
-				return;
-			}
-			context.globalState.update('selectedSkills', []);
-			vscode.window.showInformationMessage(`Cleared ${currentSkills.length} selected skill(s)`);
-		}
-	);
-
-	context.subscriptions.push(browseSkillsCommand, applySkillCommand, clearSkillsCommand);
 	context.subscriptions.push(
 		vscode.workspace.registerTextDocumentContentProvider('ollama-suggestion', suggestionProvider)
 	);
@@ -2368,81 +1503,6 @@ export async function activate(context: vscode.ExtensionContext) {
 		} catch (error) {
 			handleError(error, 'Failed to post review to Bitbucket PR.');
 		}
-	});
-
-	// F-006 (remainder): Reload project config command
-	const reloadProjectConfigCommand = vscode.commands.registerCommand(
-		'ollama-code-review.reloadProjectConfig',
-		() => {
-			clearProjectConfigCache();
-			vscode.window.showInformationMessage('Ollama Code Review: .ollama-review.yaml config reloaded.');
-			outputChannel.appendLine('[Ollama Code Review] Project config cache cleared. Will re-read .ollama-review.yaml on next review.');
-		}
-	);
-
-	// F-006 (remainder): Watch .ollama-review.yaml for changes and auto-invalidate the cache
-	const yamlConfigWatcher = vscode.workspace.createFileSystemWatcher('**/.ollama-review.yaml');
-	yamlConfigWatcher.onDidChange(() => {
-		clearProjectConfigCache();
-		outputChannel.appendLine('[Ollama Code Review] .ollama-review.yaml changed — config cache invalidated.');
-	});
-	yamlConfigWatcher.onDidCreate(() => {
-		clearProjectConfigCache();
-		outputChannel.appendLine('[Ollama Code Review] .ollama-review.yaml created — config cache invalidated.');
-	});
-	yamlConfigWatcher.onDidDelete(() => {
-		clearProjectConfigCache();
-		outputChannel.appendLine('[Ollama Code Review] .ollama-review.yaml deleted — config cache invalidated.');
-	});
-
-	// F-012: Reload knowledge base command
-	const reloadKnowledgeBaseCommand = vscode.commands.registerCommand(
-		'ollama-code-review.reloadKnowledgeBase',
-		() => {
-			clearKnowledgeCache();
-			vscode.window.showInformationMessage('Ollama Code Review: Knowledge base reloaded.');
-			outputChannel.appendLine('[Ollama Code Review] Knowledge base cache cleared. Will re-read .ollama-review-knowledge.yaml on next review.');
-		}
-	);
-
-	// F-012: Watch .ollama-review-knowledge.yaml for changes and auto-invalidate the cache
-	const knowledgeWatcher = vscode.workspace.createFileSystemWatcher('**/.ollama-review-knowledge.yaml');
-	knowledgeWatcher.onDidChange(() => {
-		clearKnowledgeCache();
-		outputChannel.appendLine('[Ollama Code Review] .ollama-review-knowledge.yaml changed — knowledge cache invalidated.');
-	});
-	knowledgeWatcher.onDidCreate(() => {
-		clearKnowledgeCache();
-		outputChannel.appendLine('[Ollama Code Review] .ollama-review-knowledge.yaml created — knowledge cache invalidated.');
-	});
-	knowledgeWatcher.onDidDelete(() => {
-		clearKnowledgeCache();
-		outputChannel.appendLine('[Ollama Code Review] .ollama-review-knowledge.yaml deleted — knowledge cache invalidated.');
-	});
-
-	// F-032: Reload Contentstack schema command
-	const reloadContentstackSchemaCommand = vscode.commands.registerCommand(
-		'ollama-code-review.reloadContentstackSchema',
-		() => {
-			clearSchemaCache();
-			vscode.window.showInformationMessage('Ollama Code Review: Contentstack schema cache cleared.');
-			outputChannel.appendLine('[Ollama Code Review] Contentstack schema cache cleared. Will re-fetch on next review.');
-		}
-	);
-
-	// F-032: Watch local Contentstack schema files for changes
-	const csSchemaWatcher = vscode.workspace.createFileSystemWatcher('**/.contentstack/schema.json');
-	csSchemaWatcher.onDidChange(() => {
-		clearSchemaCache();
-		outputChannel.appendLine('[Ollama Code Review] Contentstack schema.json changed — schema cache invalidated.');
-	});
-	csSchemaWatcher.onDidCreate(() => {
-		clearSchemaCache();
-		outputChannel.appendLine('[Ollama Code Review] Contentstack schema.json created — schema cache invalidated.');
-	});
-	csSchemaWatcher.onDidDelete(() => {
-		clearSchemaCache();
-		outputChannel.appendLine('[Ollama Code Review] Contentstack schema.json deleted — schema cache invalidated.');
 	});
 
 	// F-009: RAG-Enhanced Reviews — initialise vector store
@@ -3684,31 +2744,6 @@ ${diff.slice(0, 12000)}
 		}
 	);
 
-	// F-026: Reload rules directory command
-	const reloadRulesCommand = vscode.commands.registerCommand(
-		'ollama-code-review.reloadRules',
-		() => {
-			clearRulesCache();
-			vscode.window.showInformationMessage('Ollama Code Review: Rules directory reloaded.');
-			outputChannel.appendLine('[Ollama Code Review] Rules cache cleared. Will re-read .ollama-review/rules/ on next review.');
-		}
-	);
-
-	// F-026: Watch .ollama-review/rules/ for changes and auto-invalidate the cache
-	const rulesWatcher = vscode.workspace.createFileSystemWatcher('.ollama-review/rules/*.md');
-	rulesWatcher.onDidChange(() => {
-		clearRulesCache();
-		outputChannel.appendLine('[Ollama Code Review] Rules file changed — rules cache invalidated.');
-	});
-	rulesWatcher.onDidCreate(() => {
-		clearRulesCache();
-		outputChannel.appendLine('[Ollama Code Review] Rules file created — rules cache invalidated.');
-	});
-	rulesWatcher.onDidDelete(() => {
-		clearRulesCache();
-		outputChannel.appendLine('[Ollama Code Review] Rules file deleted — rules cache invalidated.');
-	});
-
 	// F-030: Multi-Model Review Comparison — run the same review across multiple models in parallel
 	const compareModelsCommand = vscode.commands.registerCommand(
 		'ollama-code-review.compareModels',
@@ -3948,23 +2983,15 @@ ${diff.slice(0, 12000)}
 		postReviewToMRCommand,
 		reviewBitbucketPRCommand,
 		postReviewToBitbucketPRCommand,
-		reloadProjectConfigCommand,
-		yamlConfigWatcher,
 		togglePreCommitGuardCommand,
 		reviewAndCommitCommand,
 		guardStatusBarItem,
 		agentReviewCommand,
 		generateDiagramCommand,
-		reloadKnowledgeBaseCommand,
-		knowledgeWatcher,
 		indexCodebaseCommand,
 		clearRagIndexCommand,
-		reloadRulesCommand,
-		rulesWatcher,
 		suggestVersionBumpCommand,
 		compareModelsCommand,
-		reloadContentstackSchemaCommand,
-		csSchemaWatcher,
 	);
 }
 
