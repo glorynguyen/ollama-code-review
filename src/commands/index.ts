@@ -1763,11 +1763,8 @@ export async function activate(context: vscode.ExtensionContext) {
 	);
 	context.subscriptions.push(toggleAutoReviewCommand, autoReviewManager);
 
-	// MCP Server for Claude Code integration
-	mcpBridge.initialize(context, outputChannel);
-	const mcpConfig = vscode.workspace.getConfiguration('ollama-code-review');
-	const mcpEnabled = mcpConfig.get<boolean>('mcp.enabled', false);
-	const mcpPort = mcpConfig.get<number>('mcp.port', 19840);
+	// MCP Server instance (initialised in activate() if enabled)
+	let isMcpTransitioning = false;
 
 	const mcpStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 95);
 	mcpStatusBarItem.command = 'ollama-code-review.toggleMcpServer';
@@ -1783,43 +1780,123 @@ export async function activate(context: vscode.ExtensionContext) {
 		mcpStatusBarItem.show();
 	}
 
-	if (mcpEnabled) {
-		mcpServerInstance = createMcpServer(mcpPort);
-		mcpServerInstance.start().then(() => {
-			updateMcpStatusBar(true, mcpPort);
-			outputChannel.appendLine(`[MCP] Server started on http://127.0.0.1:${mcpPort}/mcp`);
-		}).catch((err: Error) => {
-			outputChannel.appendLine(`[MCP] Failed to start: ${err.message}`);
-			vscode.window.showErrorMessage(`MCP Server failed to start: ${err.message}`);
-			updateMcpStatusBar(false, mcpPort);
+	async function startMcpServer(): Promise<void> {
+		if (mcpServerInstance) {
+			return;
+		}
+		const config = vscode.workspace.getConfiguration('ollama-code-review');
+		const port = config.get<number>('mcp.port', 19840);
+		mcpServerInstance = createMcpServer(port);
+		try {
+			await mcpServerInstance.start();
+			updateMcpStatusBar(true, port);
+			outputChannel.appendLine(`[MCP] Server started on http://127.0.0.1:${port}/mcp`);
+		} catch (err: unknown) {
+			mcpServerInstance = undefined;
+			updateMcpStatusBar(false, port);
+			throw err;
+		}
+	}
+
+	async function stopMcpServer(): Promise<void> {
+		if (!mcpServerInstance) {
+			return;
+		}
+		const config = vscode.workspace.getConfiguration('ollama-code-review');
+		const port = config.get<number>('mcp.port', 19840);
+		try {
+			if (mcpServerInstance.isRunning()) {
+				await mcpServerInstance.stop();
+			}
+		} catch (err: unknown) {
+			const msg = err instanceof Error ? err.message : String(err);
+			outputChannel.appendLine(`[MCP] Error during stop: ${msg}`);
+			throw err;
+		} finally {
+			mcpServerInstance = undefined;
+			updateMcpStatusBar(false, port);
+			outputChannel.appendLine(`[MCP] Server stopped`);
+		}
+	}
+
+	// Initial activation sync
+	const initialMcpEnabled = vscode.workspace.getConfiguration('ollama-code-review').get<boolean>('mcp.enabled', false);
+	if (initialMcpEnabled) {
+		startMcpServer().catch((err: unknown) => {
+			const msg = err instanceof Error ? err.message : String(err);
+			outputChannel.appendLine(`[MCP] Failed to start on activation: ${msg}`);
+			vscode.window.showErrorMessage(`MCP Server failed to start: ${msg}`);
 		});
 	} else {
-		updateMcpStatusBar(false, mcpPort);
+		const port = vscode.workspace.getConfiguration('ollama-code-review').get<number>('mcp.port', 19840);
+		updateMcpStatusBar(false, port);
 	}
 
 	const toggleMcpServerCommand = vscode.commands.registerCommand(
 		'ollama-code-review.toggleMcpServer',
 		async () => {
-			const port = vscode.workspace.getConfiguration('ollama-code-review').get<number>('mcp.port', 19840);
-			if (mcpServerInstance?.isRunning()) {
-				await mcpServerInstance.stop();
-				mcpServerInstance = undefined;
-				updateMcpStatusBar(false, port);
-				vscode.window.showInformationMessage('MCP Server stopped.');
-			} else {
-				mcpServerInstance = createMcpServer(port);
-				try {
-					await mcpServerInstance.start();
-					updateMcpStatusBar(true, port);
-					vscode.window.showInformationMessage(`MCP Server started on localhost:${port}. Configure Claude Code to connect to http://localhost:${port}/mcp`);
-				} catch (err: any) {
-					vscode.window.showErrorMessage(`MCP Server failed to start: ${err.message}`);
-					updateMcpStatusBar(false, port);
-				}
+			const config = vscode.workspace.getConfiguration('ollama-code-review');
+			const currentState = config.get<boolean>('mcp.enabled', false);
+			try {
+				// Only update the config; let the onDidChangeConfiguration listener handle the start/stop logic
+				await config.update('mcp.enabled', !currentState, vscode.ConfigurationTarget.Global);
+				const action = !currentState ? 'started' : 'stopped';
+				vscode.window.showInformationMessage(`MCP Server ${action}.`);
+			} catch (err: unknown) {
+				const msg = err instanceof Error ? err.message : String(err);
+				outputChannel.appendLine(`[MCP] Error toggling setting: ${msg}`);
+				vscode.window.showErrorMessage(`Failed to toggle MCP server setting: ${msg}`);
 			}
 		},
 	);
 	context.subscriptions.push(toggleMcpServerCommand, mcpStatusBarItem);
+
+	// Watch for MCP configuration changes
+	context.subscriptions.push(
+		vscode.workspace.onDidChangeConfiguration(async (e) => {
+			if (e.affectsConfiguration('ollama-code-review.mcp.enabled')) {
+				if (isMcpTransitioning) {
+					return;
+				}
+				isMcpTransitioning = true;
+				try {
+					const config = vscode.workspace.getConfiguration('ollama-code-review');
+					const enabled = config.get<boolean>('mcp.enabled', false);
+					const isRunning = !!mcpServerInstance?.isRunning();
+
+					// Idempotency check: only act if setting differs from current state
+					if (enabled === isRunning) {
+						return;
+					}
+
+					if (enabled) {
+						await startMcpServer();
+					} else {
+						await stopMcpServer();
+					}
+				} catch (err: unknown) {
+					const msg = err instanceof Error ? err.message : String(err);
+					outputChannel.appendLine(`[MCP] Error handling configuration change: ${msg}`);
+					vscode.window.showErrorMessage(`MCP Server configuration sync failed: ${msg}`);
+				} finally {
+					isMcpTransitioning = false;
+				}
+			}
+		})
+	);
+
+	// Ensure MCP server is stopped on extension deactivation
+	context.subscriptions.push(
+		new vscode.Disposable(() => {
+			if (mcpServerInstance) {
+				// stop() is async, but we fire and forget or log on dispose
+				mcpServerInstance.stop().catch(err => {
+					console.error('[MCP] Failed to stop server on dispose', err);
+				});
+				mcpServerInstance = undefined;
+			}
+		})
+	);
 
 	// F-029: Toggle Review Annotations command
 	const toggleAnnotationsCommand = vscode.commands.registerCommand(
