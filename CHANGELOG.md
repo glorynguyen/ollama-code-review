@@ -1,3 +1,10 @@
+# [3.64.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.63.0...v3.64.0) (2026-04-14)
+
+
+### Features
+
+* **mcp:** sync server lifecycle with settings ([7d71b97](https://github.com/glorynguyen/ollama-code-review/commit/7d71b9741686b597f91fd5c22eed08dba4bf6eaf))
+
 # [3.63.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.62.0...v3.63.0) (2026-04-13)
 
 
