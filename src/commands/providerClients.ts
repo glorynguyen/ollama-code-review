@@ -816,8 +816,7 @@ export async function callV0API(prompt: string, config: vscode.WorkspaceConfigur
 		throw new Error('v0 API key is not configured. Please set it in Settings > Ollama Code Review > V0 Api Key');
 	}
 
-	// eslint-disable-next-line @typescript-eslint/no-var-requires
-	const { createClient } = require('v0-sdk');
+	const { createClient } = await import('v0-sdk');
 	const client = createClient({ apiKey });
 
 	const modelId = model as 'v0-auto' | 'v0-mini' | 'v0-pro' | 'v0-max' | 'v0-max-fast';

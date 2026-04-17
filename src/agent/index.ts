@@ -3,6 +3,7 @@
  */
 
 export { runAgentReview, getAgentModeConfig, DEFAULT_AGENT_CONFIG } from './orchestrator';
+export { isAICallerFn } from './types';
 export type {
 	AgentModeConfig,
 	AgentContext,

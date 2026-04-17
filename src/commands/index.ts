@@ -349,6 +349,39 @@ function restoreScoreStatusBar(globalStoragePath: string | undefined): void {
  * @returns The selected repository object, or undefined if none is selected.
  */
 
+/**
+ * Gathers downstream impact context for a diff by finding which workspace files
+ * import the changed files. Returns a formatted string suitable for injection
+ * into a review prompt, or an empty string if no impact is found or if analysis
+ * fails. An empty return value may indicate either no downstream consumers or
+ * an analysis error (which is logged to the output channel but not propagated,
+ * keeping impact analysis non-fatal like other context-gathering operations).
+ */
+function gatherImpactContext(diff: string, outputChannel: vscode.OutputChannel): string {
+	try {
+		const changedFiles = extractFilesFromDiff(diff);
+		if (changedFiles.length === 0) {
+			return '';
+		}
+		const depRegistry = DependencyRegistry.getInstance();
+		const impacts: string[] = [];
+		for (const file of changedFiles) {
+			const importers = depRegistry.getImporters(file);
+			if (importers.length > 0) {
+				impacts.push(`- **${file}** is imported by: ${importers.join(', ')}`);
+			}
+		}
+		if (impacts.length > 0) {
+			outputChannel.appendLine(`[Impact Agent] Identified ${impacts.length} file(s) with downstream impact.`);
+			return `The following changed files have downstream consumers. Please pay special attention to breaking changes in their public APIs or exported signatures:\n${impacts.join('\n')}\n\nAssess whether these changes might require updates in the importing files.`;
+		}
+	} catch (err) {
+		const errMsg = err instanceof Error ? err.message : String(err);
+		outputChannel.appendLine(`[Impact Agent] Error: ${errMsg}`);
+	}
+	return '';
+}
+
 export async function activate(context: vscode.ExtensionContext) {
 	const skillsService = await SkillsService.create(context);
 	// Store reference for cleanup on deactivation
@@ -2502,9 +2535,12 @@ ${diff.slice(0, 12000)}
 
 					progress.report({ message: 'Running AI review on staged changes...' });
 
+					// Phase 2: Impact Integration
+					const impactContext = gatherImpactContext(diffResult, outputChannel);
+
 					// Race the review against the configured timeout
 					const timeoutMs = guardConfig.timeout * 1000;
-					const reviewPromise = getOllamaReview(diffResult, context, rcContextBundle);
+					const reviewPromise = getOllamaReview(diffResult, context, rcContextBundle, undefined, impactContext);
 					const timeoutPromise = new Promise<null>((resolve) =>
 						setTimeout(() => resolve(null), timeoutMs)
 					);
@@ -2681,6 +2717,9 @@ ${diff.slice(0, 12000)}
 						progress.report({ message });
 					};
 
+					// Phase 2: Impact Integration
+					const impactContext = gatherImpactContext(filteredDiff, outputChannel);
+
 					const result = await runAgentReview(
 						filteredDiff,
 						context,
@@ -2689,7 +2728,8 @@ ${diff.slice(0, 12000)}
 						reportProgressFn,
 						token,
 						profileCtx,
-						skillCtx
+						skillCtx,
+						impactContext
 					);
 
 					// Capture metrics from last AI call
@@ -2729,6 +2769,8 @@ ${diff.slice(0, 12000)}
 							reviewType: 'agent',
 							filesReviewed: extractFilesFromDiff(filteredDiff),
 							categories: parseIssueCategories(result.review),
+							findings: result.synthesis.structuredFindings, // Store structured findings
+							diff: filteredDiff,
 						};
 						store.addScore(scoreEntry);
 					}
@@ -3031,6 +3073,8 @@ ${diff.slice(0, 12000)}
 								reviewType: 'staged',
 								filesReviewed: extractFilesFromDiff(filteredDiff),
 								categories: parseIssueCategories(bestEntry.review),
+								findings: normalizeReviewResult(bestEntry.review, filteredDiff),
+								diff: filteredDiff,
 							};
 							store.addScore(scoreEntry);
 						}
@@ -3042,6 +3086,61 @@ ${diff.slice(0, 12000)}
 					});
 			} catch (error) {
 				handleError(error, 'Failed to compare models.');
+			}
+		}
+	);
+
+	// F-048: Restore a past review from history
+	const restoreReviewFromHistoryCommand = vscode.commands.registerCommand(
+		'ollama-code-review.restoreReviewFromHistory',
+		async (score: import('../reviewScore').ReviewScore) => {
+			if (!score.findings || !score.diff) {
+				vscode.window.showWarningMessage('This review entry does not have findings or diff data for restoration.');
+				return;
+			}
+
+			if (!findingsTreeProvider) {
+				vscode.window.showWarningMessage('Findings view is not available. Cannot restore review.');
+				return;
+			}
+
+			try {
+				// Validate the persisted findings structure before use
+				const f = score.findings;
+				if (!f || typeof f !== 'object' || !Array.isArray(f.findings) || typeof f.summary !== 'string') {
+					vscode.window.showWarningMessage('This review entry has an outdated or invalid findings format.');
+					return;
+				}
+				const reviewText = renderValidatedReviewMarkdown(score.findings);
+				const diff = score.diff;
+
+				// 1. Update tree view
+				findingsTreeProvider.setFindings(reviewText, diff);
+				await vscode.commands.executeCommand('setContext', 'ollama-code-review.hasFindings', true);
+
+				// 2. Apply editor decorations
+				try {
+					const annotCfg = getAnnotationsConfig();
+					if (annotCfg.enabled) {
+						ReviewDecorationsManager.getInstance().applyFromReview(reviewText, diff);
+					}
+				} catch (err) {
+					outputChannel.appendLine(`[Restore] Decoration error: ${err}`);
+					vscode.window.showWarningMessage('Review restored but inline decorations could not be applied.');
+				}
+
+				// 3. Show review panel (without re-triggering AI)
+				const metrics = {
+					model: score.model,
+					provider: undefined,
+					durationMs: score.durationMs ?? 0,
+					totalTokens: 0, // Token counts are not persisted in ReviewScore; zero indicates restored review
+					activeProfile: score.profile,
+				};
+				OllamaReviewPanel.createOrShow(reviewText, diff, context, metrics, score.findings);
+			} catch (err) {
+				outputChannel.appendLine(`[Restore] Failed to restore review: ${err}`);
+				vscode.window.showErrorMessage('Failed to restore review. The stored data may be corrupted.');
 			}
 		}
 	);
@@ -3069,6 +3168,7 @@ ${diff.slice(0, 12000)}
 		clearRagIndexCommand,
 		suggestVersionBumpCommand,
 		compareModelsCommand,
+		restoreReviewFromHistoryCommand,
 	);
 }
 
@@ -3198,6 +3298,9 @@ async function runReview(
 		}
 	}
 
+	// Phase 2: Impact Integration — identify downstream consumers of changed files
+	const impactContext = gatherImpactContext(filteredDiff, outputChannel);
+
 	// MCP Mode: Copy prompt only (F-029)
 	const mcpEnabled = options.copyPromptOnly ?? vscode.workspace.getConfiguration('ollama-code-review').get<boolean>('mcp.enabled', false);
 
@@ -3208,7 +3311,14 @@ async function runReview(
 			cancellable: false
 		}, async (progress) => {
 			progress.report({ message: 'Building review prompt for MCP...' });
-			const prompt = await buildReviewPrompt(filteredDiff, context, contextBundle, options.promptMode);
+			const prompt = await buildReviewPrompt({
+				context,
+				contextBundle,
+				diff: filteredDiff,
+				outputChannel,
+				promptMode: options.promptMode,
+				impactContext,
+			});
 			await vscode.env.clipboard.writeText(prompt);
 			vscode.window.setStatusBarMessage('$(clippy) Review prompt copied to clipboard for MCP use', 5000);
 			outputChannel.appendLine(`[Review] MCP mode enabled for ${reviewType}. Prompt copied to clipboard instead of sending to an LLM.`);
@@ -3232,7 +3342,7 @@ async function runReview(
 					injectedSecrets = true;
 				}
 				reviewPanel.pushChunk(chunk);
-			});
+			}, impactContext);
 
 			const merged = mergeSecretFindingsIntoReview(reviewResult.structuredReview, reviewResult.reviewText, secretFindings);
 			const review = merged.combinedReviewText;
@@ -3271,6 +3381,8 @@ async function runReview(
 					reviewType,
 					filesReviewed: extractFilesFromDiff(filteredDiff),
 					categories: parseIssueCategories(review),
+					findings: structuredReview,
+					diff: filteredDiff,
 				};
 				store.addScore(scoreEntry);
 				outputChannel.appendLine(`[Score] Quality score: ${scoreResult.score}/100 (${findingCounts.critical}C ${findingCounts.high}H ${findingCounts.medium}M ${findingCounts.low}L)`);
@@ -3330,7 +3442,7 @@ async function runReview(
 		cancellable: false
 	}, async (progress) => {
 		progress.report({ message: `Asking AI for a structured review (${filterResult.stats.includedFiles} files)...` });
-		const reviewResult = await getOllamaReview(filteredDiff, context, contextBundle);
+		const reviewResult = await getOllamaReview(filteredDiff, context, contextBundle, undefined, impactContext);
 		const merged = mergeSecretFindingsIntoReview(reviewResult.structuredReview, reviewResult.reviewText, secretFindings);
 		const review = merged.combinedReviewText;
 		const structuredReview = merged.structuredReview ?? reviewResult.structuredReview;
@@ -3378,6 +3490,8 @@ async function runReview(
 				reviewType,
 				filesReviewed: extractFilesFromDiff(filteredDiff),
 				categories: parseIssueCategories(review),
+				findings: structuredReview,
+				diff: filteredDiff,
 			};
 			store.addScore(scoreEntry);
 			outputChannel.appendLine(`[Score] Quality score: ${scoreResult.score}/100 (${findingCounts.critical}C ${findingCounts.high}H ${findingCounts.medium}M ${findingCounts.low}L)`);
@@ -3500,6 +3614,8 @@ async function runFileReview(content: string, label: string, context: vscode.Ext
 				durationMs: Date.now() - reviewStartTime,
 				reviewType,
 				categories: parseIssueCategories(review),
+				findings: normalizeReviewResult(review, content),
+				diff: content,
 			};
 			store.addScore(scoreEntry);
 		}
@@ -3767,12 +3883,22 @@ async function resolveImportsRecursively(
 	return results;
 }
 
-async function buildReviewPrompt(
-	diff: string,
-	context?: vscode.ExtensionContext,
-	contextBundle?: ContextBundle,
-	promptMode: import('../reviewPromptBuilder').ReviewPromptMode = 'default',
-): Promise<string> {
+async function buildReviewPrompt({
+	diff,
+	context,
+	contextBundle,
+	outputChannel,
+	promptMode = 'default',
+	impactContext,
+}: {
+	diff: string;
+	context?: vscode.ExtensionContext;
+	contextBundle?: ContextBundle;
+	outputChannel?: vscode.OutputChannel;
+	promptMode?: import('../reviewPromptBuilder').ReviewPromptMode;
+	impactContext?: string;
+}): Promise<string> {
+	const log = outputChannel ? (msg: string) => outputChannel.appendLine(msg) : () => {};
 	const config = vscode.workspace.getConfiguration('ollama-code-review');
 	const endpoint = config.get<string>('endpoint', 'http://localhost:11434/api/generate');
 	let prompt = await buildSharedReviewPrompt({
@@ -3781,6 +3907,7 @@ async function buildReviewPrompt(
 		diff,
 		outputChannel,
 		promptMode,
+		impactContext,
 	});
 
 	const ragConfig = getRagConfig();
@@ -3806,10 +3933,10 @@ async function buildReviewPrompt(
 			);
 			if (ragCtx.results.length > 0) {
 				prompt += buildRagContextSection(ragCtx.results);
-				outputChannel.appendLine(`[RAG] ${ragCtx.summary}`);
+				log(`[RAG] ${ragCtx.summary}`);
 			}
 		} catch (err) {
-			outputChannel.appendLine(`[RAG] Error: ${err}`);
+			log(`[RAG] Error: ${err}`);
 		}
 	}
 
@@ -3823,7 +3950,7 @@ async function buildReviewPrompt(
 					const validation = validateFieldAccesses(parseResult, schemas);
 					const csSection = buildContentstackPromptSection(validation, parseResult, csConfig);
 					prompt += csSection;
-					outputChannel.appendLine(
+					log(
 						`[Contentstack] Schema validation: ${validation.stats.totalAccesses} field access(es), `
 						+ `${validation.stats.invalidFields} potential mismatch(es), `
 						+ `${validation.resolvedContentTypes.length} content type(s) resolved.`
@@ -3831,19 +3958,25 @@ async function buildReviewPrompt(
 				}
 			}
 		} catch (err) {
-			outputChannel.appendLine(`[Contentstack] Error: ${err}`);
+			log(`[Contentstack] Error: ${err}`);
 		}
 	}
 
 	return prompt;
 }
 
-async function getOllamaReview(diff: string, context?: vscode.ExtensionContext, contextBundle?: ContextBundle, _onChunk?: (text: string) => void): Promise<ReviewGenerationResult> {
+async function getOllamaReview(diff: string, context?: vscode.ExtensionContext, contextBundle?: ContextBundle, _onChunk?: (text: string) => void, impactContext?: string): Promise<ReviewGenerationResult> {
 	const config = vscode.workspace.getConfiguration('ollama-code-review');
 	const model = getOllamaModel(config);
 	const endpoint = config.get<string>('endpoint', 'http://localhost:11434/api/generate');
 	const temperature = config.get<number>('temperature', 0);
-	const prompt = await buildReviewPrompt(diff, context, contextBundle);
+	const prompt = await buildReviewPrompt({
+		diff,
+		context,
+		contextBundle,
+		outputChannel,
+		impactContext,
+	});
 
 	// Copy the full prompt (with all context) to clipboard so the user can paste it into other LLM chats immediately
 	try {

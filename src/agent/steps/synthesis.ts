@@ -7,6 +7,8 @@
  */
 
 import type { AgentStep, AgentContext, DeepReview, SynthesisResult, DiffAnalysis } from '../types';
+import { isAICallerFn, isDiffAnalysis } from '../types';
+import { normalizeReviewResult } from '../../reviewFindings';
 
 export const synthesisStep: AgentStep<DeepReview, SynthesisResult> = {
 	name: 'synthesis',
@@ -16,17 +18,21 @@ export const synthesisStep: AgentStep<DeepReview, SynthesisResult> = {
 		ctx.reportProgress('Step 5/5 — Synthesizing final review…');
 		ctx.outputChannel.appendLine('[Agent] Step 5: Synthesis');
 
-		const callAI = ctx.stepResults.get('callAI') as
-			((prompt: string) => Promise<string>) | undefined;
+		const callAI = ctx.stepResults.get('callAI');
 
 		// If no self-critique or no AI caller, return the deep review as-is
-		if (!ctx.config.selfCritique || !callAI) {
+		if (!ctx.config.selfCritique || !isAICallerFn(callAI)) {
 			ctx.outputChannel.appendLine('[Agent] Step 5: Returning deep review without self-critique');
-			return { finalReview: deepReview.reviewMarkdown };
+			return { 
+				finalReview: deepReview.reviewMarkdown,
+				structuredFindings: deepReview.structuredReview ?? normalizeReviewResult(deepReview.reviewMarkdown, ctx.diff),
+			};
 		}
 
-		// Retrieve diff analysis for additional context
-		const diffAnalysis = ctx.stepResults.get('analyzeDiff') as DiffAnalysis | undefined;
+		// Retrieve diff analysis for additional context with runtime validation
+		const rawDiffAnalysis = ctx.stepResults.get('analyzeDiff');
+		const diffAnalysis: DiffAnalysis | undefined =
+			isDiffAnalysis(rawDiffAnalysis) ? rawDiffAnalysis : undefined;
 
 		const prompt = `You are an expert code reviewer performing a self-critique of your own review.
 
@@ -57,10 +63,21 @@ Output the refined review in full. Do not add meta-commentary about what you cha
 			return {
 				finalReview: refinedReview,
 				selfCritiqueNotes: `Self-critique refined ${deepReview.reviewMarkdown.length} → ${refinedReview.length} chars`,
+				structuredFindings: normalizeReviewResult(refinedReview, ctx.diff),
 			};
 		} catch (err) {
 			ctx.outputChannel.appendLine(`[Agent] Step 5: Self-critique failed (non-fatal): ${err}`);
-			return { finalReview: deepReview.reviewMarkdown };
+			const hasExistingFindings = !!deepReview.structuredReview;
+			const structuredFindings = hasExistingFindings
+				? deepReview.structuredReview
+				: normalizeReviewResult(deepReview.reviewMarkdown, ctx.diff);
+			if (!hasExistingFindings) {
+				ctx.outputChannel.appendLine('[Agent] Step 5: structuredReview missing from deep review; re-parsing markdown');
+			}
+			return {
+				finalReview: deepReview.reviewMarkdown,
+				structuredFindings,
+			};
 		}
 	},
 };

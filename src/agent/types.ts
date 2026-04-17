@@ -7,6 +7,50 @@
  */
 
 import type { ContextBundle } from '../context/types';
+import type { ValidatedStructuredReviewResult } from '../reviewFindings';
+
+/** Brand symbol for runtime-safe AICallerFn identification. */
+const AI_CALLER_BRAND = Symbol('AICallerFn');
+
+/** Shared type for the AI caller function passed between agent steps. */
+export type AICallerFn = ((prompt: string, options?: { responseFormat?: 'structured-review' | 'markdown' }) => Promise<string>) & { [AI_CALLER_BRAND]: true };
+
+/**
+ * Brand a plain function as an AICallerFn so that `isAICallerFn` can
+ * distinguish it from arbitrary functions stored in the untyped stepResults Map.
+ */
+export function markAsAICaller(
+	fn: (prompt: string, options?: { responseFormat?: 'structured-review' | 'markdown' }) => Promise<string>,
+): AICallerFn {
+	return Object.assign(fn, { [AI_CALLER_BRAND]: true as const });
+}
+
+/**
+ * Type guard for AICallerFn — checks the value is a function that has been
+ * explicitly branded via `markAsAICaller`. This prevents accidentally treating
+ * arbitrary functions from the untyped stepResults Map as AI callers.
+ */
+export function isAICallerFn(fn: unknown): fn is AICallerFn {
+	return typeof fn === 'function' && AI_CALLER_BRAND in fn;
+}
+
+/** Type guard for DiffAnalysis — validates required structural fields and types. */
+export function isDiffAnalysis(value: unknown): value is DiffAnalysis {
+	return value !== null &&
+		typeof value === 'object' &&
+		'summary' in value &&
+		typeof (value as DiffAnalysis).summary === 'string' &&
+		'changedFiles' in value &&
+		Array.isArray((value as DiffAnalysis).changedFiles);
+}
+
+/** Type guard for GatheredContext — validates required structural fields and types. */
+export function isGatheredContext(value: unknown): value is GatheredContext {
+	return value !== null &&
+		typeof value === 'object' &&
+		'workspacePatterns' in value &&
+		Array.isArray((value as GatheredContext).workspacePatterns);
+}
 
 // ---------------------------------------------------------------------------
 // Agent Configuration
@@ -107,6 +151,8 @@ export interface PatternAnalysis {
 export interface DeepReview {
 	/** The full review markdown from the AI. */
 	reviewMarkdown: string;
+	/** F-031: Structured findings for sidebar integration. */
+	structuredReview?: ValidatedStructuredReviewResult;
 }
 
 /** Step 5 output: synthesised final review. */
@@ -115,6 +161,8 @@ export interface SynthesisResult {
 	finalReview: string;
 	/** Self-critique notes (if enabled). */
 	selfCritiqueNotes?: string;
+	/** F-031: Final structured findings for sidebar integration. */
+	structuredFindings?: ValidatedStructuredReviewResult;
 }
 
 // ---------------------------------------------------------------------------

@@ -8,7 +8,9 @@
 
 import type { AgentStep, AgentContext, PatternAnalysis, DeepReview, DiffAnalysis } from '../types';
 import type { GatheredContext } from '../types';
+import { isAICallerFn, isDiffAnalysis, isGatheredContext } from '../types';
 import { formatContextForPrompt } from '../../context';
+import { normalizeReviewResult } from '../../reviewFindings';
 
 export const deepReviewStep: AgentStep<PatternAnalysis, DeepReview> = {
 	name: 'deepReview',
@@ -18,16 +20,17 @@ export const deepReviewStep: AgentStep<PatternAnalysis, DeepReview> = {
 		ctx.reportProgress('Step 4/5 — Running deep AI review…');
 		ctx.outputChannel.appendLine('[Agent] Step 4: Deep review');
 
-		const callAI = ctx.stepResults.get('callAI') as
-			((prompt: string) => Promise<string>) | undefined;
+		const callAI = ctx.stepResults.get('callAI');
 
-		if (!callAI) {
-			throw new Error('AI caller not available — cannot perform deep review');
+		if (!isAICallerFn(callAI)) {
+			throw new Error('AI caller not available or invalid — cannot perform deep review');
 		}
 
-		// Retrieve prior step results
-		const diffAnalysis = ctx.stepResults.get('analyzeDiff') as DiffAnalysis | undefined;
-		const gathered = ctx.stepResults.get('gatherContext') as GatheredContext | undefined;
+		// Retrieve prior step results with runtime validation
+		const rawDiffAnalysis = ctx.stepResults.get('analyzeDiff');
+		const diffAnalysis = isDiffAnalysis(rawDiffAnalysis) ? rawDiffAnalysis : undefined;
+		const rawGathered = ctx.stepResults.get('gatherContext');
+		const gathered = isGatheredContext(rawGathered) ? rawGathered : undefined;
 
 		// Build context section
 		let contextSection = '';
@@ -50,14 +53,23 @@ export const deepReviewStep: AgentStep<PatternAnalysis, DeepReview> = {
 			}
 		}
 
-		// Get the profile and skills prompt (stored by orchestrator)
-		const profileContext = (ctx.stepResults.get('profileContext') as string) ?? '';
-		const skillContext = (ctx.stepResults.get('skillContext') as string) ?? '';
+		// Get the profile, skills, and impact prompt (stored by orchestrator)
+		const rawProfile = ctx.stepResults.get('profileContext');
+		const profileContext = typeof rawProfile === 'string' ? rawProfile : '';
+		const rawSkill = ctx.stepResults.get('skillContext');
+		const skillContext = typeof rawSkill === 'string' ? rawSkill : '';
+		const rawImpact = ctx.stepResults.get('impactContext');
+		const impactContext = typeof rawImpact === 'string' ? rawImpact : '';
+
+		let impactSection = '';
+		if (impactContext) {
+			impactSection = `\n\n**Downstream Architectural Impact:**\n${impactContext}\n\nReview the diff specifically for breaking changes or inconsistencies that would affect these consumers.\n`;
+		}
 
 		const prompt = `You are an expert software engineer performing a thorough, multi-step code review.
 
 This is the DEEP REVIEW step. Previous analysis has already identified the diff structure and codebase patterns. Now perform a comprehensive review.
-${diffSummary}${patternsSection}${skillContext}${profileContext}
+${diffSummary}${patternsSection}${skillContext}${profileContext}${impactSection}
 
 **Review Focus:**
 1. **Security** — Injection, XSS, SSRF, authentication/authorization flaws, secrets in code
@@ -78,9 +90,12 @@ ${contextSection}
 ${ctx.diff}
 \`\`\``;
 
-		const reviewMarkdown = await callAI(prompt);
+		// Pass responseFormat to signal the provider to return structured findings.
+		// Note: synthesisStep intentionally omits this option since it refines free-form markdown.
+		const reviewMarkdown = await callAI(prompt, { responseFormat: 'structured-review' });
+		const structuredReview = normalizeReviewResult(reviewMarkdown, ctx.diff);
 		ctx.outputChannel.appendLine(`[Agent] Step 4: Deep review completed (${reviewMarkdown.length} chars)`);
 
-		return { reviewMarkdown };
+		return { reviewMarkdown, structuredReview };
 	},
 };

@@ -24,6 +24,7 @@ import type {
 	DeepReview,
 	SynthesisResult,
 } from './types';
+import { markAsAICaller } from './types';
 import { analyzeDiffStep } from './steps/analyzeDiff';
 import { gatherContextStep } from './steps/gatherContext';
 import { patternAnalysisStep } from './steps/patternAnalysis';
@@ -76,11 +77,12 @@ export async function runAgentReview(
 	diff: string,
 	extensionContext: vscode.ExtensionContext,
 	outputChannel: vscode.OutputChannel,
-	callAI: (prompt: string) => Promise<string>,
+	callAI: (prompt: string, options?: { responseFormat?: 'structured-review' | 'markdown' }) => Promise<string>,
 	reportProgress: (message: string) => void,
 	cancellationToken: vscode.CancellationToken,
 	profileContext: string = '',
 	skillContext: string = '',
+	impactContext: string = '',
 ): Promise<AgentReviewResult> {
 	const startTime = Date.now();
 	const config = getAgentModeConfig();
@@ -100,9 +102,10 @@ export async function runAgentReview(
 	};
 
 	// Inject the AI caller and prompt context into step results
-	ctx.stepResults.set('callAI', callAI);
+	ctx.stepResults.set('callAI', markAsAICaller(callAI));
 	ctx.stepResults.set('profileContext', profileContext);
 	ctx.stepResults.set('skillContext', skillContext);
+	ctx.stepResults.set('impactContext', impactContext);
 
 	let stepsCompleted = 0;
 

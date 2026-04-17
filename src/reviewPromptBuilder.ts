@@ -24,6 +24,7 @@ export interface BuildReviewPromptOptions {
 	outputChannel?: vscode.OutputChannel;
 	promptMode?: ReviewPromptMode;
 	lightCheckCriteria?: string[];
+	impactContext?: string;
 }
 
 export async function buildReviewPrompt({
@@ -33,6 +34,7 @@ export async function buildReviewPrompt({
 	outputChannel,
 	promptMode = 'default',
 	lightCheckCriteria = [],
+	impactContext,
 }: BuildReviewPromptOptions): Promise<string> {
 	const log = (message: string): void => {
 		outputChannel?.appendLine(message);
@@ -78,6 +80,10 @@ export async function buildReviewPrompt({
 
 	if (profileContext && !promptTemplate.includes('${profile}')) {
 		prompt += '\n' + profileContext;
+	}
+
+	if (impactContext) {
+		prompt += '\n\n## Downstream Architectural Impact\n' + impactContext;
 	}
 
 	if (promptMode === 'light-check') {

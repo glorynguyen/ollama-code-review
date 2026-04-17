@@ -1388,6 +1388,7 @@
     "@vscode/vsce": "^3.7.1",
     "esbuild": "^0.27.3",
     "eslint": "^9.32.0",
+    "mocha": "^11.3.0",
     "semantic-release": "^25.0.2",
     "ts-loader": "^9.5.4",
     "typescript": "^5.9.2",
@@ -1445,5 +1446,12 @@
       ]
     ]
   },
+  "resolutions": {
+    "serialize-javascript": "^7.0.5",
+    "diff": "^5.2.0",
+    "picomatch": "^4.0.3",
+    "brace-expansion": "^2.0.1"
+  },
+
   "packageManager": "yarn@1.22.22"
 }

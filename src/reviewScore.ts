@@ -8,8 +8,11 @@
 
 import * as vscode from 'vscode';
 import * as path from 'path';
+import { escapeHtml } from './utils';
 import * as fs from 'fs';
 import type { FindingCounts } from './notifications';
+
+import type { ValidatedStructuredReviewResult } from './reviewFindings';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -40,7 +43,14 @@ export interface ReviewScore {
 	filesReviewed?: string[];
 	/** F-011: Issue categories detected in the review */
 	categories?: Partial<Record<IssueCategory, number>>;
+	/** F-048: Full findings list for persistence */
+	findings?: ValidatedStructuredReviewResult;
+	/** F-048: The original diff reviewed (optional, for restoration). Truncated to 100 KB. */
+	diff?: string;
 }
+
+/** Maximum diff size (in characters) persisted per score entry to limit storage growth. */
+const MAX_STORED_DIFF_CHARS = 100_000;
 
 // ─── Score computation ───────────────────────────────────────────────────────
 
@@ -140,7 +150,17 @@ export class ReviewScoreStore {
 	}
 
 	addScore(score: ReviewScore): void {
-		this._scores.unshift(score);
+		let truncatedDiff = score.diff;
+		if (truncatedDiff && truncatedDiff.length > MAX_STORED_DIFF_CHARS) {
+			// Ensure we don't split a surrogate pair by backing up if we land on a trailing surrogate
+			let end = MAX_STORED_DIFF_CHARS;
+			const code = truncatedDiff.charCodeAt(end - 1);
+			if (code >= 0xD800 && code <= 0xDBFF) { end--; } // high surrogate — back up one unit
+			else if (code >= 0xDC00 && code <= 0xDFFF) { end -= 2; } // low surrogate — back up two units
+			truncatedDiff = truncatedDiff.slice(0, end) + '\n… (truncated)';
+		}
+		const entry = truncatedDiff !== score.diff ? { ...score, diff: truncatedDiff } : score;
+		this._scores.unshift(entry);
 		if (this._scores.length > 500) { this._scores = this._scores.slice(0, 500); }
 		this._save();
 	}
@@ -186,6 +206,16 @@ export function updateScoreStatusBar(item: vscode.StatusBarItem, score: number):
 
 // ─── History webview panel ───────────────────────────────────────────────────
 
+/** Expected shape of a "restore" message from the review history webview. */
+interface RestoreMessage { command: 'restore'; id: string }
+
+function isRestoreMessage(msg: unknown): msg is RestoreMessage {
+	return typeof msg === 'object' && msg !== null &&
+		(msg as Record<string, unknown>).command === 'restore' &&
+		typeof (msg as Record<string, unknown>).id === 'string' &&
+		/^\d+$/.test((msg as Record<string, unknown>).id as string);
+}
+
 export class ReviewHistoryPanel {
 	static currentPanel: ReviewHistoryPanel | undefined;
 	private readonly _panel: vscode.WebviewPanel;
@@ -210,6 +240,30 @@ export class ReviewHistoryPanel {
 		this._panel = panel;
 		this._update(scores);
 		this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
+
+		this._panel.webview.onDidReceiveMessage(
+			(message: unknown) => {
+				void (async () => {
+					try {
+						if (!isRestoreMessage(message)) {
+							return;
+						}
+						const scoreId = message.id;
+						const score = scores.find(s => s.id === scoreId);
+						if (score && score.findings && score.diff) {
+							await vscode.commands.executeCommand('ollama-code-review.restoreReviewFromHistory', score);
+							vscode.window.showInformationMessage(`Restored review from ${new Date(score.timestamp).toLocaleString()}`);
+						} else {
+							vscode.window.showWarningMessage('This review entry does not have findings or diff data for restoration.');
+						}
+					} catch (err) {
+						vscode.window.showErrorMessage(`Failed to restore review: ${err instanceof Error ? err.message : String(err)}`);
+					}
+				})();
+			},
+			null,
+			this._disposables
+		);
 	}
 
 	private _update(scores: ReviewScore[]): void {
@@ -237,20 +291,28 @@ export class ReviewHistoryPanel {
 			const date = new Date(s.timestamp).toLocaleString();
 			const scoreColor = s.score >= 80 ? '#4CAF50' : s.score >= 60 ? '#FF9800' : '#F44336';
 			const c = s.findingCounts;
+			const safeCount = (n: unknown): number => typeof n === 'number' && Number.isFinite(n) ? n : 0;
 			const badges = [
-				c.critical > 0 ? `<span class="badge critical">🔴 ${c.critical}</span>` : '',
-				c.high     > 0 ? `<span class="badge high">🟠 ${c.high}</span>` : '',
-				c.medium   > 0 ? `<span class="badge medium">🟡 ${c.medium}</span>` : '',
-				c.low      > 0 ? `<span class="badge low">🟢 ${c.low}</span>` : '',
+				safeCount(c.critical) > 0 ? `<span class="badge critical">🔴 ${safeCount(c.critical)}</span>` : '',
+				safeCount(c.high)     > 0 ? `<span class="badge high">🟠 ${safeCount(c.high)}</span>` : '',
+				safeCount(c.medium)   > 0 ? `<span class="badge medium">🟡 ${safeCount(c.medium)}</span>` : '',
+				safeCount(c.low)      > 0 ? `<span class="badge low">🟢 ${safeCount(c.low)}</span>` : '',
 			].filter(Boolean).join(' ');
 			const src = s.label || s.branch || '—';
+			const safeId = /^\d+$/.test(s.id) ? s.id : '';
+			const canRestore = safeId && s.findings && s.diff;
+			// Defense-in-depth: encodeURIComponent is redundant for numeric-only IDs but guards against
+			// future changes to the ID format that could introduce attribute injection.
 			return `<tr>
 				<td>${date}</td>
 				<td style="color:${scoreColor};font-weight:bold;text-align:center">${s.score}</td>
-				<td>${s.model}</td>
-				<td>${s.profile || 'general'}</td>
-				<td title="${src}">${src.length > 40 ? '…' + src.slice(-38) : src}</td>
+				<td>${escapeHtml(s.model)}</td>
+				<td>${escapeHtml(s.profile || 'general')}</td>
+				<td title="${escapeHtml(src)}">${escapeHtml(src.length > 40 ? '…' + src.slice(-38) : src)}</td>
 				<td>${badges || '—'}</td>
+				<td>
+					${canRestore ? `<button class="btn-restore" data-score-id="${encodeURIComponent(safeId)}" title="Reload this review findings and diff">Restore</button>` : '<span style="opacity:0.3">N/A</span>'}
+				</td>
 			</tr>`;
 		}).join('\n');
 
@@ -283,6 +345,8 @@ export class ReviewHistoryPanel {
     tbody td { padding: 6px 10px; border-bottom: 1px solid var(--vscode-panel-border); vertical-align: middle; }
     tr:hover { background: var(--vscode-list-hoverBackground); }
     .badge { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 0.8em; margin-right: 2px; background: var(--vscode-badge-background); }
+    .btn-restore { background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; padding: 4px 8px; border-radius: 2px; cursor: pointer; font-size: 0.85em; }
+    .btn-restore:hover { background: var(--vscode-button-hoverBackground); }
     .empty { opacity: 0.5; margin-top: 40px; text-align: center; font-size: 1.1em; }
   </style>
 </head>
@@ -294,16 +358,25 @@ export class ReviewHistoryPanel {
     <div class="card"><div class="value" style="color:${avgColor}">${avg}</div><div class="lbl">Average (${scores.length})</div></div>
     <div class="card"><div class="value" style="color:${bestColor}">${best}</div><div class="lbl">Best Score</div></div>
   </div>
-  <div class="chart-wrap"><canvas id="chart"></canvas></div>
+  <div class="chart-wrap"><canvas id="chart" data-points="${escapeHtml(JSON.stringify(chartPoints))}"></canvas></div>
   <table>
-    <thead><tr><th>Date</th><th style="text-align:center">Score</th><th>Model</th><th>Profile</th><th>Source</th><th>Findings</th></tr></thead>
+    <thead><tr><th>Date</th><th style="text-align:center">Score</th><th>Model</th><th>Profile</th><th>Source</th><th>Findings</th><th>Actions</th></tr></thead>
     <tbody>${tableRows}</tbody>
   </table>
   `}
   <script>
-    const pts = ${chartPoints};
+    const vscode = acquireVsCodeApi();
+    document.addEventListener('click', function(e) {
+      const btn = e.target.closest('.btn-restore');
+      if (btn) {
+        const id = decodeURIComponent(btn.dataset.scoreId);
+        vscode.postMessage({ command: 'restore', id: id });
+      }
+    });
+    const chartEl = document.getElementById('chart');
+    const pts = JSON.parse(chartEl.dataset.points || '[]');
     if (pts.length > 0) {
-      const ctx = document.getElementById('chart').getContext('2d');
+      const ctx = chartEl.getContext('2d');
       new Chart(ctx, {
         type: 'line',
         data: {
