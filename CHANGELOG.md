@@ -1,3 +1,16 @@
+# [4.0.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.64.0...v4.0.0) (2026-04-17)
+
+
+### Features
+
+* **agent:** add impact context and structured findings ([a4ff19f](https://github.com/glorynguyen/ollama-code-review/commit/a4ff19fa82a18b3ed68a3381ef0fd9d6a0ea3582))
+
+
+### BREAKING CHANGES
+
+* **agent:** buildReviewPrompt now accepts an options object
+instead of positional parameters
+
 # [3.64.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.63.0...v3.64.0) (2026-04-14)
 
 
