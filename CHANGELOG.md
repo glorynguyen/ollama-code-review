@@ -1,3 +1,10 @@
+# [4.1.0](https://github.com/glorynguyen/ollama-code-review/compare/v4.0.0...v4.1.0) (2026-04-20)
+
+
+### Features
+
+* **chat:** add agentic chat with MCP tool integration ([20a07cd](https://github.com/glorynguyen/ollama-code-review/commit/20a07cdc1080496710c9dfbd5b6140be6625406a))
+
 # [4.0.0](https://github.com/glorynguyen/ollama-code-review/compare/v3.64.0...v4.0.0) (2026-04-17)
 
 
