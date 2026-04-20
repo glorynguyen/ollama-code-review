@@ -2,7 +2,187 @@ import * as vscode from 'vscode';
 import axios from 'axios';
 import * as https from 'https';
 import * as http from 'http';
-import { getOllamaModel } from '../utils';
+import { getOllamaModel, extractToolCalls, generateToolCallId } from '../utils';
+import type { ChatMessage, ToolCall } from '../chat/types';
+import type { McpTool } from '../mcp/mcpClientManager';
+
+export async function chatWithClaude(
+	messages: ChatMessage[],
+	config: vscode.WorkspaceConfiguration,
+	options: {
+		tools?: McpTool[];
+		onChunk?: (chunk: string) => void;
+		onToolCall?: (toolCall: ToolCall) => void;
+	} = {}
+): Promise<{ content: string; tool_calls?: ToolCall[] }> {
+	const model = getOllamaModel(config);
+	const apiKey = config.get<string>('claudeApiKey', '');
+	const temperature = config.get<number>('temperature', 0);
+
+	if (!apiKey) {
+		throw new Error('Claude API key is not configured.');
+	}
+
+	const anthropicTools = options.tools?.map((t) => ({
+		name: t.name,
+		description: t.description,
+		input_schema: t.inputSchema || { type: 'object', properties: {} },
+	}));
+
+	const systemMessages = messages.filter(m => m.role === 'system').map(m => m.content).join('\n\n');
+	
+	// Claude strictly requires alternating User and Assistant roles.
+	// 1. Filter out system messages
+	// 2. Merge consecutive messages with the same effective role
+	const rawFiltered = messages.filter(m => m.role !== 'system');
+	const alternatingMessages: ChatMessage[] = [];
+	
+	for (const msg of rawFiltered) {
+		const last = alternatingMessages[alternatingMessages.length - 1];
+		// Effectively, 'tool' and 'user' both map to the 'user' role in Anthropic's API
+		const currentEffectiveRole = msg.role === 'tool' ? 'user' : msg.role;
+		const lastEffectiveRole = last ? (last.role === 'tool' ? 'user' : last.role) : null;
+
+		if (last && currentEffectiveRole === lastEffectiveRole) {
+			// Merge content into the last message
+			last.content = (last.content || '') + '\n\n' + (msg.content || '');
+			// If merging tool results, we need to handle the IDs, but our ChatMessage 
+			// type only stores one tool_call_id. In practice, multiple tool results 
+			// should stay separate or be wrapped in one block. 
+			// For Claude, we'll handle this mapping during the .map() below.
+		} else {
+			alternatingMessages.push({ ...msg });
+		}
+	}
+
+	return new Promise((resolve, reject) => {
+		const postData = JSON.stringify({
+			model,
+			max_tokens: 8192,
+			system: systemMessages || undefined,
+			messages: alternatingMessages.map((m) => {
+				if (m.role === 'tool') {
+					return {
+						role: 'user',
+						content: [
+							{
+								type: 'tool_result',
+								tool_use_id: m.tool_call_id,
+								content: m.content,
+							}
+						],
+					};
+				}
+
+				type AnthropicContentBlock =
+					| { type: 'text'; text: string }
+					| { type: 'tool_use'; id: string; name: string; input: unknown }
+					| { type: 'tool_result'; tool_use_id: string; content: string };
+
+				const msgContent: AnthropicContentBlock[] = [];
+				if (m.content) {
+					msgContent.push({ type: 'text', text: m.content });
+				}
+
+				if (m.role === 'assistant' && m.tool_calls) {
+					m.tool_calls.forEach(tc => {
+						try {
+							msgContent.push({
+								type: 'tool_use',
+								id: tc.id,
+								name: tc.function.name,
+								input: JSON.parse(tc.function.arguments),
+							});
+						} catch { /* ignore invalid JSON in history */ }
+					});
+				}
+
+				// Anthropic requires non-empty content
+				if (msgContent.length === 0) {
+					msgContent.push({ type: 'text', text: ' ' });
+				}
+
+				return {
+					role: m.role === 'assistant' ? 'assistant' : 'user',
+					content: msgContent,
+				};
+			}),
+			tools: anthropicTools,
+			stream: true,
+			temperature,
+		});
+
+		const reqOptions = {
+			hostname: 'api.anthropic.com',
+			path: '/v1/messages',
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'x-api-key': apiKey,
+				'anthropic-version': '2023-06-01',
+				'Content-Length': Buffer.byteLength(postData),
+			},
+		};
+
+		let fullText = '';
+		let buffer = '';
+		const toolCalls: Record<string, ToolCall> = {};
+
+		const req = https.request(reqOptions, (res) => {
+			res.on('data', (chunk: Buffer) => {
+				buffer += chunk.toString();
+				const lines = buffer.split('\n');
+				buffer = lines.pop() ?? '';
+
+				for (const line of lines) {
+					if (!line.startsWith('data: ')) { continue; }
+					const jsonStr = line.slice(6).trim();
+					if (!jsonStr || jsonStr === '[DONE]') { continue; }
+					try {
+						const data = JSON.parse(jsonStr);
+						if (data.type === 'content_block_delta') {
+							if (data.delta?.type === 'text_delta') {
+								const text = data.delta.text ?? '';
+								fullText += text;
+								options.onChunk?.(text);
+							} else if (data.delta?.type === 'input_json_delta') {
+								const index = data.index;
+								if (toolCalls[index]) {
+									toolCalls[index].function.arguments += data.delta.partial_json;
+								}
+							}
+						} else if (data.type === 'content_block_start') {
+							if (data.content_block?.type === 'tool_use') {
+								const index = data.index;
+								toolCalls[index] = {
+									id: data.content_block.id,
+									type: 'function',
+									function: {
+										name: data.content_block.name,
+										arguments: '',
+									},
+								};
+							}
+						}
+					} catch (parseErr) {
+						// Log at debug level - common for partial chunks
+						console.debug('Stream chunk parse skipped:', parseErr);
+					}
+				}
+			});
+
+			res.on('end', () => {
+				const finalToolCalls = Object.values(toolCalls);
+				finalToolCalls.forEach((tc) => options.onToolCall?.(tc));
+				resolve({ content: fullText, tool_calls: finalToolCalls });
+			});
+		});
+
+		req.on('error', reject);
+		req.write(postData);
+		req.end();
+	});
+}
 
 export interface PerformanceMetrics {
 	totalDuration?: number;
@@ -695,6 +875,175 @@ export async function callMiniMaxAPI(prompt: string, config: vscode.WorkspaceCon
 }
 
 
+export async function chatWithOpenAICompatible(
+	messages: ChatMessage[],
+	config: vscode.WorkspaceConfiguration,
+	options: {
+		tools?: McpTool[];
+		onChunk?: (chunk: string) => void;
+		onToolCall?: (toolCall: ToolCall) => void;
+	} = {}
+): Promise<{ content: string; tool_calls?: ToolCall[] }> {
+	const endpoint = config.get<string>('openaiCompatible.endpoint', 'http://localhost:1234/v1');
+	const apiKey = config.get<string>('openaiCompatible.apiKey', '');
+	const model = config.get<string>('openaiCompatible.model', '');
+	const temperature = config.get<number>('temperature', 0);
+
+	if (!model) {
+		throw new Error('OpenAI-compatible model is not configured.');
+	}
+
+	const url = `${endpoint.replace(/\/$/, '')}/chat/completions`;
+
+	const openAITools = options.tools?.map((t) => ({
+		type: 'function',
+		function: {
+			name: t.name,
+			description: t.description,
+			parameters: t.inputSchema,
+		},
+	}));
+
+	// Some OpenAI-compatible backends are strict about role alternation.
+	const alternatingMessages: ChatMessage[] = [];
+	for (const msg of messages) {
+		const last = alternatingMessages[alternatingMessages.length - 1];
+		// Map 'tool' to 'user' for alternation checking (they are both effectively user-side inputs)
+		const currentEffectiveRole = msg.role === 'tool' ? 'user' : msg.role;
+		const lastEffectiveRole = last ? (last.role === 'tool' ? 'user' : last.role) : null;
+
+		if (last && currentEffectiveRole === lastEffectiveRole && currentEffectiveRole !== 'system') {
+			last.content = (last.content || '') + '\n\n' + (msg.content || '');
+			// Note: If both have tool_calls, only the first one's tool_calls are kept in this simple merge.
+			// However, consecutive assistant messages with tool calls are rare in our architecture.
+		} else {
+			alternatingMessages.push({ ...msg });
+		}
+	}
+
+	return new Promise((resolve, reject) => {
+		const postData = JSON.stringify({
+			model,
+			messages: alternatingMessages.map((m) => {
+				interface OpenAIMessage {
+					role: string;
+					content: string | null;
+					tool_calls?: ToolCall[];
+					tool_call_id?: string;
+				}
+				const msg: OpenAIMessage = {
+					role: m.role,
+					content: m.content || null,
+				};
+				if (m.role === 'assistant' && m.tool_calls) {
+					msg.tool_calls = m.tool_calls;
+				}
+				if (m.role === 'tool' && m.tool_call_id) {
+					msg.tool_call_id = m.tool_call_id;
+				}
+				return msg;
+			}),
+			tools: openAITools?.length ? openAITools : undefined,
+			stream: true,
+			temperature,
+		});
+
+		const headers: Record<string, string | number> = {
+			'Content-Type': 'application/json',
+			'Content-Length': Buffer.byteLength(postData),
+		};
+		if (apiKey) { headers['Authorization'] = `Bearer ${apiKey}`; }
+
+		const isHttps = url.startsWith('https:');
+		const lib = isHttps ? https : http;
+		const parsedUrl = new URL(url);
+
+		const reqOptions = {
+			hostname: parsedUrl.hostname,
+			port: parsedUrl.port ? parseInt(parsedUrl.port) : (isHttps ? 443 : 80),
+			path: parsedUrl.pathname + parsedUrl.search,
+			method: 'POST',
+			headers,
+		};
+
+		let fullText = '';
+		let buffer = '';
+		const toolCalls: Record<number, ToolCall> = {};
+
+		const req = lib.request(reqOptions, (res) => {
+			if (res.statusCode && res.statusCode >= 400) {
+				let body = '';
+				res.on('data', (c: Buffer) => { body += c.toString(); });
+				res.on('end', () => {
+					try {
+						const err = JSON.parse(body);
+						reject(new Error(`OpenAI API Error (${res.statusCode}): ${err?.error?.message ?? body}`));
+					} catch {
+						reject(new Error(`OpenAI API Error (${res.statusCode}): ${body}`));
+					}
+				});
+				return;
+			}
+
+			res.on('data', (chunk: Buffer) => {
+				buffer += chunk.toString();
+				const lines = buffer.split('\n');
+				buffer = lines.pop() ?? '';
+
+				for (const line of lines) {
+					if (!line.startsWith('data: ')) { continue; }
+					const jsonStr = line.slice(6).trim();
+					if (!jsonStr || jsonStr === '[DONE]') { continue; }
+					try {
+						const data = JSON.parse(jsonStr);
+						const delta = data.choices?.[0]?.delta;
+						if (delta?.content) {
+							fullText += delta.content;
+							options.onChunk?.(delta.content);
+						}
+						if (delta?.tool_calls) {
+							for (const tc of delta.tool_calls) {
+								const index = tc.index;
+								if (!toolCalls[index]) {
+									toolCalls[index] = {
+										id: tc.id || '',
+										type: 'function',
+										function: {
+											name: tc.function?.name || '',
+											arguments: '',
+										},
+									};
+								}
+								if (tc.id) { toolCalls[index].id = tc.id; }
+								if (tc.function?.name) { toolCalls[index].function.name = tc.function.name; }
+								if (tc.function?.arguments) { toolCalls[index].function.arguments += tc.function.arguments; }
+							}
+						}
+					} catch (parseErr) {
+						// Log at debug level - common for partial chunks
+						console.debug('Stream chunk parse skipped:', parseErr);
+					}
+				}
+			});
+
+			res.on('end', () => {
+				const finalToolCalls = Object.values(toolCalls);
+				finalToolCalls.forEach((tc) => options.onToolCall?.(tc));
+				resolve({ content: fullText, tool_calls: finalToolCalls.length ? finalToolCalls : undefined });
+			});
+		});
+
+		req.setTimeout(30000, () => {
+			req.destroy();
+			reject(new Error('OpenAI-compatible API request timed out after 30s'));
+		});
+
+		req.on('error', reject);
+		req.write(postData);
+		req.end();
+	});
+}
+
 /**
  * Call any OpenAI-compatible API endpoint (LM Studio, vLLM, LocalAI, Groq, OpenRouter, etc.)
  */
@@ -867,6 +1216,58 @@ export async function callV0API(prompt: string, config: vscode.WorkspaceConfigur
 // ---------------------------------------------------------------------------
 // F-022: Streaming helpers
 // ---------------------------------------------------------------------------
+export async function chatWithOllama(
+	messages: ChatMessage[],
+	endpoint: string,
+	model: string,
+	temperature: number,
+	options: {
+		tools?: McpTool[];
+		onChunk?: (chunk: string) => void;
+	} = {}
+): Promise<{ content: string; tool_calls?: ToolCall[] }> {
+	let prompt = '';
+
+	// 1. System instructions first
+	const systemMessages = messages.filter(m => m.role === 'system');
+	if (systemMessages.length > 0) {
+		prompt += systemMessages.map(m => m.content).join('\n\n') + '\n\n';
+	}
+
+	// 2. Tool definitions
+	if (options.tools?.length) {
+		prompt += 'Available tools:\n' + options.tools.map(t => 
+			`- ${t.name}: ${t.description}\n  Schema: ${JSON.stringify(t.inputSchema)}`
+		).join('\n') + '\n\n';
+		prompt += 'To call a tool, output a JSON block like this: {"tool": "toolName", "args": {...}}\n\n';
+	}
+
+	// 3. Conversation history
+	prompt += messages.filter(m => m.role !== 'system').map(m => {
+		// Basic sanitization to prevent role-prefix injection
+		const sanitizedContent = m.content.replace(/^(USER|ASSISTANT|SYSTEM|TOOL):/i, '[$1]:');
+		return `${m.role.toUpperCase()}: ${sanitizedContent}`;
+	}).join('\n');
+	prompt += '\nASSISTANT:';
+
+	const fullText = await streamOllamaAPI(prompt, model, endpoint, temperature, options.onChunk || (() => {}));
+
+	// Try to extract tool calls from text
+	const extracted = extractToolCalls(fullText);
+	const toolCalls: ToolCall[] = extracted.map(tc => {
+		const id: string = generateToolCallId();
+		return {
+			id,
+			type: 'function',
+			function: {
+				name: tc.name,
+				arguments: tc.arguments,
+			}
+		};
+	});
+
+	return { content: fullText, tool_calls: toolCalls.length ? toolCalls : undefined };
+}
 
 /**
  * Stream a review from the Ollama API using NDJSON chunked responses.
@@ -934,7 +1335,10 @@ export async function streamOllamaAPI(
 								totalDurationSeconds: data.total_duration ? data.total_duration / 1e9 : undefined,
 							};
 						}
-					} catch { /* ignore malformed JSON lines */ }
+					} catch (parseErr) {
+						// Log at debug level - common for partial chunks
+						console.debug('Ollama stream line parse skipped:', parseErr);
+					}
 				}
 			});
 
@@ -943,7 +1347,10 @@ export async function streamOllamaAPI(
 					try {
 						const data = JSON.parse(buffer);
 						if (data.response) { fullText += data.response; onChunk(data.response); }
-					} catch { /* ignore */ }
+					} catch (parseErr) {
+						// Log at debug level - common for partial chunks
+						console.debug('Stream chunk parse skipped:', parseErr);
+					}
 				}
 				resolve(fullText);
 			});

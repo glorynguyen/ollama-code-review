@@ -2,9 +2,11 @@ import axios from 'axios';
 import {
 	setLastPerformanceMetrics,
 	streamOllamaAPI,
+	chatWithOllama,
 } from '../commands/providerClients';
 import { buildProviderPrompt } from './promptFormats';
-import type { GenerateOptions, ModelProvider, ProviderRequestContext, StreamOptions } from './types';
+import type { GenerateOptions, ModelProvider, ProviderRequestContext, StreamOptions, ChatResponse, ChatStreamOptions } from './types';
+import type { ChatMessage } from '../chat/types';
 
 export class OllamaProvider implements ModelProvider {
 	public readonly name = 'ollama';
@@ -61,5 +63,16 @@ export class OllamaProvider implements ModelProvider {
 			context.temperature,
 			options.onChunk,
 		);
+	}
+
+	public async streamChat(
+		messages: ChatMessage[],
+		context: ProviderRequestContext,
+		options: ChatStreamOptions
+	): Promise<ChatResponse> {
+		return chatWithOllama(messages, context.endpoint, context.model, context.temperature, {
+			tools: options.tools,
+			onChunk: options.onChunk
+		});
 	}
 }

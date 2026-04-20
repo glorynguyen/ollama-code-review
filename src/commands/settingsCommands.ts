@@ -13,6 +13,7 @@ import {
 } from '../profiles';
 import { SkillsService } from '../skillsService';
 import { getOllamaModel } from '../utils';
+import { CLOUD_MODELS_METADATA } from '../providers';
 import { getModelRecommendation } from '../modelAdvisor';
 import type { ModelAdvisorInput } from '../modelAdvisor';
 import { type CommandContext } from './commandContext';
@@ -165,24 +166,10 @@ export function registerSettingsCommands(options: RegisterSettingsCommandsOption
 		const config = vscode.workspace.getConfiguration('ollama-code-review');
 		const currentModel = getOllamaModel(config);
 
-		const cloudModels: ModelQuickPickItem[] = [
-			...v0Models,
-			{ label: 'kimi-k2.5:cloud', description: 'Kimi cloud model (Default)' },
-			{ label: 'qwen3-coder:480b-cloud', description: 'Cloud coding model' },
-			{ label: 'glm-4.7:cloud', description: 'GLM cloud model' },
-			{ label: 'glm-4.7-flash', description: 'GLM 4.7 Flash - Free tier (Z.AI)' },
-			{ label: 'huggingface', description: 'Hugging Face Inference API (select model →)' },
-			{ label: 'gemini-2.5-flash', description: 'Gemini 2.5 Flash - Free tier (Google AI)' },
-			{ label: 'gemini-2.5-pro', description: 'Gemini 2.5 Pro - Free tier (Google AI)' },
-			{ label: 'mistral-large-latest', description: 'Mistral Large - Most capable (Mistral AI)' },
-			{ label: 'mistral-small-latest', description: 'Mistral Small - Fast & efficient (Mistral AI)' },
-			{ label: 'codestral-latest', description: 'Codestral - Optimized for code (Mistral AI)' },
-			{ label: 'MiniMax-M2.5', description: 'MiniMax M2.5 (MiniMax)' },
-			{ label: 'openai-compatible', description: 'OpenAI-compatible endpoint (LM Studio, vLLM, LocalAI, Groq, OpenRouter…)' },
-			{ label: 'claude-sonnet-4-20250514', description: 'Claude Sonnet 4 (Anthropic)' },
-			{ label: 'claude-opus-4-20250514', description: 'Claude Opus 4 (Anthropic)' },
-			{ label: 'claude-3-7-sonnet-20250219', description: 'Claude 3.7 Sonnet (Anthropic)' },
-		];
+		const cloudModels: ModelQuickPickItem[] = CLOUD_MODELS_METADATA.map(m => ({
+			label: m.id,
+			description: m.description
+		}));
 
 		const applyModelSelection = async (selected: ModelQuickPickItem): Promise<void> => {
 			if (selected.label === 'huggingface') {

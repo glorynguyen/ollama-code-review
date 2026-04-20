@@ -1,6 +1,7 @@
-import { callClaudeAPI, isClaudeModel, streamClaudeAPI } from '../commands/providerClients';
+import { callClaudeAPI, isClaudeModel, streamClaudeAPI, chatWithClaude } from '../commands/providerClients';
 import { buildProviderPrompt } from './promptFormats';
-import type { GenerateOptions, ModelProvider, ProviderRequestContext, StreamOptions } from './types';
+import type { GenerateOptions, ModelProvider, ProviderRequestContext, StreamOptions, ChatResponse, ChatStreamOptions } from './types';
+import type { ChatMessage } from '../chat/types';
 
 export class ClaudeProvider implements ModelProvider {
 	public readonly name = 'claude';
@@ -23,5 +24,17 @@ export class ClaudeProvider implements ModelProvider {
 
 	public async stream(prompt: string, context: ProviderRequestContext, options: StreamOptions): Promise<string> {
 		return streamClaudeAPI(buildProviderPrompt(prompt, options), context.config, options.onChunk);
+	}
+
+	public async streamChat(
+		messages: ChatMessage[],
+		context: ProviderRequestContext,
+		options: ChatStreamOptions
+	): Promise<ChatResponse> {
+		return chatWithClaude(messages, context.config, {
+			tools: options.tools,
+			onChunk: options.onChunk,
+			onToolCall: options.onToolCall
+		});
 	}
 }

@@ -1349,6 +1349,37 @@
           "type": "string",
           "default": "",
           "markdownDescription": "Optional shared secret required by browser clients. When set, requests to the MCP server must include the `X-OCR-MCP-Token` header."
+        },
+        "ollama-code-review.mcp.externalServers": {
+          "type": "object",
+          "default": {},
+          "markdownDescription": "Configuration for external MCP servers. Each key is a server name, and the value contains the command and arguments to start the server.\n\nExample:\n```json\n{\n  \"github\": {\n    \"command\": \"npx\",\n    \"args\": [\"-y\", \"@modelcontextprotocol/server-github\"],\n    \"env\": { \"GITHUB_PERSONAL_ACCESS_TOKEN\": \"...\" }\n  }\n}\n```",
+          "additionalProperties": {
+            "type": "object",
+            "required": [
+              "command"
+            ],
+            "properties": {
+              "command": {
+                "type": "string",
+                "description": "The command to run the MCP server (e.g., 'node', 'npx', 'python')."
+              },
+              "args": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Arguments to pass to the command."
+              },
+              "env": {
+                "type": "object",
+                "description": "Environment variables for the server process.",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
+            }
+          }
         }
       }
     }

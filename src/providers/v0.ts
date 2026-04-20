@@ -1,6 +1,8 @@
 import { callV0API, isV0Model } from '../commands/providerClients';
 import { buildProviderPrompt } from './promptFormats';
-import type { GenerateOptions, ModelProvider, ProviderRequestContext, StreamOptions } from './types';
+import { extractToolCalls, generateToolCallId } from '../utils';
+import type { GenerateOptions, ModelProvider, ProviderRequestContext, StreamOptions, ChatResponse, ChatStreamOptions } from './types';
+import type { ChatMessage } from '../chat/types';
 
 export class V0Provider implements ModelProvider {
 	public readonly name = 'v0';
@@ -25,5 +27,50 @@ export class V0Provider implements ModelProvider {
 		const full = await this.generate(prompt, context, options);
 		options.onChunk(full);
 		return full;
+	}
+
+	public async streamChat(
+		messages: ChatMessage[],
+		context: ProviderRequestContext,
+		options: ChatStreamOptions
+	): Promise<ChatResponse> {
+		// V0 doesn't support chat history or tools natively yet, so we combine into a prompt
+		let prompt = '';
+
+		// 1. System instructions first
+		const systemMessages = messages.filter(m => m.role === 'system');
+		if (systemMessages.length > 0) {
+			prompt += systemMessages.map(m => m.content).join('\n\n') + '\n\n';
+		}
+
+		// 2. Tool definitions
+		if (options.tools?.length) {
+			prompt += 'Available MCP tools:\n' + options.tools.map(t => 
+				`- ${t.name}: ${t.description}\n  Schema: ${JSON.stringify(t.inputSchema)}`
+			).join('\n') + '\n\n';
+			prompt += 'To call a tool, output a JSON block like this: {"tool": "toolName", "args": {...}}\n\n';
+		}
+
+		// 3. Conversation history (excluding system messages)
+		prompt += messages.filter(m => m.role !== 'system').map(m => {
+			const sanitizedContent = m.content.replace(/^(USER|ASSISTANT|SYSTEM|TOOL):/i, '[$1]:');
+			return `${m.role.toUpperCase()}: ${sanitizedContent}`;
+		}).join('\n');
+		
+		const fullText = await this.generate(prompt, context, options);
+		options.onChunk(fullText);
+
+		// Extract tool calls
+		const extracted = extractToolCalls(fullText);
+		const toolCalls = extracted.map(tc => ({
+			id: generateToolCallId(),
+			type: 'function' as const,
+			function: {
+				name: tc.name,
+				arguments: tc.arguments,
+			}
+		}));
+
+		return { content: fullText, tool_calls: toolCalls.length ? toolCalls : undefined };
 	}
 }

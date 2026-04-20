@@ -82,11 +82,7 @@ export async function resolveAtMentions(
 		}
 	}
 
-	let cleanedMessage = rawMessage;
-	for (const token of toRemove) {
-		cleanedMessage = cleanedMessage.replace(token, '');
-	}
-	cleanedMessage = cleanedMessage.replace(/\s{2,}/g, ' ').trim();
+	const cleanedMessage = rawMessage.replace(mentionPattern, '').replace(/\s{2,}/g, ' ').trim();
 
 	return { cleanedMessage, contexts, unresolved };
 }

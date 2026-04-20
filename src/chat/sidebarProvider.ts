@@ -1,7 +1,5 @@
 import * as vscode from 'vscode';
-import { execFile } from 'child_process';
-import { promisify } from 'util';
-import { type ProviderRequestContext, providerRegistry } from '../providers';
+import { type ProviderRequestContext, providerRegistry, DEFAULT_MODELS } from '../providers';
 import { getOllamaModel } from '../utils';
 import {
 	CONTEXT_MENTION_DEFS,
@@ -10,27 +8,21 @@ import {
 	type ResolvedContext,
 } from './contextProviders';
 import { ConversationManager } from './conversationManager';
+import { AgenticChatOrchestrator } from './agenticOrchestrator';
 import { toModelLimitChatMessage } from './modelErrorUtils';
 import type { ChatMessage, Conversation, WebviewInboundMessage, WebviewOutboundMessage } from './types';
+import type { McpClientManager } from '../mcp/mcpClientManager';
 
 interface AIProvider {
-	sendMessage(prompt: string, onChunk: (chunk: string) => void): Promise<string>;
+	sendMessage(messages: ChatMessage[], onChunk: (chunk: string) => void): Promise<string>;
 }
 
-const execFileAsync = promisify(execFile);
-const STAGED_DIFF_MAX_CHARS = 20000;
 const SUPPORTED_CHAT_COMMANDS = ['/help'] as const;
 
 /** Serialisable form of ContextMentionDef passed to the webview. */
 interface WebviewMentionDef {
 	trigger: string;
 	description: string;
-}
-
-interface StagedDiffContext {
-	content: string;
-	hasDiff: boolean;
-	truncated: boolean;
 }
 
 export class ChatSidebarProvider implements vscode.WebviewViewProvider {
@@ -47,6 +39,7 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 		private readonly extensionUri: vscode.Uri,
 		private readonly conversationManager: ConversationManager,
 		private readonly globalStoragePath: string,
+		private readonly mcpManager: McpClientManager,
 	) {
 		ChatSidebarProvider.instance = this;
 	}
@@ -71,6 +64,10 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 		};
 		webviewView.webview.html = this.getHtml(webviewView.webview);
 
+		webviewView.onDidDispose(() => {
+			this.view = undefined;
+		});
+
 		webviewView.webview.onDidReceiveMessage(async (message: WebviewInboundMessage) => {
 			switch (message.type) {
 				case 'ready':
@@ -91,8 +88,127 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 				case 'pickFile':
 					await this.handlePickFile(message.insertOffset);
 					break;
+				case 'applyCode':
+					await this.handleApplyCode(message.code);
+					break;
+				case 'insertCode':
+					await this.handleInsertCode(message.code);
+					break;
+				case 'copyCode':
+					await this.handleCopyCode(message.code);
+					break;
 			}
 		});
+	}
+
+	private async handleApplyCode(code: string): Promise<void> {
+		const editor = vscode.window.activeTextEditor;
+		if (!editor) {
+			vscode.window.showWarningMessage('No active editor found to apply code.');
+			return;
+		}
+
+		const processedCode = this.stripMarkdownFences(code);
+		const selection = editor.selection;
+
+		if (selection.isEmpty) {
+			// Pass the already processed code directly to the insertion logic
+			await this._insertCode(editor, editor.selection.active, processedCode);
+			return;
+		}
+
+		// Adjust indentation to match the start of the selection
+		const indentedCode = this.adjustIndentation(processedCode, editor, selection.start);
+
+		try {
+			await editor.edit(editBuilder => {
+				editBuilder.replace(selection, indentedCode);
+			});
+			vscode.window.showInformationMessage('Code applied to selection.');
+		} catch (err) {
+			vscode.window.showErrorMessage(`Failed to apply code: ${err}`);
+		}
+	}
+
+	private async handleInsertCode(code: string): Promise<void> {
+		const editor = vscode.window.activeTextEditor;
+		if (!editor) {
+			vscode.window.showWarningMessage('No active editor found to insert code.');
+			return;
+		}
+
+		const processedCode = this.stripMarkdownFences(code);
+		await this._insertCode(editor, editor.selection.active, processedCode);
+	}
+
+	/** Core insertion logic to avoid redundant processing */
+	private async _insertCode(editor: vscode.TextEditor, position: vscode.Position, processedCode: string): Promise<void> {
+		const indentedCode = this.adjustIndentation(processedCode, editor, position);
+
+		try {
+			await editor.edit(editBuilder => {
+				editBuilder.insert(position, indentedCode);
+			});
+		} catch (err) {
+			vscode.window.showErrorMessage(`Failed to insert code: ${err}`);
+		}
+	}
+
+	/** Strips accidental markdown code fences if the model included them. */
+	private stripMarkdownFences(code: string): string {
+		// Looks for the first markdown code block, ignoring surrounding text
+		const fenceMatch = code.match(/```[\w]*\n([\s\S]*?)```/);
+		if (fenceMatch) {
+			return fenceMatch[1].trim();
+		}
+		// Fallback if no markdown fences are found
+		return code.trim();
+	}
+
+	/** Adjusts the indentation of a code block to match the target line in the editor. */
+	private adjustIndentation(code: string, editor: vscode.TextEditor, position: vscode.Position): string {
+		const line = editor.document.lineAt(position.line);
+		const indentation = line.text.substring(0, line.firstNonWhitespaceCharacterIndex);
+		
+		const lines = code.split('\n');
+		if (lines.length <= 1) {
+			return code;
+		}
+
+		// Find minimum indentation in the provided code to preserve relative indentation
+		let minCodeIndent = Infinity;
+		for (let i = 0; i < lines.length; i++) {
+			const l = lines[i];
+			if (l.trim().length === 0) { continue; }
+			const match = l.match(/^\s*/);
+			const indentLen = match ? match[0].length : 0;
+			if (indentLen < minCodeIndent) {
+				minCodeIndent = indentLen;
+			}
+		}
+
+		if (minCodeIndent === Infinity) { minCodeIndent = 0; }
+
+		return lines.map((l, i) => {
+			if (l.trim().length === 0) { return ''; }
+			
+			// Safety: Ensure we don't slice more than the line's length
+			const safeIndent = Math.min(l.length, minCodeIndent);
+			const relativeIndent = l.substring(safeIndent);
+			
+			// DO NOT add base indentation to the very first line.
+			// The editor is already positioned correctly (either at start of line + indent, or mid-line).
+			if (i === 0) {
+				return relativeIndent;
+			}
+			
+			// Add the target line's base indentation to subsequent lines
+			return indentation + relativeIndent;
+		}).join('\n');
+	}
+
+	private async handleCopyCode(code: string): Promise<void> {
+		await vscode.env.clipboard.writeText(code);
 	}
 
 	public async handleDiscussReview(context: string): Promise<void> {
@@ -210,11 +326,21 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 
 		let assistantResponse = '';
 		try {
-			const stagedDiff = await this.getStagedDiffContext();
-			const prompt = this.buildPrompt(conversation, effectiveMessage, stagedDiff, contexts);
+			const contextContent = this.buildContextMessage(effectiveMessage, contexts);
+			
+			const contextMessage: ChatMessage = {
+				role: 'system',
+				content: contextContent,
+				timestamp: Date.now(),
+			};
+
+			const history = [
+				...this.conversationManager.getHistory(conversation.id),
+				contextMessage
+			];
+
 			const provider = this.getAIProvider(config);
-			assistantResponse = await provider.sendMessage(prompt, (chunk) => {
-				assistantResponse += chunk;
+			assistantResponse = await provider.sendMessage(history, (chunk) => {
 				this.sendMessageToWebview({ type: 'streamChunk', chunk });
 			});
 
@@ -289,38 +415,26 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 		});
 	}
 
-	private buildPrompt(
-		conversation: Conversation,
+	private buildContextMessage(
 		latestUserMessage: string,
-		stagedDiff: StagedDiffContext,
 		contexts: ResolvedContext[] = [],
 	): string {
-		const historyLines = conversation.messages
-			.slice(-12)
-			.map((message) => `${message.role.toUpperCase()}: ${message.content}`)
-			.join('\n\n');
+		const sections: string[] = [
+			'You are an expert software engineer helping with code review follow-ups. You have access to external tools via MCP.',
+		];
 
-		const injectedContext = this.lastInjectedContext
-			? `\n\nContext:\n${this.lastInjectedContext}\n`
-			: '';
+		if (this.lastInjectedContext) {
+			sections.push(`## Additional Context\n${this.lastInjectedContext}`);
+		}
 
-		const contextSection = contexts.length > 0
-			? '\n\nContext References:\n' + contexts.map(c => `### ${c.label}\n${c.content}`).join('\n\n')
-			: '';
+		if (contexts.length > 0) {
+			const contextLines = contexts.map(c => `### ${c.label}\n${c.content}`).join('\n\n');
+			sections.push(`## Context References\n${contextLines}`);
+		}
 
-		const stagedSection = stagedDiff.hasDiff
-			? `Staged Changes${stagedDiff.truncated ? ' (truncated to fit model context)' : ''}:\n${stagedDiff.content}`
-			: '';
+		sections.push(`## Latest User Message\n${latestUserMessage}`);
 
-		return [
-			'You are an expert software engineer helping with code review follow-ups.',
-			injectedContext,
-			contextSection,
-			stagedSection,
-			'Conversation history:',
-			historyLines,
-			`Latest user message:\n${latestUserMessage}`,
-		].filter(Boolean).join('\n');
+		return sections.join('\n\n');
 	}
 
 	private async handlePickFile(insertOffset: number): Promise<void> {
@@ -330,52 +444,10 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 		}
 	}
 
-	private async getStagedDiffContext(): Promise<StagedDiffContext> {
-		const workspace = vscode.workspace.workspaceFolders?.[0];
-		if (!workspace) {
-			return { content: '', hasDiff: false, truncated: false };
-		}
-
-		let stdout = '';
-		try {
-			({ stdout } = await execFileAsync(
-				'git',
-				['diff', '--cached', '--no-color'],
-				{ cwd: workspace.uri.fsPath, maxBuffer: 4 * 1024 * 1024 },
-			));
-		} catch (error) {
-			const execError = error as NodeJS.ErrnoException & { stderr?: string };
-			if (execError.code === 'ENOENT') {
-				throw new Error('Git is not installed or not available in PATH.');
-			}
-			const stderr = execError.stderr ?? '';
-			if (/not a git repository/i.test(stderr)) {
-				throw new Error('Current workspace is not a Git repository.');
-			}
-			throw new Error('Unable to read staged changes from Git.');
-		}
-
-		const full = stdout.trim();
-		if (!full) {
-			return { content: '', hasDiff: false, truncated: false };
-		}
-
-		if (full.length > STAGED_DIFF_MAX_CHARS) {
-			return {
-				content: `${full.slice(0, STAGED_DIFF_MAX_CHARS)}\n\n[... staged diff truncated ...]`,
-				hasDiff: true,
-				truncated: true,
-			};
-		}
-
-		return { content: full, hasDiff: true, truncated: false };
-	}
-
 	private getAIProvider(config: vscode.WorkspaceConfiguration): AIProvider {
 		const model = getOllamaModel(config);
 		const endpoint = config.get<string>('endpoint', 'http://localhost:11434/api/generate');
 		const temperature = config.get<number>('temperature', 0);
-		const streamingEnabled = config.get<boolean>('streaming.enabled', true);
 		const provider = providerRegistry.resolve(model);
 		const requestContext: ProviderRequestContext = {
 			config,
@@ -384,39 +456,30 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 			temperature,
 		};
 
-		return {
-			sendMessage: async (prompt: string, onChunk: (chunk: string) => void): Promise<string> => {
-				if (streamingEnabled && provider.supportsStreaming()) {
-					return provider.stream(prompt, requestContext, { onChunk });
-				}
+		const orchestrator = new AgenticChatOrchestrator(
+			this.mcpManager,
+			provider,
+			requestContext
+		);
 
-				const full = await provider.generate(prompt, requestContext);
-				onChunk(full);
-				return full;
+		return {
+			sendMessage: async (messages: ChatMessage[], onChunk: (chunk: string) => void): Promise<string> => {
+				return orchestrator.chat(messages, {
+					onChunk,
+					onToolCallStart: (tc) => {
+						this.sendMessageToWebview({ type: 'toolCallStart', toolCall: tc });
+					},
+					onToolCallResult: (id, result) => {
+						this.sendMessageToWebview({ type: 'toolCallResult', toolCallId: id, result });
+					},
+				});
 			},
 		};
 	}
 
 	private getModelOptions(): string[] {
 		const config = vscode.workspace.getConfiguration('ollama-code-review');
-		return config.get<string[]>('availableModels', [
-			'kimi-k2.5:cloud',
-			'qwen3-coder:480b-cloud',
-			'glm-4.7:cloud',
-			'glm-4.7-flash',
-			'huggingface',
-			'gemini-2.5-flash',
-			'gemini-2.5-pro',
-			'mistral-large-latest',
-			'mistral-small-latest',
-			'codestral-latest',
-			'MiniMax-M2.5',
-			'openai-compatible',
-			'qwen2.5-coder:14b-instruct-q4_0',
-			'claude-sonnet-4-20250514',
-			'claude-opus-4-20250514',
-			'claude-3-7-sonnet-20250219',
-		]);
+		return config.get<string[]>('availableModels', DEFAULT_MODELS);
 	}
 
 	private sendMessageToWebview(message: WebviewOutboundMessage): void {
@@ -673,6 +736,68 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 			color: var(--apple-muted);
 			padding: 0 4px;
 		}
+		.tool-call {
+			margin-top: 8px;
+			padding: 8px;
+			border-radius: 8px;
+			background: color-mix(in srgb, var(--apple-surface) 95%, #ffffff);
+			border: 1px solid var(--apple-border);
+			font-size: 12px;
+		}
+		.tool-call.pending {
+			border-style: dashed;
+			animation: pulse 2s infinite;
+		}
+		/* Code block actions */
+		.code-block-wrapper {
+			position: relative;
+			margin: 10px 0;
+			border-radius: 8px;
+			overflow: hidden;
+			background: var(--apple-surface-strong);
+			border: 1px solid var(--apple-border);
+		}
+		.code-block-header {
+			display: flex;
+			justify-content: space-between;
+			align-items: center;
+			padding: 4px 8px;
+			background: color-mix(in srgb, var(--apple-surface) 95%, #ffffff);
+			border-bottom: 1px solid var(--apple-border);
+			font-size: 11px;
+			color: var(--apple-muted);
+		}
+		.code-block-actions {
+			display: flex;
+			gap: 6px;
+		}
+		.code-block-actions button {
+			padding: 2px 6px;
+			font-size: 10px;
+			font-weight: 500;
+			border-radius: 4px;
+			background: color-mix(in srgb, var(--apple-surface) 80%, #ffffff);
+			color: var(--apple-text);
+			border: 1px solid var(--apple-border);
+			box-shadow: none;
+			min-width: 0;
+		}
+		.code-block-actions button:hover {
+			background: var(--apple-accent);
+			color: #fff;
+			border-color: var(--apple-accent-strong);
+			transform: none;
+		}
+		.code-block-wrapper pre {
+			margin: 0 !important;
+			padding: 12px;
+			overflow-x: auto;
+		}
+		@keyframes pulse {
+			0% { opacity: 0.7; }
+			50% { opacity: 1; }
+			100% { opacity: 0.7; }
+		}
 		@media (max-width: 520px) {
 			body {
 				padding: 8px;
@@ -732,9 +857,12 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 		const mentionDefs = ${JSON.stringify(mentionDefs)};
 
 		let messages = [];
+		let renderedMessages = []; // Cache for parsed HTML
 		let isStreaming = false;
 		let streamingIndex = -1;
 		let streamRenderTimer = null;
+		let pendingToolCalls = new Map();
+		let completedToolCalls = new Map();
 
 		// / command state
 		let filteredCommands = [];
@@ -767,36 +895,229 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 		}
 
 		function scheduleStreamRender() {
-			if (streamRenderTimer) return;
+			if (streamRenderTimer) {
+				clearTimeout(streamRenderTimer);
+			}
 			streamRenderTimer = setTimeout(() => {
-				renderHistory();
+				updateStreamingMessage();
 				streamRenderTimer = null;
 			}, 60);
 		}
 
+		// Configure marked with a custom renderer for code blocks
+		if (typeof marked !== 'undefined') {
+			const renderer = new marked.Renderer();
+			
+			renderer.code = function(code, language, escaped) {
+				const codeStr = typeof code === 'object' ? code.text : code;
+				const lang = language || '';
+				
+				// Modern Base64 encoding for UTF-8 - more efficient for large strings
+				const bytes = new TextEncoder().encode(codeStr);
+				let binString = "";
+				for (let i = 0; i < bytes.length; i++) {
+					binString += String.fromCharCode(bytes[i]);
+				}
+				const encodedCode = btoa(binString);
+				
+				return [
+					'<div class="code-block-wrapper">',
+						'<div class="code-block-header">',
+							'<span>' + escapeHtml(lang) + '</span>',
+							'<div class="code-block-actions">',
+								'<button class="action-btn copy-btn" data-code="' + encodedCode + '">Copy</button>',
+								'<button class="action-btn insert-btn" data-code="' + encodedCode + '" data-lang="' + escapeHtml(lang) + '">Insert</button>',
+								'<button class="action-btn apply-btn" data-code="' + encodedCode + '" data-lang="' + escapeHtml(lang) + '">Apply</button>',
+							'</div>',
+						'</div>',
+						'<pre><code class="language-' + escapeHtml(lang) + '">' + escapeHtml(codeStr) + '</code></pre>',
+					'</div>'
+				].join('');
+			};
+
+			marked.setOptions({ renderer });
+		}
+
 		function renderHistory() {
-			historyEl.innerHTML = messages.map((message) => {
+			// Ensure cache stays in sync with messages length
+			if (renderedMessages.length > messages.length) {
+				renderedMessages = renderedMessages.slice(0, messages.length);
+			}
+
+			historyEl.innerHTML = '';
+			messages.forEach((message, index) => {
+				const messageEl = renderMessage(message, index);
+				historyEl.appendChild(messageEl);
+			});
+
+			// Container for tool calls that are NOT yet part of a message
+			const pendingContainer = document.createElement('div');
+			pendingContainer.id = 'pending-tool-calls';
+			historyEl.appendChild(pendingContainer);
+			renderPendingToolCalls();
+
+			historyEl.scrollTop = historyEl.scrollHeight;
+		}
+
+		function renderPendingToolCalls() {
+			const container = document.getElementById('pending-tool-calls');
+			if (!container) return;
+
+			container.innerHTML = '';
+			if (pendingToolCalls.size > 0) {
+				for (const [id, tc] of pendingToolCalls.entries()) {
+					if (!messages.some(m => m.tool_calls?.some(t => t.id === id))) {
+						const pendingEl = document.createElement('div');
+						pendingEl.className = 'message system';
+						pendingEl.innerHTML = '<div class="meta">System</div>' +
+							'<div class="tool-call pending">⚙️ Calling ' + tc.function.name + '...</div>';
+						container.appendChild(pendingEl);
+					}
+				}
+			}
+		}
+
+		function getToolStatusHash(message) {
+			if (!message.tool_calls) return '';
+			return message.tool_calls.map(tc => {
+				const isPending = pendingToolCalls.has(tc.id);
+				const result = completedToolCalls.get(tc.id);
+				const hasResult = !!result;
+				// Include a small hash of the result content if it exists
+				const resultHash = result ? JSON.stringify(result).length : 0;
+				return tc.id + ':' + (isPending ? 'p' : (hasResult ? 'r' : 'n')) + ':' + resultHash;
+			}).join('|');
+		}
+
+		function renderMessage(message, index) {
+			const statusHash = getToolStatusHash(message);
+			// Optimization: Cache rendered HTML for messages that haven't changed
+			if (!renderedMessages[index] || 
+				renderedMessages[index].content !== message.content || 
+				renderedMessages[index].role !== message.role ||
+				renderedMessages[index].statusHash !== statusHash
+			) {
 				let html;
 				try {
 					const rawContent = message.content || '';
 					if (typeof marked !== 'undefined') {
-						const parsed = marked.parse(rawContent);
-						html = typeof DOMPurify !== 'undefined'
-							? DOMPurify.sanitize(parsed)
-							: String(parsed).replace(/href\\s*=\\s*\"javascript:[^\"]*\"/gi, 'href="#"');
+						html = marked.parse(rawContent);
+						if (typeof DOMPurify !== 'undefined') {
+							html = DOMPurify.sanitize(html, {
+								ADD_ATTR: ['data-code', 'data-lang'],
+								ADD_TAGS: ['button']
+							});
+						}
 					} else {
 						html = '<p>' + escapeHtml(rawContent) + '</p>';
 					}
-				} catch {
+				} catch (e) {
+					console.error('Markdown parse error:', e);
 					html = '<p>' + escapeHtml(message.content || '') + '</p>';
 				}
-				return '<div class="message ' + message.role + '">' +
-					'<div class="meta">' + roleLabel(message.role) + '</div>' +
-					'<div>' + html + '</div>' +
-				'</div>';
-			}).join('');
+				renderedMessages[index] = { 
+					content: message.content, 
+					role: message.role, 
+					html: html,
+					statusHash: statusHash
+				};
+			}
+			
+			const cached = renderedMessages[index];
+			const div = document.createElement('div');
+			div.className = 'message ' + message.role;
+			div.id = 'msg-' + index;
+
+			let toolHtml = '';
+			if (message.tool_calls) {
+				toolHtml = message.tool_calls.map(tc => {
+					const isPending = pendingToolCalls.has(tc.id);
+					const result = completedToolCalls.get(tc.id);
+					const status = isPending ? '⚙️ Calling' : '✅ Called';
+					let resultHtml = '';
+					if (result) {
+						const json = JSON.stringify(result, null, 2);
+						resultHtml = '<details><summary>Result</summary><pre>' + escapeHtml(json) + '</pre></details>';
+						// Sanitize the result HTML just in case
+						if (typeof DOMPurify !== 'undefined') {
+							resultHtml = DOMPurify.sanitize(resultHtml);
+						}
+					}
+					return '<div class="tool-call ' + (isPending ? 'pending' : '') + '">' +
+						'<b>' + status + ' ' + tc.function.name + '</b>' +
+						resultHtml +
+					'</div>';
+				}).join('');
+			}
+
+			div.innerHTML = '<div class="meta">' + roleLabel(message.role) + '</div>' +
+				'<div class="content">' + cached.html + '</div>' +
+				toolHtml;
+			
+			return div;
+		}
+
+		function updateStreamingMessage() {
+			if (streamingIndex < 0 || !messages[streamingIndex]) return;
+			
+			const message = messages[streamingIndex];
+			const messageEl = document.getElementById('msg-' + streamingIndex);
+			
+			if (messageEl) {
+				const newContentEl = renderMessage(message, streamingIndex);
+				messageEl.innerHTML = newContentEl.innerHTML;
+			} else {
+				// Fallback to full render if element not found
+				renderHistory();
+			}
 			historyEl.scrollTop = historyEl.scrollHeight;
 		}
+
+		// Event delegation for code block actions
+		historyEl.addEventListener('click', (e) => {
+			try {
+				const target = e.target;
+				if (!target || !(target instanceof HTMLElement) || !target.classList.contains('action-btn')) {
+					return;
+				}
+
+				const encodedCode = target.getAttribute('data-code');
+				if (!encodedCode) return;
+
+				// Modern Base64 decoding for UTF-8
+				let code;
+				try {
+					const binString = atob(encodedCode);
+					const bytes = Uint8Array.from(binString, (m) => m.charCodeAt(0));
+					code = new TextDecoder().decode(bytes);
+				} catch (err) {
+					console.error('Failed to decode code block:', err);
+					statusEl.textContent = 'Failed to decode code block.';
+					setTimeout(() => { statusEl.textContent = ''; }, 3000);
+					return;
+				}
+
+				// Validation to ensure we're dealing with string data
+				if (typeof code !== 'string') {
+					return;
+				}
+				
+				const lang = target.getAttribute('data-lang');
+
+				if (target.classList.contains('copy-btn')) {
+					vscode.postMessage({ type: 'copyCode', code });
+					const originalText = target.textContent;
+					target.textContent = 'Copied!';
+					setTimeout(() => { target.textContent = originalText; }, 2000);
+				} else if (target.classList.contains('insert-btn')) {
+					vscode.postMessage({ type: 'insertCode', code, languageId: lang });
+				} else if (target.classList.contains('apply-btn')) {
+					vscode.postMessage({ type: 'applyCode', code, languageId: lang });
+				}
+			} catch (err) {
+				console.error('Error in code block action handler:', err);
+			}
+		});
 
 		function sendCurrentMessage() {
 			const content = inputEl.value.trim();
@@ -1049,13 +1370,22 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 					break;
 				case 'messageAdded':
 					messages.push(message.message);
-					renderHistory();
+					const msgIndex = messages.length - 1;
+					const msgEl = renderMessage(message.message, msgIndex);
+					historyEl.insertBefore(msgEl, document.getElementById('pending-tool-calls'));
+					historyEl.scrollTop = historyEl.scrollHeight;
 					break;
 				case 'streamStart':
 					setStreaming(true);
+					if (streamRenderTimer) {
+						clearTimeout(streamRenderTimer);
+						streamRenderTimer = null;
+					}
 					messages.push({ role: 'assistant', content: '', timestamp: Date.now() });
 					streamingIndex = messages.length - 1;
-					renderHistory();
+					const streamEl = renderMessage(messages[streamingIndex], streamingIndex);
+					historyEl.insertBefore(streamEl, document.getElementById('pending-tool-calls'));
+					historyEl.scrollTop = historyEl.scrollHeight;
 					break;
 				case 'streamChunk':
 					if (streamingIndex >= 0 && messages[streamingIndex]) {
@@ -1065,15 +1395,39 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 					break;
 				case 'streamEnd':
 					setStreaming(false);
+					if (streamingIndex >= 0) {
+						updateStreamingMessage();
+					}
 					streamingIndex = -1;
 					if (!messages.length && message.content) {
 						messages.push({ role: 'assistant', content: message.content, timestamp: Date.now() });
+						renderHistory();
 					}
-					renderHistory();
 					inputEl.focus();
+					break;
+				case 'toolCallStart':
+					pendingToolCalls.set(message.toolCall.id, message.toolCall);
+					renderPendingToolCalls();
+					historyEl.scrollTop = historyEl.scrollHeight;
+					break;
+				case 'toolCallResult':
+					pendingToolCalls.delete(message.toolCallId);
+					completedToolCalls.set(message.toolCallId, message.result);
+					
+					// Find which message this tool call belongs to and update it
+					const ownerIndex = messages.findIndex(m => m.tool_calls?.some(tc => tc.id === message.toolCallId));
+					if (ownerIndex >= 0) {
+						const ownerEl = document.getElementById('msg-' + ownerIndex);
+						if (ownerEl) {
+							const updatedEl = renderMessage(messages[ownerIndex], ownerIndex);
+							ownerEl.innerHTML = updatedEl.innerHTML;
+						}
+					}
+					renderPendingToolCalls();
 					break;
 				case 'historyCleared':
 					messages = [];
+					renderedMessages = [];
 					renderHistory();
 					break;
 				case 'modelUpdated':
@@ -1084,6 +1438,7 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 					break;
 				case 'conversationCreated':
 					messages = message.conversation.messages || [];
+					renderedMessages = [];
 					renderHistory();
 					break;
 				case 'contextInjected':

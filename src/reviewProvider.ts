@@ -789,12 +789,11 @@ export class OllamaReviewPanel {
             const chatContainer = document.getElementById('chat');
             // Only update if chat container exists, otherwise it's initial load
             if (chatContainer) {
-              chatContainer.innerHTML = chatHistory.map(m => \`
-                <div class="message \${m.role}">
-                    <strong>\${m.role === 'user' ? 'You' : 'Ollama'}</strong>
-                    <div>\${DOMPurify.sanitize(marked.parse(m.content), purifyConfig)}</div>
-                </div>
-            \`).join('');
+              chatContainer.innerHTML = '';
+              chatHistory.forEach((m, index) => {
+                const messageEl = renderMessage(m, index);
+                chatContainer.appendChild(messageEl);
+              });
             }
             
             // 2. Update Findings Section
@@ -806,6 +805,36 @@ export class OllamaReviewPanel {
                 el.setAttribute('data-highlighted', 'true');
             });
             
+            if (chatContainer) {
+                chatContainer.scrollTop = chatContainer.scrollHeight;
+            }
+        }
+
+        function renderMessage(message, index) {
+            const div = document.createElement('div');
+            div.className = 'message ' + message.role;
+            div.id = 'msg-' + index;
+            
+            const roleName = message.role === 'user' ? 'You' : 'Ollama';
+            const html = DOMPurify.sanitize(marked.parse(message.content || ''), purifyConfig);
+            
+            div.innerHTML = \`<strong>\${roleName}</strong><div>\${html}</div>\`;
+            return div;
+        }
+
+        function updateStreamingMessage() {
+            const index = chatHistory.length > 0 ? chatHistory.length - 1 : 0;
+            const message = chatHistory[index];
+            const messageEl = document.getElementById('msg-' + index);
+            
+            if (messageEl) {
+                const updatedEl = renderMessage(message, index);
+                messageEl.innerHTML = updatedEl.innerHTML;
+            } else {
+                render();
+            }
+            
+            const chatContainer = document.getElementById('chat');
             if (chatContainer) {
                 chatContainer.scrollTop = chatContainer.scrollHeight;
             }
@@ -964,29 +993,34 @@ export class OllamaReviewPanel {
                 case 'streamStart':
                     streamingContent = '';
                     chatHistory = [{ role: 'assistant', content: '' }];
-                    render();
+                    render(); // Initial render for the first empty message
                     document.getElementById('loading').style.display = 'block';
                     document.getElementById('loading').textContent = 'Streaming review…';
                     break;
                 case 'streamChunk':
                     streamingContent += msg.chunk;
-                    chatHistory[chatHistory.length > 0 ? chatHistory.length - 1 : 0] = { role: 'assistant', content: streamingContent };
+                    if (chatHistory.length > 0) {
+                        chatHistory[chatHistory.length - 1].content = streamingContent;
+                    }
                     // Debounce renders to ~100ms to avoid thrashing
                     clearTimeout(streamRenderTimer);
                     streamRenderTimer = setTimeout(() => {
-                        render();
+                        updateStreamingMessage();
                         streamRenderTimer = null;
                     }, 100);
                     break;
                 case 'streamEnd':
                     clearTimeout(streamRenderTimer);
                     streamRenderTimer = null;
+                    if (chatHistory.length > 0) {
+                        chatHistory[chatHistory.length - 1].content = streamingContent;
+                        updateStreamingMessage();
+                    }
                     document.getElementById('loading').style.display = 'none';
                     document.getElementById('loading').textContent = 'Thinking...';
                     if (msg.metrics !== undefined && msg.metrics !== null) {
                         metrics = msg.metrics;
                     }
-                    render();
                     renderMermaidDiagrams();
                     renderMetrics();
                     // Re-enable chat input

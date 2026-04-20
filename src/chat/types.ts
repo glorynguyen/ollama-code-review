@@ -1,10 +1,21 @@
-export type ChatRole = 'user' | 'assistant' | 'system';
+export type ChatRole = 'user' | 'assistant' | 'system' | 'tool';
+
+export interface ToolCall {
+	id: string;
+	type: 'function';
+	function: {
+		name: string;
+		arguments: string;
+	};
+}
 
 export interface ChatMessage {
 	role: ChatRole;
 	content: string;
 	timestamp: number;
 	model?: string;
+	tool_calls?: ToolCall[];
+	tool_call_id?: string;
 }
 
 export interface Conversation {
@@ -20,6 +31,9 @@ export type WebviewInboundMessage =
 	| { type: 'setModel'; modelId: string }
 	| { type: 'newConversation' }
 	| { type: 'clearHistory' }
+	| { type: 'applyCode'; code: string; languageId?: string }
+	| { type: 'insertCode'; code: string; languageId?: string }
+	| { type: 'copyCode'; code: string }
 	/** Sent when the user selects @file from the mention dropdown. Extension opens a VS Code file picker. */
 	| { type: 'pickFile'; insertOffset: number };
 
@@ -34,6 +48,8 @@ export type WebviewOutboundMessage =
 	| { type: 'streamStart' }
 	| { type: 'streamChunk'; chunk: string }
 	| { type: 'streamEnd'; content: string }
+	| { type: 'toolCallStart'; toolCall: ToolCall }
+	| { type: 'toolCallResult'; toolCallId: string; result: unknown }
 	| { type: 'historyCleared' }
 	| { type: 'modelUpdated'; modelId: string }
 	| { type: 'conversationCreated'; conversation: Conversation }
