@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import axios from 'axios';
 import { getOllamaModel } from './utils';
+import { getSkillsService } from './commands';
 import { PerformanceMetrics } from './extension';
 import { ChatSidebarProvider } from './chat/sidebarProvider';
 import { toModelLimitChatMessage } from './chat/modelErrorUtils';
@@ -262,15 +263,18 @@ export class OllamaReviewPanel {
   private async _getFollowUpResponse(): Promise<string> {
     const config = vscode.workspace.getConfiguration('ollama-code-review');
     const model = getOllamaModel(config);
-    const selectedSkills = this._context.globalState.get<any[]>('selectedSkills', []);
-
+    
     // Build skill guidelines from multiple selected skills
     let skillGuidelines = '';
-    if (selectedSkills && selectedSkills.length > 0) {
-      const skillContents = selectedSkills.map((skill, index) =>
-        `### Skill ${index + 1}: ${skill.name}\n${skill.content}`
-      ).join('\n\n');
-      skillGuidelines = `\n\nReview Guidelines (${selectedSkills.length} skill(s) applied):\n${skillContents}`;
+    const skillsService = getSkillsService();
+    if (skillsService) {
+      const selectedSkills = skillsService.getEffectiveSkills();
+      if (selectedSkills && selectedSkills.length > 0) {
+        const skillContents = selectedSkills.map((skill, index) =>
+          `### Skill ${index + 1}: ${skill.name}\n${skill.content}`
+        ).join('\n\n');
+        skillGuidelines = `\n\nReview Guidelines (${selectedSkills.length} skill(s) applied):\n${skillContents}`;
+      }
     }
 
     const systemContent = `You are an expert code reviewer. You are discussing this code diff:\n\n${this._originalDiff}${skillGuidelines}`;

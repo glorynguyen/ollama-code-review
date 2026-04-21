@@ -5,6 +5,7 @@ import { loadRulesDirectory } from './rules/loader';
 import { getActiveProfile, buildProfilePromptContext } from './profiles';
 import { getEffectiveReviewPrompt, getEffectiveFrameworks } from './config/promptLoader';
 import { resolvePrompt } from './utils';
+import { getSkillsService } from './commands';
 import {
 	loadContentstackSchemas,
 	getContentstackConfig,
@@ -43,8 +44,9 @@ export async function buildReviewPrompt({
 	const frameworksList = (await getEffectiveFrameworks(outputChannel)).join(', ');
 	let skillContext = '';
 
-	if (context) {
-		const selectedSkills = context.globalState.get<any[]>('selectedSkills', []);
+	const skillsService = getSkillsService();
+	if (skillsService) {
+		const selectedSkills = skillsService.getEffectiveSkills();
 		if (selectedSkills && selectedSkills.length > 0) {
 			const skillContents = selectedSkills.map((skill, index) =>
 				`### Skill ${index + 1}: ${skill.name}\n${skill.content}`

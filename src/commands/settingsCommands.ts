@@ -358,7 +358,21 @@ export function registerSettingsCommands(options: RegisterSettingsCommandsOption
 				return;
 			}
 
-			const currentlySelected = context.globalState.get<any[]>('selectedSkills', []);
+			// 1. Pick scope (Global or Project)
+			const scopePick = await vscode.window.showQuickPick(
+				[
+					{ label: '$(globe) Global', description: 'Apply to all projects', scope: 'global' },
+					{ label: '$(project) Project', description: 'Apply to this project only', scope: 'workspace' },
+				],
+				{ placeHolder: 'Apply skills to which scope?' },
+			);
+
+			if (!scopePick) { return; }
+
+			const isWorkspace = scopePick.scope === 'workspace';
+			const state = isWorkspace ? context.workspaceState : context.globalState;
+
+			const currentlySelected = state.get<any[]>('selectedSkills', []);
 			const currentlySelectedNames = new Set(currentlySelected.map(s => `${s.repository}/${s.name}`));
 
 			const selectedSkills = await vscode.window.showQuickPick(
@@ -369,7 +383,7 @@ export function registerSettingsCommands(options: RegisterSettingsCommandsOption
 					picked: currentlySelectedNames.has(`${skill.repository}/${skill.name}`),
 				})),
 				{
-					placeHolder: 'Select skills to apply to code review (multiple allowed)',
+					placeHolder: `Select skills for ${scopePick.scope} scope (multiple allowed)`,
 					canPickMany: true,
 				},
 			);
@@ -377,12 +391,12 @@ export function registerSettingsCommands(options: RegisterSettingsCommandsOption
 			if (selectedSkills && selectedSkills.length > 0) {
 				const skillNames = selectedSkills.map(s => s.skill.name).join(', ');
 				vscode.window.showInformationMessage(
-					`${selectedSkills.length} skill(s) will be applied to next review: ${skillNames}`,
+					`${selectedSkills.length} skill(s) will be applied to ${scopePick.scope} review: ${skillNames}`,
 				);
-				await context.globalState.update('selectedSkills', selectedSkills.map(s => s.skill));
+				await state.update('selectedSkills', selectedSkills.map(s => s.skill));
 			} else if (selectedSkills && selectedSkills.length === 0) {
-				vscode.window.showInformationMessage('All skills have been deselected');
-				await context.globalState.update('selectedSkills', []);
+				vscode.window.showInformationMessage(`All ${scopePick.scope} skills have been deselected`);
+				await state.update('selectedSkills', []);
 			}
 		},
 	);
@@ -390,13 +404,33 @@ export function registerSettingsCommands(options: RegisterSettingsCommandsOption
 	const clearSkillsCommand = vscode.commands.registerCommand(
 		'ollama-code-review.clearSelectedSkills',
 		async () => {
-			const currentSkills = context.globalState.get<any[]>('selectedSkills', []);
-			if (currentSkills.length === 0) {
-				vscode.window.showInformationMessage('No skills are currently selected');
+			const globalSkills = context.globalState.get<any[]>('selectedSkills', []);
+			const workspaceSkills = context.workspaceState.get<any[]>('selectedSkills', []);
+
+			if (globalSkills.length === 0 && workspaceSkills.length === 0) {
+				vscode.window.showInformationMessage('No skills are currently selected in any scope');
 				return;
 			}
-			await context.globalState.update('selectedSkills', []);
-			vscode.window.showInformationMessage(`Cleared ${currentSkills.length} selected skill(s)`);
+
+			const clearPick = await vscode.window.showQuickPick(
+				[
+					{ label: 'Clear Global Skills', count: globalSkills.length, scope: 'global' },
+					{ label: 'Clear Project Skills', count: workspaceSkills.length, scope: 'workspace' },
+					{ label: 'Clear All Scopes', count: globalSkills.length + workspaceSkills.length, scope: 'all' },
+				].filter(p => p.count > 0),
+				{ placeHolder: 'Which skills would you like to clear?' },
+			);
+
+			if (!clearPick) { return; }
+
+			if (clearPick.scope === 'global' || clearPick.scope === 'all') {
+				await context.globalState.update('selectedSkills', []);
+			}
+			if (clearPick.scope === 'workspace' || clearPick.scope === 'all') {
+				await context.workspaceState.update('selectedSkills', []);
+			}
+
+			vscode.window.showInformationMessage(`Cleared selected skill(s) from ${clearPick.scope} scope`);
 		},
 	);
 

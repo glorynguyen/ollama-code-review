@@ -174,7 +174,15 @@ const DEFAULT_COMMIT_MESSAGE_PROMPT = "You are an expert at writing git commit m
 // ---------------------------------------------------------------------------
 
 let outputChannel: vscode.OutputChannel;
-let skillsServiceInstance: SkillsService | null = null;
+let _skillsServiceInstance: SkillsService | null = null;
+
+export function getSkillsService(): SkillsService | null {
+	return _skillsServiceInstance;
+}
+
+export function setSkillsService(service: SkillsService | null): void {
+	_skillsServiceInstance = service;
+}
 
 // F-016: Score status bar item (initialised in activate())
 let scoreStatusBarItem: vscode.StatusBarItem | undefined;
@@ -385,7 +393,7 @@ function gatherImpactContext(diff: string, outputChannel: vscode.OutputChannel):
 export async function activate(context: vscode.ExtensionContext) {
 	const skillsService = await SkillsService.create(context);
 	// Store reference for cleanup on deactivation
-	skillsServiceInstance = skillsService;
+	setSkillsService(skillsService);
 	outputChannel = vscode.window.createOutputChannel("Ollama Code Review");
 	const suggestionProvider = new SuggestionContentProvider();
 
@@ -2696,12 +2704,14 @@ ${diff.slice(0, 12000)}
 					profileCtx = buildProfilePromptContext(profile);
 
 					let skillCtx = '';
-					const selectedSkills = context.globalState.get<any[]>('selectedSkills', []);
-					if (selectedSkills && selectedSkills.length > 0) {
-						const skillContents = selectedSkills.map((skill: any, idx: number) =>
-							`### Skill ${idx + 1}: ${skill.name}\n${skill.content}`
-						).join('\n\n');
-						skillCtx = `\n\nAdditional Review Guidelines (${selectedSkills.length} skill(s) applied):\n${skillContents}\n`;
+					if (_skillsServiceInstance) {
+						const selectedSkills = _skillsServiceInstance.getEffectiveSkills();
+						if (selectedSkills && selectedSkills.length > 0) {
+							const skillContents = selectedSkills.map((skill: any, idx: number) =>
+								`### Skill ${idx + 1}: ${skill.name}\n${skill.content}`
+							).join('\n\n');
+							skillCtx = `\n\nAdditional Review Guidelines (${selectedSkills.length} skill(s) applied):\n${skillContents}\n`;
+						}
 					}
 
 					// Build the AI caller that routes through the existing provider system
@@ -2957,12 +2967,14 @@ ${diff.slice(0, 12000)}
 					// Build the review prompt (same as getOllamaReview but without calling provider)
 					const frameworksList = (await getEffectiveFrameworks(outputChannel)).join(', ');
 					let skillContext = '';
-					const selectedSkills = context.globalState.get<any[]>('selectedSkills', []);
-					if (selectedSkills && selectedSkills.length > 0) {
-						const skillContents = selectedSkills.map((skill: any, idx: number) =>
-							`### Skill ${idx + 1}: ${skill.name}\n${skill.content}`
-						).join('\n\n');
-						skillContext = `\n\nAdditional Review Guidelines (${selectedSkills.length} skill(s) applied):\n${skillContents}\n`;
+					if (_skillsServiceInstance) {
+						const selectedSkills = _skillsServiceInstance.getEffectiveSkills();
+						if (selectedSkills && selectedSkills.length > 0) {
+							const skillContents = selectedSkills.map((skill: any, idx: number) =>
+								`### Skill ${idx + 1}: ${skill.name}\n${skill.content}`
+							).join('\n\n');
+							skillContext = `\n\nAdditional Review Guidelines (${selectedSkills.length} skill(s) applied):\n${skillContents}\n`;
+						}
 					}
 					let profileCtx = '';
 					const profile = getActiveProfile(context);
@@ -3651,8 +3663,8 @@ async function getOllamaFileReview(content: string, label: string, context?: vsc
 	const frameworksList = (await getEffectiveFrameworks(outputChannel)).join(', ');
 
 	let skillContext = '';
-	if (context) {
-		const selectedSkills = context.globalState.get<any[]>('selectedSkills', []);
+	if (_skillsServiceInstance) {
+		const selectedSkills = _skillsServiceInstance.getEffectiveSkills();
 		if (selectedSkills?.length > 0) {
 			const skillContents = selectedSkills.map((skill, i) =>
 				`### Skill ${i + 1}: ${skill.name}\n${skill.content}`
@@ -4171,9 +4183,9 @@ export function deactivate() {
 	}
 
 	// Dispose skills service (clears in-memory caches)
-	if (skillsServiceInstance) {
-		skillsServiceInstance.dispose();
-		skillsServiceInstance = null;
+	if (_skillsServiceInstance) {
+		_skillsServiceInstance.dispose();
+		setSkillsService(null);
 	}
 
 	// Dispose output channel

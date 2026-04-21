@@ -7,6 +7,7 @@ import { loadKnowledgeBase, getKnowledgeBaseConfig, formatKnowledgeForPrompt, ma
 import { loadRulesDirectory } from '../../rules/loader';
 import { getActiveProfile, buildProfilePromptContext } from '../../profiles';
 import { getEffectiveFrameworks } from '../../config/promptLoader';
+import { getSkillsService } from '../../commands';
 import { buildReviewPrompt, type ReviewPromptMode } from '../../reviewPromptBuilder';
 
 async function buildPromptBundleForDiff(
@@ -150,14 +151,17 @@ export function registerContextTools(server: McpServer): void {
 
 			// 6. Skills (if any selected)
 			try {
-				const selectedSkills = mcpBridge.context.globalState.get<any[]>('selectedSkills', []);
-				if (selectedSkills && selectedSkills.length > 0) {
-					contextResult.skills = selectedSkills.map(s => ({
-						name: s.name,
-						description: s.description,
-						content: s.content,
-						repository: s.repository,
-					}));
+				const skillsService = getSkillsService();
+				if (skillsService) {
+					const selectedSkills = skillsService.getEffectiveSkills();
+					if (selectedSkills && selectedSkills.length > 0) {
+						contextResult.skills = selectedSkills.map(s => ({
+							name: s.name,
+							description: s.description,
+							content: s.content,
+							repository: s.repository,
+						}));
+					}
 				}
 			} catch {
 				// Non-fatal

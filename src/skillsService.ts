@@ -478,6 +478,23 @@ export class SkillsService {
     }
 
     /**
+     * Gets the merged list of skills from global and workspace states.
+     * Workspace skills take precedence or are appended to global skills.
+     */
+    getEffectiveSkills(): AgentSkill[] {
+        const globalSkills = this.context.globalState.get<AgentSkill[]>('selectedSkills', []);
+        const workspaceSkills = this.context.workspaceState.get<AgentSkill[]>('selectedSkills', []);
+
+        if (workspaceSkills.length > 0) {
+            // If workspace skills are defined, they act as the project-specific configuration.
+            // We return them instead of global skills to allow per-project overrides.
+            return workspaceSkills;
+        }
+
+        return globalSkills;
+    }
+
+    /**
      * Checks if a skill is downloaded locally
      * @param skill The skill to check
      * @returns true if skill is downloaded
