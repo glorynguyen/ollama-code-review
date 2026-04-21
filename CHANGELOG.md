@@ -1,3 +1,10 @@
+# [4.3.0](https://github.com/glorynguyen/ollama-code-review/compare/v4.2.0...v4.3.0) (2026-04-21)
+
+
+### Features
+
+* **v0:** clean up auto-created projects after API calls ([a80042f](https://github.com/glorynguyen/ollama-code-review/commit/a80042f5fffb7dc2cac7ae0564014b150a84e2cc))
+
 # [4.2.0](https://github.com/glorynguyen/ollama-code-review/compare/v4.1.0...v4.2.0) (2026-04-21)
 
 
