@@ -173,7 +173,7 @@ const DEFAULT_COMMIT_MESSAGE_PROMPT = "You are an expert at writing git commit m
 
 // ---------------------------------------------------------------------------
 
-let outputChannel: vscode.OutputChannel;
+export let outputChannel: vscode.OutputChannel;
 let _skillsServiceInstance: SkillsService | null = null;
 
 export function getSkillsService(): SkillsService | null {

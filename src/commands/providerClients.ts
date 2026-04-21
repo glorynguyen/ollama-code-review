@@ -3,6 +3,7 @@ import axios from 'axios';
 import * as https from 'https';
 import * as http from 'http';
 import { getOllamaModel, extractToolCalls, generateToolCallId } from '../utils';
+import { outputChannel } from './index';
 import type { ChatMessage, ToolCall } from '../chat/types';
 import type { McpTool } from '../mcp/mcpClientManager';
 
@@ -1180,7 +1181,12 @@ export async function callV0API(prompt: string, config: vscode.WorkspaceConfigur
 	});
 
 	const durationMs = Date.now() - startTime;
-	const chatDetail = response as { id: string; text?: string; messages?: Array<{ role: string; content: string }> };
+	const chatDetail = response as { 
+		id: string; 
+		projectId?: string; 
+		text?: string; 
+		messages?: Array<{ role: string; content: string }> 
+	};
 
 	if (captureMetrics) {
 		lastPerformanceMetrics = {
@@ -1190,26 +1196,34 @@ export async function callV0API(prompt: string, config: vscode.WorkspaceConfigur
 		};
 	}
 
-	// Primary: use .text property
+	// Extract the text response
+	let result = '';
 	if (chatDetail.text) {
-		return chatDetail.text.trim();
-	}
-
-	// Fallback: last assistant message content
-	const assistantMessages = chatDetail.messages?.filter((m: { role: string }) => m.role === 'assistant');
-	if (assistantMessages && assistantMessages.length > 0) {
-		return assistantMessages[assistantMessages.length - 1].content?.trim() || '';
-	}
-
-	if (chatDetail.id) {
-		try {
-			await client.chats.delete({ chatId: chatDetail.id });
-		} catch (err) {
-            // We don't throw here so the user still gets their review results
+		result = chatDetail.text.trim();
+	} else {
+		// Fallback: last assistant message content
+		const assistantMessages = chatDetail.messages?.filter((m: { role: string }) => m.role === 'assistant');
+		if (assistantMessages && assistantMessages.length > 0) {
+			result = assistantMessages[assistantMessages.length - 1].content?.trim() || '';
 		}
 	}
 
-	return '';
+	// Always attempt to delete the transient chat and project to keep the user's v0 dashboard clean
+	try {
+		if (chatDetail.id) {
+			await client.chats.delete({ chatId: chatDetail.id });
+		}
+		
+		// If a project (folder) was automatically created, delete it as well
+		if (chatDetail.projectId) {
+			await client.projects.delete({ projectId: chatDetail.projectId });
+			outputChannel?.appendLine(`Deleted projectId: ${chatDetail.projectId}`);
+		}
+	} catch (err) {
+		outputChannel?.appendLine(`Failed to clean up v0 resources: ${err instanceof Error ? err.message : String(err)}`);
+	}
+
+	return result;
 }
 
 
