@@ -1,3 +1,10 @@
+# [4.2.0](https://github.com/glorynguyen/ollama-code-review/compare/v4.1.0...v4.2.0) (2026-04-21)
+
+
+### Features
+
+* **skills:** add workspace-scoped skill selection ([cdfbed2](https://github.com/glorynguyen/ollama-code-review/commit/cdfbed28061698d8aaa3470406f410fded85d6e2))
+
 # [4.1.0](https://github.com/glorynguyen/ollama-code-review/compare/v4.0.0...v4.1.0) (2026-04-20)
 
 
