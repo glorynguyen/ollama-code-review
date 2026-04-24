@@ -34,6 +34,7 @@ export type WebviewInboundMessage =
 	| { type: 'applyCode'; code: string; languageId?: string }
 	| { type: 'insertCode'; code: string; languageId?: string }
 	| { type: 'copyCode'; code: string }
+	| { type: 'createFile'; code: string }
 	/** Sent when the user selects @file from the mention dropdown. Extension opens a VS Code file picker. */
 	| { type: 'pickFile'; insertOffset: number };
 

@@ -55,6 +55,14 @@ export class McpExtensionBridge {
 		return folders[0].uri.fsPath;
 	}
 
+	getWorkspaceRoots(): string[] {
+		const folders = vscode.workspace.workspaceFolders;
+		if (!folders || folders.length === 0) {
+			throw new Error('No workspace folder open');
+		}
+		return folders.map(f => f.uri.fsPath);
+	}
+
 	runGit(repoPath: string, args: string[]): Promise<string> {
 		return execFileAsync('git', args, {
 			cwd: repoPath,

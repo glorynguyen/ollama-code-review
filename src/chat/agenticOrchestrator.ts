@@ -1,7 +1,10 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs/promises';
+import * as path from 'path';
 import type { ChatMessage, ToolCall } from './types';
 import type { ModelProvider, ProviderRequestContext, ChatStreamOptions, ChatResponse } from '../providers/types';
 import type { McpClientManager, McpTool } from '../mcp/mcpClientManager';
+import { mcpBridge } from '../mcp/context';
 
 export interface OrchestratorOptions {
 	onChunk: (chunk: string) => void;
@@ -99,6 +102,47 @@ export class AgenticChatOrchestrator {
 							throw new Error(`Invalid JSON arguments for tool "${tc.function.name}": ${parseError?.message || parseError}`);
 						}
 
+						// Human-in-the-loop confirmation for file modifications
+						if (['write_file', 'update_file', 'delete_file'].includes(tc.function.name)) {
+							const filePath = String(args.file_path || 'unknown file');
+							let action: string;
+							if (tc.function.name === 'delete_file') {
+								action = 'delete';
+							} else if (tc.function.name === 'update_file') {
+								action = 'overwrite';
+							} else {
+								// write_file: distinguish create vs overwrite so the user knows what's at stake
+								let fileExists = false;
+								try {
+									const roots = mcpBridge.getWorkspaceRoots();
+									for (const root of roots) {
+										const resolvedForCheck = path.isAbsolute(filePath)
+											? filePath
+											: path.resolve(root, filePath);
+										try {
+											await fs.access(resolvedForCheck);
+											fileExists = true;
+											break;
+										} catch { /* not in this root */ }
+									}
+								} catch { /* no workspace open */ }
+								action = fileExists ? 'overwrite' : 'create';
+							}
+							const confirmed = await this.showConfirmation(
+								`AI wants to ${action} file: ${filePath}. Allow?`,
+								'Approve',
+								'Cancel'
+							);
+							if (!confirmed) {
+								return {
+									role: 'tool' as const,
+									tool_call_id: tc.id,
+									content: JSON.stringify({ error: 'User denied permission to modify the file.' }),
+									timestamp: Date.now(),
+								};
+							}
+						}
+
 						// Basic validation: Check if required fields exist if the schema defines them
 						if (toolDef.inputSchema?.required && Array.isArray(toolDef.inputSchema.required)) {
 							for (const field of toolDef.inputSchema.required) {
@@ -167,5 +211,10 @@ export class AgenticChatOrchestrator {
 			if (timeDiff !== 0) { return timeDiff; }
 			return (indexMap.get(a) ?? 0) - (indexMap.get(b) ?? 0);
 		});
+	}
+
+	private async showConfirmation(message: string, okText: string, cancelText: string): Promise<boolean> {
+		const result = await vscode.window.showInformationMessage(message, { modal: true }, okText, cancelText);
+		return result === okText;
 	}
 }

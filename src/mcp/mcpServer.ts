@@ -42,13 +42,16 @@ export function createMcpServer(port: number): McpServerInstance {
 					{ capabilities: { tools: {}, resources: {} } },
 				);
 
-				registerAllTools(mcp);
-				registerAllResources(mcp);
+				try {
+					registerAllTools(mcp);
+					registerAllResources(mcp);
 
-				await mcp.connect(transport);
-				await transport.handleRequest(req, res);
-				await transport.close();
-				await mcp.close();
+					await mcp.connect(transport);
+					await transport.handleRequest(req, res);
+				} finally {
+					await transport.close();
+					await mcp.close();
+				}
 			}
 
 			httpServer = createHttpServer(handleMcpRequest);

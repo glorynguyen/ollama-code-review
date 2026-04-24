@@ -24,16 +24,25 @@ export class McpClientManager implements vscode.Disposable {
 	private transports: Map<string, StdioClientTransport> = new Map();
 	private disposables: vscode.Disposable[] = [];
 	private outputChannel: vscode.OutputChannel;
+	private isRestarting = false;
+	private configChangeTimer: NodeJS.Timeout | undefined;
 
 	constructor() {
 		this.outputChannel = vscode.window.createOutputChannel('Ollama Code Review (MCP)');
 		this.disposables.push(this.outputChannel);
 
-		// Watch for configuration changes to restart servers
+		// Watch for configuration changes to restart servers with debounce
 		this.disposables.push(
-			vscode.workspace.onDidChangeConfiguration(async (e) => {
+			vscode.workspace.onDidChangeConfiguration((e) => {
 				if (e.affectsConfiguration('ollama-code-review.mcp.externalServers')) {
-					await this.restartAll();
+					if (this.configChangeTimer) {
+						clearTimeout(this.configChangeTimer);
+					}
+					this.configChangeTimer = setTimeout(() => {
+						this.restartAll().catch(err => {
+							this.outputChannel.appendLine(`[MCP] Auto-restart failed: ${err}`);
+						});
+					}, 1000);
 				}
 			}),
 		);
@@ -41,19 +50,44 @@ export class McpClientManager implements vscode.Disposable {
 
 	/** Initialize and connect to all configured external MCP servers. Returns the number of successfully connected servers. */
 	public async initialize(): Promise<number> {
+		if (this.isRestarting) {
+			return 0;
+		}
+		this.isRestarting = true;
+		try {
+			return await this._initialize();
+		} finally {
+			this.isRestarting = false;
+		}
+	}
+
+	private async _initialize(): Promise<number> {
 		const config = vscode.workspace.getConfiguration('ollama-code-review.mcp');
 		const servers = config.get<Record<string, McpServerConfig>>('externalServers', {});
 
+		const entries = Object.entries(servers);
+		if (entries.length === 0) {
+			return 0;
+		}
+
+		this.outputChannel.appendLine(`[MCP] Initializing ${entries.length} external servers...`);
+
+		const results = await Promise.allSettled(
+			entries.map(([name, serverConfig]) => this.connectToServer(name, serverConfig))
+		);
+
 		let successCount = 0;
-		for (const [name, serverConfig] of Object.entries(servers)) {
-			try {
-				await this.connectToServer(name, serverConfig);
+		results.forEach((result, index) => {
+			if (result.status === 'fulfilled') {
 				successCount++;
-			} catch (error) {
+			} else {
+				const name = entries[index][0];
+				const error = result.reason;
 				this.outputChannel.appendLine(`[MCP] Failed to connect to server "${name}": ${error}`);
 				vscode.window.showErrorMessage(`Failed to connect to MCP server "${name}": ${error}`);
 			}
-		}
+		});
+
 		return successCount;
 	}
 
@@ -117,7 +151,9 @@ export class McpClientManager implements vscode.Disposable {
 			if (timeoutId) { clearTimeout(timeoutId); }
 			this.outputChannel.appendLine(`[MCP] Error connecting to "${name}": ${error}`);
 			// Ensure cleanup if connection fails
-			try { transport.close(); } catch { /* ignore */ }
+			try { 
+				transport.close().catch(() => {});
+			} catch { /* ignore */ }
 			this.clients.delete(name);
 			this.transports.delete(name);
 			throw error;
@@ -183,32 +219,67 @@ export class McpClientManager implements vscode.Disposable {
 	}
 
 	public async restartAll(): Promise<void> {
-		this.outputChannel.appendLine('[MCP] Restarting all servers...');
-		await this.disposeClients();
-		await this.initialize();
+		if (this.isRestarting) {
+			this.outputChannel.appendLine('[MCP] Restart already in progress, skipping...');
+			return;
+		}
+
+		this.isRestarting = true;
+		try {
+			this.outputChannel.appendLine('[MCP] Restarting all servers...');
+			await this.disposeClients();
+			await this._initialize();
+		} finally {
+			this.isRestarting = false;
+		}
 	}
 
 	private async disposeClients(): Promise<void> {
-		for (const [name, client] of this.clients.entries()) {
-			try {
-				await client.close();
-				this.outputChannel.appendLine(`[MCP] Disconnected from server: ${name}`);
-			} catch (error) {
-				this.outputChannel.appendLine(`[MCP] Error closing client "${name}": ${error}`);
-			}
+		const clientEntries = [...this.clients.entries()];
+		if (clientEntries.length > 0) {
+			this.outputChannel.appendLine(`[MCP] Disposing ${clientEntries.length} clients...`);
 		}
-		for (const transport of this.transports.values()) {
-			try {
-				transport.close();
-			} catch { /* ignore */ }
-		}
+
+		const transportEntries = [...this.transports.entries()];
+
+		await Promise.allSettled(
+			clientEntries.map(async ([name, client]) => {
+				try {
+					if (typeof (client as any).close === 'function') {
+						await (client as any).close();
+					}
+					this.outputChannel.appendLine(`[MCP] Disconnected from server: ${name}`);
+				} catch (error) {
+					this.outputChannel.appendLine(`[MCP] Error closing client "${name}": ${error}`);
+				}
+			})
+		);
+
+		await Promise.allSettled(
+			transportEntries.map(async ([name, transport]) => {
+				try {
+					await transport.close();
+				} catch (error) {
+					this.outputChannel.appendLine(`[MCP] Error closing transport "${name}": ${error}`);
+				}
+			})
+		);
+
 		this.clients.clear();
 		this.transports.clear();
 	}
 
 	public dispose(): void {
-		// Fire-and-forget async cleanup - don't log to channel as it may be disposed
-		this.disposeClients().catch(() => { /* ignore - channel may be disposed */ });
+		if (this.configChangeTimer) {
+			clearTimeout(this.configChangeTimer);
+		}
+
+		// Close all transports immediately to kill child processes (fire and forget)
+		for (const transport of this.transports.values()) {
+			transport.close().catch(() => {});
+		}
+		this.clients.clear();
+		this.transports.clear();
 		
 		for (const d of this.disposables) {
 			try { d.dispose(); } catch { /* ignore */ }

@@ -41,6 +41,13 @@
       ],
       "js": ["dist/claudeUsage.js"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://github.com/settings/copilot/features"
+      ],
+      "js": ["dist/copilotUsage.js"],
+      "run_at": "document_idle"
     }
   ],
   "web_accessible_resources": [

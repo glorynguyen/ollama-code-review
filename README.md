@@ -95,6 +95,7 @@ You can interact with this extension in two primary ways:
 ### 2. Generate Commit Message
 - **Command**: `Ollama: Generate Commit Message`
 - Automatically generates a descriptive, conventional commit message based on your staged changes. The generated message is then populated directly into the Source Control input box.
+- **Jira Integration**: If a Jira ticket ID is detected in your branch name (e.g., `feature/PROJ-123-login`), or configured via `ollama-code-review.projectCode`, the extension automatically includes the ticket ID in the commit message subject line according to your workspace conventions.
 - **Quick Access**: A `$(sparkle)` icon is available in the Source Control panel's title bar for one-click generation.
 
 ![Review and Generate Buttons](images/generate-commit-message.png)
@@ -129,7 +130,9 @@ Supported languages: JavaScript, TypeScript, JSX, TSX, and **PHP**.
 - Ideal for pull requests. Compare any two branches or git refs (like tags or commit hashes) to get a comprehensive review of the differences.
 
 ### 7. Detailed Review Output
-All feedback from Ollama is displayed in a dedicated "Ollama Code Review" output channel, keeping your editor clean. The output includes a list of the files that were analyzed in the review.
+All feedback from Ollama is displayed in a dedicated "Ollama Code Review" output channel, keeping your editor clean. The output includes a list of analyzed files, quality scores, and performance metrics.
+- **Copy Review**: Click the `$(clippy)` button in the review panel to copy the full AI feedback.
+- **Copy Diff**: Click the `$(copy)` button to copy the original source code diff for use in other tools.
 
 ![Code Review Output](images/feature-output-panel.png)
 
@@ -152,22 +155,19 @@ All feedback from Ollama is displayed in a dedicated "Ollama Code Review" output
 - **Command**: `Ollama Code Review: Review Commit`
 - Review any historical commit. You can enter a hash, select from a list of the 50 most recent commits, or trigger it directly from the **Git Graph** extension context menu.
 
-### 10. Detailed Review Output
-All feedback from Ollama is displayed in a dedicated "Ollama Code Review" output channel... 
-- **New**: The review panel now features **"Copy Review"** (to copy the AI feedback) and **"Copy Diff"** (to copy the source code changes) buttons for quick sharing in Pull Requests or other LLM chats.
-
-### 11. Dynamic Model Selection & Status Bar
+### 10. Dynamic Model Selection & Status Bar
 - **Command**: `Ollama Code Review: Select Ollama Model`
 - **Quick Access**: Look for the model name (e.g., `ollama: llama3`) in the **Status Bar** at the bottom of your editor. Click it to switch models instantly.
 - **Auto-Discovery**: The extension automatically fetches all models currently installed on your local Ollama instance.
 - **Cloud Support**: Even if Ollama isn't running locally, you can switch to configured cloud-based models (like Kimi, Qwen, or GLM) or set a custom model name.
 - **Smart Fallbacks**: If the connection to the Ollama API fails, the extension gracefully provides a list of cloud and custom options so you're never stuck.
-- **⭐ Model Recommendations (F-037)**: The model picker shows a `⭐ Recommended` item at the top, scored based on the active task type, languages in the diff, and diff size. The reason and score percentage are shown as the item description.
+- **⭐ Model Recommendations (F-037)**: The model picker shows a `⭐ Recommended` item at the top, scored based on the active task type, languages in the diff, and diff size.
+  - **Scoring Engine**: Evaluates models based on their affinity for specific tasks (e.g., `qwen2.5-coder` for coding, `llama3` for general review) and the complexity of the diff.
   - Enable **Auto-Select** (`ollama-code-review.autoSelectModel: true`) to have the extension automatically switch to the best model before each review — no manual picking needed.
 
 ![Model Selection](images/switch-models.gif)
 
-### 12. Claude (Anthropic) Support
+### 11. Claude (Anthropic) Support
 Use Anthropic's powerful Claude models for code reviews:
 - **Claude Sonnet 4** - Fast, capable model for everyday reviews
 - **Claude Opus 4** - Most capable model for complex analysis
@@ -178,7 +178,7 @@ To use Claude models:
 2. Set your API key in settings: `ollama-code-review.claudeApiKey`
 3. Select a Claude model from the status bar or command palette
 
-### 13. GLM (Z.AI/Zhipu) Support
+### 12. GLM (Z.AI/Zhipu) Support
 Use GLM models via the Z.AI (BigModel/Zhipu) API:
 - **GLM-4.7 Flash** - Fast and free-tier model for code reviews
 
@@ -187,7 +187,7 @@ To use GLM models:
 2. Set your API key in settings: `ollama-code-review.glmApiKey`
 3. Select `glm-4.7-flash` from the model picker
 
-### 14. Gemini (Google AI) Support
+### 13. Gemini (Google AI) Support
 Use Google's Gemini models via the free Google AI Studio API:
 - **Gemini 2.5 Flash** - Fast model with 250 requests/day free tier (15 RPM)
 - **Gemini 2.5 Pro** - More capable model with 100 requests/day free tier (5 RPM)
@@ -198,7 +198,7 @@ To use Gemini models:
 2. Set your API key in settings: `ollama-code-review.geminiApiKey`
 3. Select `gemini-2.5-flash` or `gemini-2.5-pro` from the model picker
 
-### 15. Mistral AI Support
+### 14. Mistral AI Support
 Use Mistral AI's powerful models for code reviews:
 - **Mistral Large** - Most capable model for complex analysis
 - **Mistral Small** - Fast and efficient for everyday reviews
@@ -209,7 +209,7 @@ To use Mistral models:
 2. Set your API key in settings: `ollama-code-review.mistralApiKey`
 3. Select `mistral-large-latest`, `mistral-small-latest`, or `codestral-latest` from the model picker
 
-### 16. MiniMax Support
+### 15. MiniMax Support
 Use MiniMax's models for code reviews:
 - **MiniMax M2.5** - Powerful model for code review and analysis
 
@@ -218,7 +218,7 @@ To use MiniMax models:
 2. Set your API key in settings: `ollama-code-review.minimaxApiKey`
 3. Select `MiniMax-M2.5` from the model picker
 
-### 17. Hugging Face Support
+### 16. Hugging Face Support
 Use any model from the Hugging Face Inference API:
 - Access thousands of open-source models
 - **Smart Model Picker**: When selecting `huggingface`, a submenu appears with:
@@ -242,7 +242,7 @@ To use Hugging Face models:
 - `meta-llama/Llama-3.1-8B-Instruct`
 - `deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct`
 
-### 18. v0 Support
+### 17. v0 Support
 Use Vercel's v0 platform for AI-powered code reviews:
 - **v0-auto** - Automatic model selection (recommended)
 - **v0-mini** - Fast, lightweight reviews
@@ -257,7 +257,7 @@ To use v0 models:
 
 > **Note:** v0 is primarily designed for UI/React generation. When used for code reviews, it will provide feedback but may occasionally include component-oriented suggestions. The extension configures a system prompt to steer it toward review behavior.
 
-### 19. OpenAI-Compatible Server Support
+### 18. OpenAI-Compatible Server Support
 Use any server that exposes an OpenAI-compatible `/v1/chat/completions` endpoint — no individual integration required:
 
 | Server | Type | Default Endpoint |
@@ -383,7 +383,7 @@ After a review completes, use the toolbar buttons at the top of the review panel
 - **PR Description**: Wraps the review with a model attribution header and copies it to your clipboard — ready to paste into a Pull Request description.
 - **Create GitHub Gist**: Posts a private Gist containing the review. Requires a GitHub Personal Access Token with the `gist` scope configured in settings (`ollama-code-review.github.gistToken`). After creation you can open the Gist in your browser or copy its URL.
 - **✨ Commit Msg**: Generate a conventional commit message from your currently staged changes directly from the review panel — no need to switch to the Source Control panel.
-- **💬 Discuss**: Open the current review in the [Persistent AI Review Chat Sidebar](#41-persistent-ai-review-chat-sidebar) to continue the conversation with multi-turn follow-up questions.
+- **💬 Discuss**: Open the current review in the [Persistent AI Review Chat Sidebar](#43-persistent-ai-review-chat-sidebar) to continue the conversation with multi-turn follow-up questions.
 - **Copy Diff**: Copies the original git diff that was analyzed to your clipboard. This is perfect for pasting into other LLM chats (like ChatGPT or Claude) if you want to provide the exact code context manually.
 - **🧠 Copy Prompt**: Copies the exact prompt that was sent to the AI — including the full diff, active skills, selected profile, and context sections. Useful for debugging review quality, sharing reproducible prompts, or pasting into external AI tools.
 
@@ -494,7 +494,13 @@ Give the AI richer context by automatically including related files alongside yo
 
 > Context gathering is non-fatal — if it fails or finds nothing, the review proceeds normally without context.
 
-### 29. Built-in MCP Server
+### 29. Monorepo Support
+The extension features deep monorepo awareness, allowing it to resolve local packages and imports across large, multi-package workspaces (e.g., Lerna, Yarn Workspaces, pnpm, Nx).
+- **Local Package Resolution**: When gathering context, the extension correctly identifies imports that point to other packages within the same monorepo, even when they appear in `node_modules`.
+- **Workspace-Wide Intelligence**: Review findings and agentic steps take into account the relationships between packages, providing better context for shared utilities or internal APIs.
+- **Auto-Discovery**: Support for various monorepo strategies is automatically detected based on the presence of workspace configurations.
+
+### 30. Built-in MCP Server
 The extension includes an optional **MCP (Model Context Protocol) server** that exposes local review context to MCP clients such as Claude Code without copy-pasting diffs.
 
 - **Optional**: Disabled by default. Enable it with `ollama-code-review.mcp.enabled` or run `Ollama Code Review: Toggle MCP Server for Claude Code`.
@@ -523,7 +529,7 @@ The extension includes an optional **MCP (Model Context Protocol) server** that 
 - `review://config`
 
 **Companion Chrome extension**
-- See [Section 56: Chrome Extension (Companion)](#56-chrome-extension-companion---local-browser-review-f-045) for details on the browser-side companion.
+- See [Section 58: Chrome Extension (Companion)](#58-chrome-extension-companion---local-browser-review-f-045) for details on the browser-side companion.
 - It is intentionally excluded from the VS Code extension bundle and `.vsix` package.
 
 **Example endpoint**
@@ -531,7 +537,7 @@ The extension includes an optional **MCP (Model Context Protocol) server** that 
 http://127.0.0.1:19840/mcp
 ```
 
-### 30. Batch / Legacy Code Review (No Git Required)
+### 31. Batch / Legacy Code Review (No Git Required)
 Review any file, folder, or selected text without needing a Git diff — perfect for legacy codebases, third-party code, or files not tracked by Git.
 
 - **Command**: `Ollama Code Review: Review File` — review the currently open file or an Explorer-selected file in full.
@@ -550,7 +556,7 @@ All three commands are accessible from the **Explorer context menu**, the **Edit
 
 > Batch reviews integrate automatically with Review Quality Scoring (F-016) and Notification Integrations (F-018).
 
-### 31. Review Quality Scoring & Trends
+### 32. Review Quality Scoring & Trends
 Track the quality of your code over time with a 0–100 score derived from AI finding counts after every review.
 
 - **Command**: `Ollama Code Review: Show Review Quality History` — open the history panel with score trends.
@@ -574,7 +580,7 @@ Score is clamped between 0 and 100. Sub-scores for correctness, security, mainta
 
 > Score history is persisted locally (up to 500 entries) — no external database required.
 
-### 32. Notification Integrations (Slack / Teams / Discord)
+### 33. Notification Integrations (Slack / Teams / Discord)
 Automatically post review summaries to your team communication channels after each review.
 
 **Supported platforms:**
@@ -601,7 +607,7 @@ Automatically post review summaries to your team communication channels after ea
 
 > Notification failures are logged to the output channel but never interrupt the review flow.
 
-### 33. Agentic Multi-Step Reviews
+### 34. Agentic Multi-Step Reviews
 Go beyond single-pass reviews with a 5-step AI pipeline that analyses context, detects codebase patterns, and self-critiques its own findings.
 
 - **Command**: `Ollama Code Review: Agentic Multi-Step Review`
@@ -634,7 +640,7 @@ Go beyond single-pass reviews with a 5-step AI pipeline that analyses context, d
 - Integrates with review profiles, agent skills, quality scoring, and notifications
 - Results display in the same review panel with full chat and export support
 
-### 34. Architecture Diagram Generation (Mermaid)
+### 35. Architecture Diagram Generation (Mermaid)
 Generate visual architecture diagrams from your code changes using Mermaid.js — rendered directly in the review panel.
 
 - **Command**: `Ollama Code Review: Generate Architecture Diagram (Mermaid)`
@@ -656,7 +662,7 @@ Generate visual architecture diagrams from your code changes using Mermaid.js �
 - Graceful fallback: invalid Mermaid syntax shows raw source with error message
 - Separate AI call — does not slow down the main review
 
-### 35. Review Analytics Dashboard
+### 36. Review Analytics Dashboard
 Get a comprehensive, visual overview of your review history with the analytics dashboard.
 
 - **Command**: `Ollama Code Review: Show Review Analytics Dashboard`
@@ -685,7 +691,7 @@ Get a comprehensive, visual overview of your review history with the analytics d
 
 > All analytics data is stored locally alongside review scores — no new dependencies or external services required.
 
-### 36. Team Knowledge Base
+### 37. Team Knowledge Base
 
 Encode your team's architecture decisions, coding patterns, and review rules in a `.ollama-review-knowledge.yaml` file checked into your repository. The AI references these entries during every review, ensuring consistent enforcement of team conventions.
 
@@ -763,7 +769,7 @@ rules:
 
 > The knowledge base file is Git-friendly (YAML format) — all decisions are versioned with the repository. The extension auto-reloads on file changes.
 
-### 37. RAG-Enhanced Reviews (Retrieval-Augmented Generation)
+### 38. RAG-Enhanced Reviews (Retrieval-Augmented Generation)
 
 Boost review quality by automatically retrieving the most semantically similar code from your indexed codebase and injecting it as additional context. The AI gains a broader picture of how changed code relates to the rest of the project — enabling deeper, more accurate findings.
 
@@ -796,7 +802,7 @@ Boost review quality by automatically retrieving the most semantically similar c
 
 ---
 
-### 38. CI/CD Integration
+### 39. CI/CD Integration
 
 Run AI-powered code reviews headlessly in your CI/CD pipelines using the standalone `@ollama-code-review/cli` package. Post review results to GitHub PRs automatically, fail pipelines based on severity thresholds, and integrate with any AI provider.
 
@@ -893,7 +899,7 @@ See `ci-templates/` for complete, production-ready workflow files with advanced 
 | `MISTRAL_API_KEY` | Mistral API key |
 | `GITHUB_TOKEN` | GitHub token for PR comments |
 
-### 39. Streaming Responses
+### 40. Streaming Responses
 
 Get real-time, token-by-token output as the AI generates your review — no more waiting for the full response before seeing any feedback.
 
@@ -909,11 +915,11 @@ Get real-time, token-by-token output as the AI generates your review — no more
 
 Set to `false` to disable streaming and revert to the classic "wait for full response" behavior for all providers.
 
-### 40. Rules Directory (.ollama-review/rules/)
+### 41. Rules Directory (.ollama-review/rules/)
 
 Define plain-text review rules using Markdown files in a `.ollama-review/rules/` directory at your workspace root. No schema required — just write your rules and they are injected into every review.
 
-This is a lightweight companion to the [Team Knowledge Base](#36-team-knowledge-base) — use rules for universal team conventions, and the knowledge base for structured Architecture Decision Records and patterns.
+This is a lightweight companion to the [Team Knowledge Base](#38-team-knowledge-base) — use rules for universal team conventions, and the knowledge base for structured Architecture Decision Records and patterns.
 
 **Example structure:**
 
@@ -950,7 +956,7 @@ This is a lightweight companion to the [Team Knowledge Base](#36-team-knowledge-
 
 > Rules are plain Markdown, so they're easy to write, review, and version-control alongside your code. Use numbered filenames (e.g., `01-typescript.md`, `02-react.md`) to control injection order.
 
-### 41. Persistent AI Review Chat Sidebar
+### 42. Persistent AI Review Chat Sidebar
 
 A dedicated AI chat panel pinned to the VS Code Activity Bar — always accessible, with full conversation history that persists across sessions. Use it for free-form AI assistance, to discuss a code review, or to ask questions about your staged changes.
 
@@ -971,13 +977,16 @@ A dedicated AI chat panel pinned to the VS Code Activity Bar — always accessib
 - **Streaming responses**: Tokens stream in real-time for supported providers (Ollama, Claude, OpenAI-compatible).
 - **All providers supported**: Works with Ollama, Claude, Gemini, Mistral, MiniMax, GLM, Hugging Face, and OpenAI-compatible endpoints.
 - **Review integration**: When you click **💬 Discuss** in the review panel, the full review context is injected as a system message so the AI can answer follow-up questions about specific findings.
+- **✨ Agentic Workspace Editing**: When using agentic models (like `v0` or `claude`), the AI can now autonomously **create, update, or delete files** in your workspace. 
+  - **Human-in-the-Loop**: For security, a modal confirmation dialog appears in VS Code before any file modification is executed. You can review the target path and action before approving.
+- **📁 Manual File Creation**: Every code block in the chat history now features a **Create** button. Click it to manually save the code snippet to a new file; the extension will prompt you for the desired file path.
 
 **Getting started:**
 1. Click the **AI Review** icon in the Activity Bar (or use the Command Palette: `AI Review: Focus AI Review Chat`)
 2. Type a question or use `/staged` to load your staged changes
 3. After completing a code review, click **💬 Discuss** to continue the conversation in the sidebar
 
-### 42. @-Context Mentions in Chat
+### 43. @-Context Mentions in Chat
 
 Type `@` in the chat input to instantly inject rich context into your AI conversation — no copy-pasting required. The extension shows an autocomplete dropdown as you type, and resolves the referenced content before sending it to the AI.
 
@@ -1006,7 +1015,7 @@ Type `@` in the chat input to instantly inject rich context into your AI convers
 - Unresolved mentions (e.g., `@review` with no prior review) show a status warning and are skipped
 - Multiple @-mentions can be combined in a single message
 
-### 43. Inline Edit Mode (AI)
+### 44. Inline Edit Mode (AI)
 
 Highlight any code in your editor, press `Ctrl+Shift+K` (`Cmd+Shift+K` on Mac), describe the change you want in plain English, and the AI streams the replacement code side-by-side before you accept or reject.
 
@@ -1027,7 +1036,7 @@ Highlight any code in your editor, press `Ctrl+Shift+K` (`Cmd+Shift+K` on Mac), 
 - Accept uses VS Code's native `TextEditor.edit()` so the change is fully integrated into the undo/redo stack
 - Works with all 8 supported AI providers
 
-### 44. Semantic Version Bump Advisor (F-028)
+### 45. Semantic Version Bump Advisor (F-028)
 
 Instantly determine the right semantic version bump for your next release. The AI analyzes your staged changes (or uncommitted diff) and recommends a **MAJOR**, **MINOR**, or **PATCH** bump based on the Semantic Versioning specification — with detailed reasoning and a ready-to-apply version string.
 
@@ -1073,7 +1082,7 @@ Reasons:
 
 ---
 
-### 45. Review Annotations — Inline Editor Decorations (F-029)
+### 46. Review Annotations — Inline Editor Decorations (F-029)
 
 See review findings **directly in your source code** without switching to the review panel. After every review, findings are displayed as inline editor decorations with severity-based gutter icons, line highlights, and rich hover tooltips.
 
@@ -1114,7 +1123,7 @@ See review findings **directly in your source code** without switching to the re
 
 ---
 
-### 46. Multi-Model Review Comparison (F-030)
+### 47. Multi-Model Review Comparison (F-030)
 
 Run the **same code review across multiple AI models in parallel** and compare results side-by-side. Ideal for evaluating which model works best for your codebase, cross-referencing findings, or comparing cost/speed/quality tradeoffs.
 
@@ -1145,7 +1154,7 @@ Run the **same code review across multiple AI models in parallel** and compare r
 
 ---
 
-### 47. Review Findings Explorer (F-031)
+### 48. Review Findings Explorer (F-031)
 
 A dedicated **tree view** in the VS Code sidebar that displays all findings from the most recent code review, organized by file and severity. Works like a "Problems Panel" specifically for AI review findings.
 
@@ -1182,7 +1191,7 @@ A dedicated **tree view** in the VS Code sidebar that displays all findings from
 
 ---
 
-### 48. Contentstack Schema Validation (F-032)
+### 49. Contentstack Schema Validation (F-032)
 
 Validate Contentstack CMS field names used in your source code against actual Content Type schemas. When enabled, the extension fetches schemas from the Contentstack Management API or a local JSON export, detects field accesses in code (dot access, bracket notation, destructuring, optional chaining), and flags mismatched field names — with Levenshtein-distance-based spelling suggestions — directly in the AI review.
 
@@ -1239,33 +1248,6 @@ Validate Contentstack CMS field names used in your source code against actual Co
 4. Enable validation: `ollama-code-review.contentstack.enabled = true`
 
 > Schema data is cached for the lifetime of the workspace session. Use the **Reload Contentstack Schema Cache** command or edit `.contentstack/schema.json` (auto-detected by file watcher) to invalidate the cache. Validation failures are non-fatal — if the schema can't be loaded, the review proceeds normally.
-
-### 49. Quick Fix from Review Findings (F-033)
-
-One-click AI-powered fixes for issues found during code reviews. After any review completes, findings that reference a specific file and line can be fixed directly from the **Findings Explorer** sidebar or from **inline annotation hover tooltips** — no need to manually copy issues and navigate to the Fix command.
-
-- **Findings Explorer**: Each finding with a file reference shows a wrench icon (`$(wrench)`) inline button. Click it to send the surrounding code and the finding description to the AI, which generates a fix shown in the Fix Preview panel.
-- **Annotation Hovers**: When hovering over an annotated line in the editor (F-029), a **Quick Fix** link appears at the bottom of the tooltip. Clicking it triggers the same AI-powered fix workflow.
-- **Fix Preview**: The generated fix is displayed in the existing side-by-side Fix Preview panel (from F-005) with "Apply Fix" and "Dismiss" buttons.
-
-**How it works:**
-
-1. Run any review (staged changes, commit, PR, file, agent, etc.)
-2. Findings appear in the Findings Explorer sidebar and as inline annotations
-3. Click the wrench icon on a finding in the explorer, or click "Quick Fix" in the annotation hover
-4. The AI reads ~30 lines of surrounding code and the finding details
-5. A fix is generated and shown in the Fix Preview panel
-6. Click "Apply Fix" to apply the change, or "Dismiss" to cancel
-
-**Command:**
-
-| Command | Description |
-|---------|-------------|
-| `ollama-code-review.fixFinding` | Generate an AI fix for a specific review finding |
-
-> Quick Fix requires the finding to have a file and line reference. Findings without file references (e.g., general observations) show a non-actionable context in the tree view. The fix uses the same AI provider and model as your regular reviews.
-
----
 
 ### 50. Auto-Review on Save — Background Code Quality Monitor (F-043)
 
@@ -1329,7 +1311,34 @@ Passive, always-on code quality feedback without interrupting your workflow. Whe
 
 ---
 
-### 51. Scan for Secrets
+### 51. Quick Fix from Review Findings (F-033)
+
+One-click AI-powered fixes for issues found during code reviews. After any review completes, findings that reference a specific file and line can be fixed directly from the **Findings Explorer** sidebar or from **inline annotation hover tooltips** — no need to manually copy issues and navigate to the Fix command.
+
+- **Findings Explorer**: Each finding with a file reference shows a wrench icon (`$(wrench)`) inline button. Click it to send the surrounding code and the finding description to the AI, which generates a fix shown in the Fix Preview panel.
+- **Annotation Hovers**: When hovering over an annotated line in the editor (F-029), a **Quick Fix** link appears at the bottom of the tooltip. Clicking it triggers the same AI-powered fix workflow.
+- **Fix Preview**: The generated fix is displayed in the existing side-by-side Fix Preview panel (from F-005) with "Apply Fix" and "Dismiss" buttons.
+
+**How it works:**
+
+1. Run any review (staged changes, commit, PR, file, agent, etc.)
+2. Findings appear in the Findings Explorer sidebar and as inline annotations
+3. Click the wrench icon on a finding in the explorer, or click "Quick Fix" in the annotation hover
+4. The AI reads ~30 lines of surrounding code and the finding details
+5. A fix is generated and shown in the Fix Preview panel
+6. Click "Apply Fix" to apply the change, or "Dismiss" to cancel
+
+**Command:**
+
+| Command | Description |
+|---------|-------------|
+| `ollama-code-review.fixFinding` | Generate an AI fix for a specific review finding |
+
+> Quick Fix requires the finding to have a file and line reference. Findings without file references (e.g., general observations) show a non-actionable context in the tree view. The fix uses the same AI provider and model as your regular reviews.
+
+---
+
+### 52. Scan for Secrets
 
 Detect accidentally committed secrets (API keys, tokens, passwords, private keys) in your staged changes or files before they reach your repository.
 
@@ -1339,7 +1348,16 @@ The scanner uses **regex pattern detection** for common secret patterns (API key
 
 ---
 
-### 52. Copy / Explain File with Imports (for LLM)
+### 53. Impact Analysis & API Guard (F-041)
+Analyze the downstream impact of your changes before you commit. The extension identifies modified public APIs, exported functions, and data structures, and warns you about potential breaking changes in other parts of the workspace.
+- **API Change Detection**: Automatically detects changes to function signatures, exported constants, and interface definitions.
+- **Downstream Impact Graph**: Visualizes which files and modules depend on the modified code, helping you identify areas that might need corresponding updates.
+- **API Guard**: A status bar alert and notification trigger when high-impact API changes are detected, serving as a "second pair of eyes" for architectural integrity.
+- **Command**: `Ollama Code Review: Show Impacted Files` — view a detailed list of workspace files affected by your current changes.
+
+---
+
+### 54. Copy / Explain File with Imports (for LLM)
 
 Quickly prepare code context for pasting into external LLMs (ChatGPT, Claude, etc.) or for understanding complex files with their dependency tree.
 
@@ -1353,7 +1371,7 @@ All three commands are available from the **editor context menu** (right-click) 
 
 ---
 
-### 53. Ask AI About Finding
+### 55. Ask AI About Finding
 
 After a code review, ask the AI to explain a specific finding in more detail — directly from the **Findings Explorer** sidebar.
 
@@ -1364,7 +1382,7 @@ The finding's message, severity, file context, and any suggestions are sent to t
 
 ---
 
-### 54. Findings Severity Filter & Export (F-034)
+### 56. Findings Severity Filter & Export (F-034)
 
 Filter the Findings Explorer by severity and export findings as a Markdown checklist — making it easy to focus on what matters most and share findings with your team.
 
@@ -1404,7 +1422,7 @@ Filter the Findings Explorer by severity and export findings as a Markdown check
 
 ---
 
-### 55. View Finding Diff (F-044)
+### 57. View Finding Diff (F-044)
 
 Open a native VS Code **diff editor** for any finding in the Findings Explorer, showing the exact changes between the last Git commit (`HEAD`) and your current working file.
 
@@ -1419,9 +1437,9 @@ Open a native VS Code **diff editor** for any finding in the Findings Explorer, 
 |---------|-------------|
 | `ollama-code-review.viewFindingDiff` | Open the VS Code diff editor for a finding's file (HEAD vs working copy) |
 
-> This complements **Quick Fix from Review Findings** (Section 49) — use View Diff to understand the change, then Quick Fix to resolve it.
+> This complements **Quick Fix from Review Findings** (Section 50) — use View Diff to understand the change, then Quick Fix to resolve it.
 
-### 56. Chrome Extension (Companion) - Local Browser Review (F-045)
+### 58. Chrome Extension (Companion) - Local Browser Review (F-045)
 
 The **OCR Browser Review** extension is a companion Chrome extension that allows you to review GitHub Pull Requests and GitLab Merge Requests directly in your browser using local context from your VS Code workspace.
 
@@ -1485,6 +1503,8 @@ This extension contributes the following settings to your VS Code `settings.json
 * `ollama-code-review.skills.autoApply`: If enabled, selected skills are automatically applied to all subsequent reviews.
     * **Default**: `true`
     * **Note**: Multiple skills can be selected and will be combined in reviews.
+* `ollama-code-review.projectCode`: Specify your project or Jira ticket prefix (e.g., `PROJ`). If a ticket ID matching this prefix is found in the branch name, it is automatically injected into commit message prompts.
+* `ollama-code-review.defaultBaseBranch`: The default base branch or git ref to compare against when using "Review Changes Between Two Branches" (default: `main`).
 * `ollama-code-review.temperature`: The creativity of the AI's response (0.0 for deterministic, 1.0 for very creative).
     * **Type**: `number`
     * **Default**: `0`
@@ -1589,6 +1609,15 @@ This extension contributes the following settings to your VS Code `settings.json
     * `excludePatterns`: Array of glob patterns for files to skip (default: node_modules, test files, dist, build)
     * `showAnnotations`: Apply inline editor annotations after each auto-review (default: `true`)
     * `notifyOnFindings`: Show a pop-up notification when relevant findings are found (default: `true`)
+
+* `ollama-code-review.copyFunction`: Configure the "Copy Function with Imports" feature.
+    * `maxDepth`: Maximum recursion depth for following imports (default: `3`)
+    * `followImports`: Whether to resolve and include imported modules (default: `true`)
+    * `includeTypes`: Whether to include type definitions for TypeScript files (default: `true`)
+    * `excludePatterns`: Glob patterns to ignore during import resolution (default: `node_modules`, etc.)
+* `ollama-code-review.mcp.restartMcp`: If `true`, the MCP server is automatically restarted when relevant settings change.
+    * **Type**: `boolean`
+    * **Default**: `false`
 
 You can configure these by opening the Command Palette (`Ctrl+Shift+P`) and searching for `Preferences: Open User Settings (JSON)`.
 

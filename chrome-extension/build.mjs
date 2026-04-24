@@ -37,6 +37,11 @@ const builds = [
 		outfile: path.join(scriptDir, 'dist/claudeUsage.js'),
 		...common,
 	},
+	{
+		entryPoints: [path.join(scriptDir, 'src/copilotUsage.ts')],
+		outfile: path.join(scriptDir, 'dist/copilotUsage.js'),
+		...common,
+	},
 ];
 
 if (watch) {

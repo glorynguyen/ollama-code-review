@@ -1,4 +1,7 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs/promises';
+import * as path from 'path';
+import { resolveAndValidatePath } from '../utils/pathValidation';
 import { type ProviderRequestContext, providerRegistry, DEFAULT_MODELS } from '../providers';
 import { getOllamaModel } from '../utils';
 import {
@@ -96,6 +99,9 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 					break;
 				case 'copyCode':
 					await this.handleCopyCode(message.code);
+					break;
+				case 'createFile':
+					await this.handleCreateFile(message.code);
 					break;
 			}
 		});
@@ -209,6 +215,59 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 
 	private async handleCopyCode(code: string): Promise<void> {
 		await vscode.env.clipboard.writeText(code);
+	}
+
+	private async handleCreateFile(code: string): Promise<void> {
+		const workspaceFolders = vscode.workspace.workspaceFolders;
+		if (!workspaceFolders || workspaceFolders.length === 0) {
+			vscode.window.showErrorMessage('No workspace folder open.');
+			return;
+		}
+
+		const repoPaths = workspaceFolders.map(f => f.uri.fsPath);
+		const fileName = await vscode.window.showInputBox({
+			prompt: 'Enter the relative path for the new file',
+			placeHolder: 'e.g., src/components/NewComponent.tsx',
+			ignoreFocusOut: true,
+		});
+
+		if (!fileName) {
+			return;
+		}
+
+		const validation = await resolveAndValidatePath(fileName, repoPaths);
+		if (!validation.valid) {
+			vscode.window.showErrorMessage(validation.error);
+			return;
+		}
+		const { resolvedPath } = validation;
+
+		try {
+			const processedCode = this.stripMarkdownFences(code);
+			await fs.mkdir(path.dirname(resolvedPath), { recursive: true });
+
+			// Confirm before overwriting an existing file
+			try {
+				await fs.access(resolvedPath);
+				const answer = await vscode.window.showWarningMessage(
+					`File '${fileName}' already exists. Overwrite?`,
+					{ modal: true },
+					'Overwrite',
+					'Cancel',
+				);
+				if (answer !== 'Overwrite') {
+					return;
+				}
+			} catch { /* file doesn't exist — proceed */ }
+
+			await fs.writeFile(resolvedPath, processedCode, 'utf-8');
+
+			const doc = await vscode.workspace.openTextDocument(resolvedPath);
+			await vscode.window.showTextDocument(doc);
+			vscode.window.showInformationMessage(`File created: ${fileName}`);
+		} catch (err: any) {
+			vscode.window.showErrorMessage(`Failed to create file: ${err?.message || String(err)}`);
+		}
 	}
 
 	public async handleDiscussReview(context: string): Promise<void> {
@@ -928,6 +987,7 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 								'<button class="action-btn copy-btn" data-code="' + encodedCode + '">Copy</button>',
 								'<button class="action-btn insert-btn" data-code="' + encodedCode + '" data-lang="' + escapeHtml(lang) + '">Insert</button>',
 								'<button class="action-btn apply-btn" data-code="' + encodedCode + '" data-lang="' + escapeHtml(lang) + '">Apply</button>',
+								'<button class="action-btn create-btn" data-code="' + encodedCode + '" data-lang="' + escapeHtml(lang) + '">Create</button>',
 							'</div>',
 						'</div>',
 						'<pre><code class="language-' + escapeHtml(lang) + '">' + escapeHtml(codeStr) + '</code></pre>',
@@ -1113,6 +1173,8 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 					vscode.postMessage({ type: 'insertCode', code, languageId: lang });
 				} else if (target.classList.contains('apply-btn')) {
 					vscode.postMessage({ type: 'applyCode', code, languageId: lang });
+				} else if (target.classList.contains('create-btn')) {
+					vscode.postMessage({ type: 'createFile', code });
 				}
 			} catch (err) {
 				console.error('Error in code block action handler:', err);

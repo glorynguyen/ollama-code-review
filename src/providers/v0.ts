@@ -45,10 +45,14 @@ export class V0Provider implements ModelProvider {
 
 		// 2. Tool definitions
 		if (options.tools?.length) {
+			prompt += 'Mandatory Assistant Capabilities:\n';
+			prompt += 'You have access to MCP tools to interact with the user\'s workspace. Use them whenever you need to read, create, or modify files.\n\n';
 			prompt += 'Available MCP tools:\n' + options.tools.map(t => 
 				`- ${t.name}: ${t.description}\n  Schema: ${JSON.stringify(t.inputSchema)}`
 			).join('\n') + '\n\n';
-			prompt += 'To call a tool, output a JSON block like this: {"tool": "toolName", "args": {...}}\n\n';
+			prompt += 'To call a tool, you MUST output a JSON block like this:\n';
+			prompt += '{"tool": "toolName", "args": {...}}\n\n';
+			prompt += 'If the user asks you to "create a file", "save this code", or "update a file", ALWAYS use the `write_file` or `update_file` tool. Do NOT just output the code block.\n\n';
 		}
 
 		// 3. Conversation history (excluding system messages)
