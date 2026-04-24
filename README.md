@@ -10,6 +10,11 @@
 [![GitHub Issues](https://img.shields.io/github/issues/glorynguyen/ollama-code-review?style=for-the-badge&logo=github&logoColor=white)](https://github.com/glorynguyen/ollama-code-review/issues)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![VS Code Engine](https://img.shields.io/badge/VS%20Code-1.102%2B-007ACC?style=for-the-badge&logo=visual-studio-code&logoColor=white)](https://code.visualstudio.com/)
+[![Documentation](https://img.shields.io/badge/Docs-Netlify-00C7B7?style=for-the-badge&logo=netlify&logoColor=white)](https://ollama-code-review.netlify.app/)
+
+> **Minimum VS Code version:** `1.102.0` — [Download the latest VS Code](https://code.visualstudio.com/)
+>
+> **Full documentation:** [ollama-code-review.netlify.app](https://ollama-code-review.netlify.app/)
 
 Get lightning-fast, expert code reviews and AI-generated commit messages directly in your editor using local Ollama models, cloud AI providers like **Claude (Anthropic)**, **Gemini (Google AI)**, **Mistral AI**, **MiniMax**, **GLM (Z.AI)**, and **Hugging Face**, or **any OpenAI-compatible server** such as LM Studio, vLLM, LocalAI, Groq, and OpenRouter. This extension analyzes your code changes before you commit, helping you catch bugs, improve code quality, and write consistent, informative commit messages.
 
@@ -56,8 +61,9 @@ You do not need to install Ollama locally. You can use any of the supported clou
 | **Ollama** (Local) | N/A | [ollama.com](https://ollama.com/) |
 
 #### General Requirements
-1.  **[Git](https://git-scm.com/)**: Git must be installed and available in your system's PATH.
-2.  **VS Code Built-in Git Extension**: This extension must be enabled (it is by default).
+1.  **VS Code 1.102.0 or later** — [Download](https://code.visualstudio.com/)
+2.  **[Git](https://git-scm.com/)**: Git must be installed and available in your system's PATH.
+3.  **VS Code Built-in Git Extension**: This extension must be enabled (it is by default).
 
 ---
 
