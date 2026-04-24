@@ -1,3 +1,10 @@
+# [4.4.0](https://github.com/glorynguyen/ollama-code-review/compare/v4.3.0...v4.4.0) (2026-04-24)
+
+
+### Features
+
+* **agentic:** add workspace file editing with confirmation ([440b060](https://github.com/glorynguyen/ollama-code-review/commit/440b060bb04ebfd6d5558d86a6872a890c863f49))
+
 # [4.3.0](https://github.com/glorynguyen/ollama-code-review/compare/v4.2.0...v4.3.0) (2026-04-21)
 
 
