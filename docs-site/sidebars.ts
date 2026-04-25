@@ -10,7 +10,9 @@ const sidebars: SidebarsConfig = {
       items: [
         'features/git-workflow',
         'features/editor-actions',
+        'features/ai-chat',
         'features/advanced-features',
+        'features/continuous-feedback',
         'features/mcp',
       ],
     },
@@ -34,6 +36,7 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'Integration',
       items: [
+        'features/integrations',
         'features/ci-cd',
       ],
     },

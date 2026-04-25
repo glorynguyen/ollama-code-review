@@ -33,3 +33,17 @@ Ideal for pre-PR reviews.
 
 - **Command:** `Ollama: Review Changes Between Two Branches`
 - **Workflow:** Compare any two branches or git refs (like tags or commit hashes) to get a comprehensive review of the differences.
+
+## Multi-Model Review Comparison
+
+Run the same code review across multiple AI models in parallel and compare results side-by-side.
+
+- **Command:** `Ollama Code Review: Compare Models Review`.
+- **Workflow:** Select 2-4 models (local or cloud). The extension displays a comparison table with scores, duration, and findings for each model.
+
+## Pre-Commit Guard
+
+Automatically review staged changes with AI before every commit to catch issues before they enter your history.
+
+- **Enable:** Command Palette -> `Ollama Code Review: Toggle Pre-Commit Guard`.
+- **Workflow:** A git pre-commit hook is installed that blocks direct `git commit` calls. Use the `Review & Commit` command to review findings and commit only if the quality meets your configured threshold.

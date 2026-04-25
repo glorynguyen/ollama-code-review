@@ -2,6 +2,13 @@
 
 Get up and running with Ollama Code Review in minutes.
 
+## Requirements
+
+Before installing, ensure you meet the following requirements:
+
+1.  **VS Code 1.102.0 or later** — [Download the latest version](https://code.visualstudio.com/).
+2.  **Git**: Installed and available in your system's PATH.
+
 ## 1. Installation
 
 Install the **Ollama Code Review** extension from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=VinhNguyen-Vincent.ollama-code-review).

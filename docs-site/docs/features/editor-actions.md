@@ -25,6 +25,22 @@ Describe the change you want in plain English and let the AI rewrite the code fo
 - **Trigger:** `Cmd+Shift+K` (Mac) or `Ctrl+Shift+K` (Windows/Linux).
 - **Workflow:** Type your request (e.g., "Convert to async/await"), and the AI streams the replacement code side-by-side for you to accept or reject.
 
+## LLM Context Helpers
+
+Quickly prepare code context for external LLMs or understand complex files.
+
+- **Explain File with Imports:** Get an AI explanation of the current file along with its resolved imports.
+- **Copy File with Imports:** Copy the current file's source code together with its imported modules to your clipboard.
+- **Copy Function with Imports:** Select a function and copy it along with only the imports it uses for a minimal, self-contained snippet.
+
+## Review Feedback Interactions
+
+Interact with the results of a code review directly from the UI.
+
+- **Ask AI About Finding:** Click the chat icon on any finding in the Findings Explorer to ask follow-up questions in the AI sidebar.
+- **View Finding Diff:** Click the diff icon on a finding to open a native VS Code diff editor (HEAD vs working copy) scrolled to the relevant line.
+- **Quick Fix:** Click the wrench icon in the Findings Explorer or "Quick Fix" in a hover tooltip to generate an AI-powered fix for the issue.
+
 ## Review Annotations
 
 See review findings directly in your source code. After a review, findings appear as:

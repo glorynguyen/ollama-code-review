@@ -28,6 +28,10 @@ All settings are prefixed with `ollama-code-review.*`.
 | `mcp.authToken` | Security token for browser MCP clients | `""` |
 | `mcp.externalServers` | Configuration for connecting to external MCP servers | `{}` |
 | `autoReview.enabled` | Enable background review on file save | `false` |
+| `autoReview.minSeverity` | Only notify for findings at or above this level | `high` |
+| `contentstack.enabled` | Enable Contentstack schema validation | `false` |
+| `contentstack.schemaSource` | Source for schemas (local or api) | `local` |
+| `copyFunction.maxDepth` | Recursion depth for following imports | `3` |
 
 ## Exhaustive List
 For the full list of over 50 configuration options, please refer to the VS Code Settings UI by searching for `@ext:VinhNguyen-Vincent.ollama-code-review`.
