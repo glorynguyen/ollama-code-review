@@ -19,3 +19,17 @@ tsconfig.json
 yarn.lock
 .editorconfig
 chrome-extension/**
+docs-site/**
+ci-templates/**
+packages/**
+test-support/**
+test-logic.ts
+docs/**
+ROADMAP.md
+PLAN.md
+plan.md
+diff.js
+test-wiql.ts
+.claude
+.github
+coverage

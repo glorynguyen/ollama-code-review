@@ -159,6 +159,7 @@ import { type CommandContext } from './commandContext';
 import { registerFindingsCommands } from './findingsCommands';
 import { registerReloadCommands } from './reloadCommands';
 import { registerSettingsCommands } from './settingsCommands';
+import { registerReleaseCommands } from './releaseCommands';
 
 export { checkActiveModels, getLastPerformanceMetrics, clearPerformanceMetrics };
 export type { PerformanceMetrics };
@@ -432,6 +433,9 @@ export async function activate(context: vscode.ExtensionContext) {
 		v0Models: V0_MODELS,
 	});
 	context.subscriptions.push(...settingsCommands);
+
+	const releaseCommands = registerReleaseCommands(commandContext);
+	context.subscriptions.push(...releaseCommands);
 
 	const reloadCommands = registerReloadCommands(commandContext);
 	context.subscriptions.push(...reloadCommands);

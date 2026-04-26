@@ -364,6 +364,17 @@
         "title": "Export Findings as Markdown",
         "category": "Ollama Code Review",
         "icon": "$(markdown)"
+      },
+      {
+        "command": "ollama-code-review.openReleaseOrchestrator",
+        "title": "Open AI Release Orchestrator",
+        "category": "Ollama Code Review",
+        "icon": "$(rocket)"
+      },
+      {
+        "command": "ollama-code-review.setAdoToken",
+        "title": "Set Azure DevOps Personal Access Token",
+        "category": "Ollama Code Review"
       }
     ],
     "walkthroughs": [
@@ -534,6 +545,11 @@
         },
         {
           "command": "ollama-code-review.compareModels",
+          "when": "scmProvider == 'git'",
+          "group": "navigation"
+        },
+        {
+          "command": "ollama-code-review.openReleaseOrchestrator",
           "when": "scmProvider == 'git'",
           "group": "navigation"
         }
@@ -1380,6 +1396,21 @@
               }
             }
           }
+        },
+        "ollama-code-review.ado.orgUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Azure DevOps Organization URL (e.g., https://dev.azure.com/yourorg)"
+        },
+        "ollama-code-review.ado.project": {
+          "type": "string",
+          "default": "",
+          "description": "Azure DevOps Project Name"
+        },
+        "ollama-code-review.ado.repoId": {
+          "type": "string",
+          "default": "",
+          "description": "Azure DevOps Repository ID (GUID or Name)"
         }
       }
     }
@@ -1416,7 +1447,7 @@
     "@typescript-eslint/parser": "^8.39.0",
     "@vscode/test-cli": "^0.0.11",
     "@vscode/test-electron": "^2.5.2",
-    "@vscode/vsce": "^3.7.1",
+    "@vscode/vsce": "^3.9.1",
     "esbuild": "^0.27.3",
     "eslint": "^9.32.0",
     "mocha": "^11.3.0",
