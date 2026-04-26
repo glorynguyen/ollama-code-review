@@ -2,7 +2,7 @@
   "name": "ollama-code-review",
   "displayName": "Ollama Code Review",
   "description": "Get AI code reviews and generate commit messages from a local Ollama instance before you commit.",
-  "version": "4.5.0",
+  "version": "4.6.0",
   "sponsor": {
     "url": "https://ko-fi.com/nguyenbavinh"
   },
@@ -866,7 +866,9 @@
             },
             "ignoreContextPaths": {
               "type": "array",
-              "items": { "type": "string" },
+              "items": {
+                "type": "string"
+              },
               "default": [],
               "description": "Glob patterns for files that must never be added to the review context (imports, tests, type-defs, and self-context). Examples: [\"src/generated/**\", \"**/*.pb.ts\"]"
             }
@@ -1360,7 +1362,9 @@
             },
             "excludePatterns": {
               "type": "array",
-              "items": { "type": "string" },
+              "items": {
+                "type": "string"
+              },
               "default": [],
               "markdownDescription": "Glob patterns for files to skip during secret scanning. Useful for test files that intentionally contain example credentials (e.g. `[\"src/test/**\", \"**/*.test.*\"]`). Files matched here are still sent for AI review — only the secret scan is bypassed."
             }

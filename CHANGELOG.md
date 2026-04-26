@@ -1,3 +1,10 @@
+# [4.6.0](https://github.com/glorynguyen/ollama-code-review/compare/v4.5.0...v4.6.0) (2026-04-26)
+
+
+### Features
+
+* **config:** add configurable limits and exclusion patterns ([5a52d0c](https://github.com/glorynguyen/ollama-code-review/commit/5a52d0c26acb53a5ad4458c75b32cea9f1cea40e))
+
 # [4.5.0](https://github.com/glorynguyen/ollama-code-review/compare/v4.4.0...v4.5.0) (2026-04-26)
 
 
