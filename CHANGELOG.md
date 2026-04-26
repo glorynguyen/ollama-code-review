@@ -1,3 +1,10 @@
+# [4.5.0](https://github.com/glorynguyen/ollama-code-review/compare/v4.4.0...v4.5.0) (2026-04-26)
+
+
+### Features
+
+* **release:** add AI Release Orchestrator with ADO integration ([b72f3e4](https://github.com/glorynguyen/ollama-code-review/commit/b72f3e421eaf20d4b7578a49fabb7e67e20f3e18))
+
 # [4.4.0](https://github.com/glorynguyen/ollama-code-review/compare/v4.3.0...v4.4.0) (2026-04-24)
 
 
