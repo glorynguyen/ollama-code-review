@@ -70,6 +70,7 @@ export const gatherContextStep: AgentStep<DiffAnalysis, GatheredContext> = {
 			maxFiles: ctx.config.maxContextFiles,
 			includeTests: ctx.config.includeTests,
 			includeTypeDefinitions: ctx.config.includeTypes,
+			ignoreContextPaths: baseConfig.ignoreContextPaths,
 		};
 
 		// Use the existing F-008 gatherer

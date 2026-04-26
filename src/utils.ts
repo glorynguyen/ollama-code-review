@@ -64,7 +64,7 @@ export function extractToolCalls(text: string): Array<{ name: string; arguments:
 		if (char === '"') { inString = !inString; continue; }
 		if (!inString) {
 			if (char === '{') {
-				if (braceCount === 0) start = i;
+				if (braceCount === 0) {start = i;}
 				braceCount++;
 			} else if (char === '}') {
 				braceCount--;
@@ -102,7 +102,7 @@ export function extractToolCalls(text: string): Array<{ name: string; arguments:
 			if (toolMatch && argsMatch) {
 				const name = toolMatch[1];
 				const argsText = extractArgsObject(cleanBlock, argsMatch.index! + argsMatch[0].length);
-				if (argsText) addToolCall(name, argsText);
+				if (argsText) {addToolCall(name, argsText);}
 			}
 		} catch { /* skip */ }
 	}
@@ -113,7 +113,7 @@ export function extractToolCalls(text: string): Array<{ name: string; arguments:
 	while ((match = globalRegex.exec(text)) !== null) {
 		const name = match[1];
 		const argsText = extractArgsObject(text, match.index + match[0].length);
-		if (argsText) addToolCall(name, argsText);
+		if (argsText) {addToolCall(name, argsText);}
 	}
 
 	return toolCalls;
@@ -136,7 +136,7 @@ function extractArgsObject(text: string, startIndex: number): string | null {
 		if (char === '"') { inString = !inString; continue; }
 		if (!inString) {
 			if (char === '{') {
-				if (braceCount === 0) start = i;
+				if (braceCount === 0) {start = i;}
 				braceCount++;
 			} else if (char === '}') {
 				if (braceCount > 0) {

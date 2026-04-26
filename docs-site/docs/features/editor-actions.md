@@ -31,7 +31,7 @@ Quickly prepare code context for external LLMs or understand complex files.
 
 - **Explain File with Imports:** Get an AI explanation of the current file along with its resolved imports.
 - **Copy File with Imports:** Copy the current file's source code together with its imported modules to your clipboard.
-- **Copy Function with Imports:** Select a function and copy it along with only the imports it uses for a minimal, self-contained snippet.
+- **Copy Function with Imports:** Select a function and copy it along with only the imports it uses for a minimal, self-contained snippet. Uses **Smart Context** to BFS-expand the call graph up to `copyFunction.maxDepth` levels, so callee definitions are included automatically.
 
 ## Review Feedback Interactions
 

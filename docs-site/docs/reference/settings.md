@@ -31,7 +31,11 @@ All settings are prefixed with `ollama-code-review.*`.
 | `autoReview.minSeverity` | Only notify for findings at or above this level | `high` |
 | `contentstack.enabled` | Enable Contentstack schema validation | `false` |
 | `contentstack.schemaSource` | Source for schemas (local or api) | `local` |
-| `copyFunction.maxDepth` | Recursion depth for following imports | `3` |
+| `copyFunction.maxDepth` | BFS depth for call-graph expansion in Copy Function with Imports | `3` |
+| `copyFunction.maxFunctions` | Max functions to collect in Copy Function with Imports | `15` |
+| `copyFunction.maxCharsPerFunction` | Max characters per function body in Copy Function with Imports | `8000` |
+| `copyFunction.characterBudget` | Total character budget for all collected functions | `64000` |
+| `copyWithImports.noLimits` | Remove all Smart Context limits (use carefully on large files) | `false` |
 
 ## Exhaustive List
 For the full list of over 50 configuration options, please refer to the VS Code Settings UI by searching for `@ext:VinhNguyen-Vincent.ollama-code-review`.

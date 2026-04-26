@@ -124,10 +124,10 @@ export class ReleaseService {
             const args = ['log', range, '-n', '100', '--pretty=tformat:%H%x00%s%x00%an%x00%ae%x00%ad', '--date=iso'];
             console.log(`[ReleaseService] Executing: git ${args.join(' ')}`);
             const output = await this.execGit(args);
-            if (!output.trim()) return [];
+            if (!output.trim()) {return [];}
             return output.trim().split('\n').map(line => {
                 const parts = line.split('\0');
-                if (parts.length < 5) return null;
+                if (parts.length < 5) {return null;}
                 const [hash, message, author, email, date] = parts;
                 return { hash, message: message.trim(), author, email, date };
             }).filter((c): c is Commit => c !== null);
@@ -243,7 +243,7 @@ export class ReleaseService {
         const validFilePattern = /^[\w\-\/\.]+$/;
         const validFiles = fileList.filter(f => validFilePattern.test(f) && !f.includes('..'));
         try {
-            if (!validFiles || validFiles.length === 0) return '';
+            if (!validFiles || validFiles.length === 0) {return '';}
             const args = ['diff', targetBranch, hash, '--', ...validFiles];
             return await this.execGit(args);
         } catch (error) {

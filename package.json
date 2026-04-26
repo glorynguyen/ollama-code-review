@@ -863,6 +863,12 @@
               "type": "boolean",
               "default": true,
               "description": "Include .d.ts type definition files for changed modules"
+            },
+            "ignoreContextPaths": {
+              "type": "array",
+              "items": { "type": "string" },
+              "default": [],
+              "description": "Glob patterns for files that must never be added to the review context (imports, tests, type-defs, and self-context). Examples: [\"src/generated/**\", \"**/*.pb.ts\"]"
             }
           }
         },
@@ -1139,6 +1145,11 @@
           "minimum": 100,
           "description": "Maximum character limit for an individual function's body. Longer functions will be truncated."
         },
+        "ollama-code-review.copyWithImports.noLimits": {
+          "type": "boolean",
+          "default": false,
+          "description": "When enabled, 'Copy File with Imports' and 'Copy Function with Imports' include full file contents without any per-file or total character truncation. Only explicitly imported files are followed — gitignored directories like node_modules are not crawled."
+        },
         "ollama-code-review.gitlab.baseUrl": {
           "type": "string",
           "default": "https://gitlab.com",
@@ -1331,6 +1342,27 @@
               "type": "boolean",
               "default": true,
               "description": "Build smart context for reviews: instead of sending only the raw diff, the extension resolves the wrapping function body, called functions (BFS depth 2, max 8), and relevant imports. Requires an active language server for the file. Disable if you experience slow reviews or want minimal payloads."
+            }
+          }
+        },
+        "ollama-code-review.secretScanner": {
+          "type": "object",
+          "default": {
+            "enabled": true,
+            "excludePatterns": []
+          },
+          "markdownDescription": "**F-042** — Secret Scanner configuration. Scans staged diffs for hardcoded credentials before sending anything to an AI model.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true,
+              "description": "Scan staged diffs for hardcoded secrets (API keys, tokens, passwords) before sending to an AI model. When secrets are found the review is blocked until they are removed."
+            },
+            "excludePatterns": {
+              "type": "array",
+              "items": { "type": "string" },
+              "default": [],
+              "markdownDescription": "Glob patterns for files to skip during secret scanning. Useful for test files that intentionally contain example credentials (e.g. `[\"src/test/**\", \"**/*.test.*\"]`). Files matched here are still sent for AI review — only the secret scan is bypassed."
             }
           }
         },

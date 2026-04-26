@@ -55,6 +55,15 @@ export interface OllamaReviewYamlConfig {
         maxFileLines?: number;
         ignoreFormattingOnly?: boolean;
     };
+    /** Override context-gathering configuration. */
+    contextGathering?: {
+        /**
+         * Glob patterns for files that must never be added to the review context
+         * (imports, tests, type-defs, and self-context snippets).
+         * Paths are workspace-relative, e.g. `["src/generated/**", "**\/*.pb.ts"]`.
+         */
+        ignoreContextPaths?: string[];
+    };
 }
 
 // ---------------------------------------------------------------------------
@@ -219,6 +228,17 @@ export async function getYamlDiffFilterOverrides(
     return projectConfig?.diffFilter ?? null;
 }
 
+/**
+ * Returns the context-gathering overrides from .ollama-review.yaml (if present).
+ * The caller (contextGatherer.ts) merges these on top of VS Code settings.
+ */
+export async function getYamlContextGatheringOverrides(
+    outputChannel?: vscode.OutputChannel
+): Promise<OllamaReviewYamlConfig['contextGathering'] | null> {
+    const projectConfig = await loadProjectConfig(outputChannel);
+    return projectConfig?.contextGathering ?? null;
+}
+
 // ---------------------------------------------------------------------------
 // Schema validation (soft — logs warnings, does not throw)
 // ---------------------------------------------------------------------------
@@ -263,6 +283,17 @@ function _validateConfig(config: OllamaReviewYamlConfig, outputChannel?: vscode.
             }
             if (df.ignoreFormattingOnly !== undefined && typeof df.ignoreFormattingOnly !== 'boolean') {
                 warn('"diffFilter.ignoreFormattingOnly" must be true or false.');
+            }
+        }
+    }
+
+    if (config.contextGathering !== undefined) {
+        const cg = config.contextGathering;
+        if (typeof cg !== 'object' || Array.isArray(cg)) {
+            warn('"contextGathering" must be a mapping.');
+        } else {
+            if (cg.ignoreContextPaths !== undefined && !Array.isArray(cg.ignoreContextPaths)) {
+                warn('"contextGathering.ignoreContextPaths" must be a list of glob patterns.');
             }
         }
     }

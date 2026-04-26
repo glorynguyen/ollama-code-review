@@ -24,6 +24,7 @@ import { parseImports, extractChangedFiles, extractChangedLines } from './import
 import { resolveImport, readFileContent, toRelativePath } from './fileResolver';
 import { findTestFiles } from './testDiscovery';
 import { getDiffFilterConfig, shouldIgnoreFile } from '../diffFilter';
+import { getYamlContextGatheringOverrides } from '../config/promptLoader';
 import { extractSymbolBlocks, findAffectedSymbols } from './codeExtractor';
 
 // ---------------------------------------------------------------------------
@@ -36,6 +37,7 @@ export const DEFAULT_CONTEXT_CONFIG: ContextGatheringConfig = {
 	maxFiles: 10,
 	includeTests: true,
 	includeTypeDefinitions: true,
+	ignoreContextPaths: [],
 };
 
 /**
@@ -64,7 +66,28 @@ export function getContextGatheringConfig(): ContextGatheringConfig {
 		maxFiles: section.maxFiles ?? DEFAULT_CONTEXT_CONFIG.maxFiles,
 		includeTests: section.includeTests ?? DEFAULT_CONTEXT_CONFIG.includeTests,
 		includeTypeDefinitions: section.includeTypeDefinitions ?? DEFAULT_CONTEXT_CONFIG.includeTypeDefinitions,
+		ignoreContextPaths: section.ignoreContextPaths ?? DEFAULT_CONTEXT_CONFIG.ignoreContextPaths,
 	};
+}
+
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns true when `relPath` matches any of the configured ignore patterns,
+ * using the same glob logic as the diff-filter system.
+ */
+function isIgnoredContextPath(relPath: string, ignoreContextPaths: string[]): boolean {
+	if (ignoreContextPaths.length === 0) {
+		return false;
+	}
+	return shouldIgnoreFile(relPath, {
+		ignorePaths: ignoreContextPaths,
+		ignorePatterns: [],
+		maxFileLines: 0,
+		ignoreFormattingOnly: false,
+	});
 }
 
 // ---------------------------------------------------------------------------
@@ -110,6 +133,14 @@ export async function gatherContext(
 	}
 
 	const workspaceRoot = workspaceFolders[0].uri;
+
+	// Merge YAML-level ignoreContextPaths on top of the VS Code setting.
+	const yamlCgOverrides = await getYamlContextGatheringOverrides(outputChannel);
+	const ignoreContextPaths = [
+		...config.ignoreContextPaths,
+		...(yamlCgOverrides?.ignoreContextPaths ?? []),
+	];
+
 	const diffFilterConfig = getDiffFilterConfig();
 	const changedPaths = extractChangedFiles(diff).filter(p => !shouldIgnoreFile(p, diffFilterConfig));
 	stats.changedFiles = changedPaths.length;
@@ -134,6 +165,9 @@ export async function gatherContext(
 	): Promise<boolean> => {
 		const relPath = toRelativePath(uri, workspaceRoot);
 		if (includedPaths.has(relPath)) {
+			return false;
+		}
+		if (isIgnoredContextPath(relPath, ignoreContextPaths)) {
 			return false;
 		}
 		if (contextFiles.length >= config.maxFiles) {
@@ -177,6 +211,9 @@ export async function gatherContext(
 	): Promise<boolean> => {
 		const relPath = toRelativePath(uri, workspaceRoot);
 		if (includedPaths.has(relPath)) {
+			return false;
+		}
+		if (isIgnoredContextPath(relPath, ignoreContextPaths)) {
 			return false;
 		}
 		if (contextFiles.length >= config.maxFiles) {
@@ -272,6 +309,9 @@ export async function gatherContext(
 	for (const { relPath, affectedSymbols, extractedCode } of phase0Results) {
 		if (contextFiles.length >= config.maxFiles || totalChars >= TOTAL_CHAR_BUDGET) {
 			break;
+		}
+		if (isIgnoredContextPath(relPath, ignoreContextPaths)) {
+			continue;
 		}
 
 		outputChannel?.appendLine(`  ${relPath}: affected symbols — ${affectedSymbols.join(', ')}`);

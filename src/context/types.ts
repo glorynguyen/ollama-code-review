@@ -20,6 +20,12 @@ export interface ContextGatheringConfig {
 	includeTests: boolean;
 	/** Include `.d.ts` and type-definition files for imported symbols. */
 	includeTypeDefinitions: boolean;
+	/**
+	 * Glob patterns for files that must never be added to the review context
+	 * (imports, tests, type-defs, and self-context). Evaluated against workspace-
+	 * relative paths, e.g. `["src/generated/**", "**\/*.pb.ts"]`.
+	 */
+	ignoreContextPaths: string[];
 }
 
 // ---------------------------------------------------------------------------

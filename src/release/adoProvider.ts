@@ -122,7 +122,7 @@ export class ADOProvider {
             });
 
             req.on('error', (e) => reject(new Error(`ADO Request failed: ${e.message}`)));
-            if (body) req.write(JSON.stringify(body));
+            if (body) {req.write(JSON.stringify(body));}
             req.end();
         });
     }
@@ -162,7 +162,7 @@ export class ADOProvider {
             });
             const workItems = searchResult.workItems || [];
 
-            if (workItems.length === 0) return [];
+            if (workItems.length === 0) {return [];}
 
             const ids = workItems.slice(0, 10).map(i => i.id).join(',');
             const details = await this.adoRequest<ADOValueResponse<ADOWorkItemResponse>>(`/_apis/wit/workitems?ids=${ids}&fields=System.Id,System.Title,System.State&api-version=6.0`, 'GET');
@@ -183,7 +183,7 @@ export class ADOProvider {
             const apiPath = `/${encodeURIComponent(this.project)}/_apis/git/repositories/${encodeURIComponent(this.repoId)}/pullrequests?searchCriteria.status=all&searchCriteria.targetRefName=refs/heads/${encodeURIComponent(targetBranch)}&api-version=7.0`;
             const response = await this.adoRequest<ADOValueResponse<ADOPullRequestResponse>>(apiPath);
             
-            if (!response.value) return [];
+            if (!response.value) {return [];}
             
             return response.value.map((pr: ADOPullRequestResponse) => ({
                 id: pr.pullRequestId,
@@ -206,7 +206,7 @@ export class ADOProvider {
 
     public async getTicketDetailsBulk(ids: string[]): Promise<Ticket[]> {
         const validIds = ids.filter(id => /^\d+$/.test(id));
-        if (validIds.length === 0) return [];
+        if (validIds.length === 0) {return [];}
         try {
             const idString = validIds.join(',');
             const details = await this.adoRequest<ADOValueResponse<ADOWorkItemResponse>>(`/_apis/wit/workitems?ids=${idString}&fields=System.Id,System.Title,System.State,System.WorkItemType,System.Description&api-version=6.0`, 'GET');

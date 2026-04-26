@@ -83,7 +83,7 @@ export class ReleaseWebviewPanel {
                         await this._extensionContext.workspaceState.update('commitAvailability', message.data);
                         return;
                     case 'getCommitBody':
-                        if (typeof message.hash !== 'string') return;
+                        if (typeof message.hash !== 'string') {return;}
                         try {
                             const body = await this._releaseService.getCommitBody(message.hash);
                             this._panel.webview.postMessage({ command: 'commitBody', data: body, hash: message.hash });
@@ -92,7 +92,7 @@ export class ReleaseWebviewPanel {
                         }
                         return;
                     case 'getPRDiff':
-                        if (typeof message.source !== 'string' || typeof message.target !== 'string') return;
+                        if (typeof message.source !== 'string' || typeof message.target !== 'string') {return;}
                         try {
                             const diff = await this._releaseService.getPRDiff(message.source, message.target);
                             this._panel.webview.postMessage({ command: 'prDiff', data: diff, source: message.source, target: message.target });
@@ -160,7 +160,7 @@ export class ReleaseWebviewPanel {
                         }
                         return;
                     case 'getPullRequests':
-                        if (typeof message.targetBranch !== 'string') return;
+                        if (typeof message.targetBranch !== 'string') {return;}
                         if (this._adoProvider) {
                             try {
                                 const prs = await this._adoProvider.getPullRequests(message.targetBranch);
@@ -402,11 +402,11 @@ export class ReleaseWebviewPanel {
                             console.log(`[ReleaseOrchestrator] Skipping commit ${c.hash.substring(0,7)}: No code changes detected ("${c.message}")`);
                         }
                     } else {
-                        if (!isUniqueHash) console.log(`[ReleaseOrchestrator] Skipping commit ${c.hash.substring(0,7)}: Already in target (by content) ("${c.message}")`);
-                        if (!isNewMessage) console.log(`[ReleaseOrchestrator] Skipping commit ${c.hash.substring(0,7)}: Already in target (by message) ("${c.message}")`);
+                        if (!isUniqueHash) {console.log(`[ReleaseOrchestrator] Skipping commit ${c.hash.substring(0,7)}: Already in target (by content) ("${c.message}")`);}
+                        if (!isNewMessage) {console.log(`[ReleaseOrchestrator] Skipping commit ${c.hash.substring(0,7)}: Already in target (by message) ("${c.message}")`);}
                     }
                     
-                    if (candidates.length >= 50) break;
+                    if (candidates.length >= 50) {break;}
                 }
                 
                 console.log(`[ReleaseOrchestrator] Final Candidates Selected: ${candidates.length}`);

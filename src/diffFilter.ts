@@ -47,9 +47,15 @@ export function getDiffFilterConfig(): DiffFilterConfig {
 	const config = vscode.workspace.getConfiguration('ollama-code-review');
 	const filterConfig = config.get<Partial<DiffFilterConfig>>('diffFilter', {});
 
+	// User-supplied paths are merged WITH defaults so users only need to add
+	// their extra patterns without having to repeat the built-in exclusions.
 	return {
-		ignorePaths: filterConfig.ignorePaths ?? DEFAULT_IGNORE_PATHS,
-		ignorePatterns: filterConfig.ignorePatterns ?? DEFAULT_IGNORE_PATTERNS,
+		ignorePaths: filterConfig.ignorePaths
+			? [...DEFAULT_IGNORE_PATHS, ...filterConfig.ignorePaths]
+			: DEFAULT_IGNORE_PATHS,
+		ignorePatterns: filterConfig.ignorePatterns
+			? [...DEFAULT_IGNORE_PATTERNS, ...filterConfig.ignorePatterns]
+			: DEFAULT_IGNORE_PATTERNS,
 		maxFileLines: filterConfig.maxFileLines ?? 500,
 		ignoreFormattingOnly: filterConfig.ignoreFormattingOnly ?? false,
 	};

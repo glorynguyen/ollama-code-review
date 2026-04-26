@@ -58,6 +58,43 @@ Analyze the downstream impact of your changes before you commit.
 - **Downstream Impact Graph:** Visualizes which files and modules depend on the modified code.
 - **API Guard:** Status bar alerts and notifications when high-impact API changes are detected.
 
+## Smart Context
+
+When the AI reviews a file, it doesn't just see the raw diff — it also sees the **surrounding business logic** through a call-graph-aware context builder.
+
+### How It Works
+
+1. **Changed lines are detected** from the git diff (or the saved file for Auto-Review on Save).
+2. **Enclosing functions** are located using VS Code's language server (`vscode.executeDocumentSymbolProvider`). The innermost function wrapping each changed line is selected.
+3. **Call graph is BFS-expanded** up to a configurable depth. For each function, identifiers immediately followed by `(` are extracted. Their definitions are resolved via `vscode.executeDefinitionProvider`.
+4. **Relevant imports** from the changed file are collected (up to 20 lines).
+5. The result is a structured **"Smart Context"** block — function bodies with file paths and depths — prepended to the AI prompt so the model understands the business logic without receiving entire files.
+
+Definitions inside `node_modules`, `.d.ts` files, `dist/`, `build/`, and `out/` are skipped automatically. In monorepo workspaces, a resolver can override this to follow cross-package definitions.
+
+### Auto-Review Context (Fixed Limits)
+
+When used during **Auto-Review on Save**, the smart context applies conservative hardcoded limits to keep latency low:
+
+| Limit | Value |
+|-------|-------|
+| Max BFS depth | 2 |
+| Max functions collected | 8 |
+| Max characters per function | 1,500 |
+| Total character budget | 6,000 |
+
+### Copy Function with Imports (Configurable)
+
+When used by the **Copy Function with Imports** command, limits are configurable via settings:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `copyFunction.maxDepth` | `3` | How many levels deep to follow calls |
+| `copyFunction.maxFunctions` | `15` | Max total functions to collect |
+| `copyFunction.maxCharsPerFunction` | `8000` | Max characters per function body |
+| `copyFunction.characterBudget` | `64000` | Total character budget for all functions |
+| `copyWithImports.noLimits` | `false` | Remove all limits (use with care on large files) |
+
 ## RAG-Enhanced Reviews
 
 Boost review quality by automatically retrieving similar code from your indexed codebase and injecting it as additional context.

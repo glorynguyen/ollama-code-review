@@ -2016,14 +2016,19 @@ export async function activate(context: vscode.ExtensionContext) {
 					progress.report({ message: 'Reading file and resolving imports...' });
 
 					// Read the main file
-					const mainContent = await readFileContent(fileUri, IMPORT_PER_FILE_LIMIT);
+					const noLimits = vscode.workspace.getConfiguration('ollama-code-review').get<boolean>('copyWithImports.noLimits', false);
+					const perFileLimit = noLimits ? 0 : IMPORT_PER_FILE_LIMIT;
+					const totalBudget = noLimits ? Number.MAX_SAFE_INTEGER : IMPORT_TOTAL_BUDGET;
+					const maxDepth = noLimits ? 10 : IMPORT_MAX_DEPTH;
+
+					const mainContent = await readFileContent(fileUri, perFileLimit);
 					if (!mainContent) {
 						vscode.window.showWarningMessage('Could not read the file.');
 						return;
 					}
 
 					const relativePath = vscode.workspace.asRelativePath(fileUri);
-					const budget = { remaining: IMPORT_TOTAL_BUDGET - mainContent.length };
+					const budget = { remaining: totalBudget - mainContent.length };
 					const visited = new Set<string>();
 
 					// Use the monorepo resolver from AutoReviewManager if available,
@@ -2033,7 +2038,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
 					// Recursively resolve imports (monorepo-aware)
 					const importedFiles = await resolveImportsRecursively(
-						fileUri, workspaceRoot, visited, 0, budget, resolver,
+						fileUri, workspaceRoot, visited, 0, budget, resolver, perFileLimit, maxDepth,
 					);
 
 					if (token.isCancellationRequested) { return; }
@@ -2095,14 +2100,19 @@ export async function activate(context: vscode.ExtensionContext) {
 					cancellable: true,
 				}, async (progress, token) => {
 					// 1. Read main file
-					const mainContent = await readFileContent(fileUri, IMPORT_PER_FILE_LIMIT);
+					const noLimits = vscode.workspace.getConfiguration('ollama-code-review').get<boolean>('copyWithImports.noLimits', false);
+					const perFileLimit = noLimits ? 0 : IMPORT_PER_FILE_LIMIT;
+					const totalBudget = noLimits ? Number.MAX_SAFE_INTEGER : IMPORT_TOTAL_BUDGET;
+					const maxDepth = noLimits ? 10 : IMPORT_MAX_DEPTH;
+
+					const mainContent = await readFileContent(fileUri, perFileLimit);
 					if (!mainContent) {
 						vscode.window.showWarningMessage('Could not read the file.');
 						return;
 					}
 
 					const relativePath = vscode.workspace.asRelativePath(fileUri);
-					const budget = { remaining: IMPORT_TOTAL_BUDGET - mainContent.length };
+					const budget = { remaining: totalBudget - mainContent.length };
 					const visited = new Set<string>();
 
 					// Use the monorepo resolver from AutoReviewManager if available,
@@ -2112,7 +2122,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
 					// 2. Resolve imports recursively (monorepo-aware)
 					const importedFiles = await resolveImportsRecursively(
-						fileUri, workspaceRoot, visited, 0, budget, resolver,
+						fileUri, workspaceRoot, visited, 0, budget, resolver, perFileLimit, maxDepth,
 					);
 
 					if (token.isCancellationRequested) { return; }
@@ -2488,11 +2498,16 @@ ${diff.slice(0, 12000)}
 				}
 
 				const guardConfig = getPreCommitGuardConfig();
-				const scannerEnabled = vscode.workspace.getConfiguration('ollama-code-review').get<boolean>('secretScanner.enabled', true);
+				const scannerCfgRc = vscode.workspace.getConfiguration('ollama-code-review').get<{ enabled?: boolean; excludePatterns?: string[] }>('secretScanner', {});
+				const scannerEnabledRc = scannerCfgRc.enabled ?? true;
+				const scannerExcludePatternsRc = scannerCfgRc.excludePatterns ?? [];
 
 				// F-042: Run Secret Scanner before AI review
-				if (scannerEnabled) {
-					const secrets = scanDiffForSecrets(diffResult);
+				if (scannerEnabledRc) {
+					const diffForScan = scannerExcludePatternsRc.length > 0
+						? filterDiff(diffResult, { ignorePaths: scannerExcludePatternsRc, ignorePatterns: [], maxFileLines: 0, ignoreFormattingOnly: false }).filteredDiff
+						: diffResult;
+					const secrets = scanDiffForSecrets(diffForScan);
 					if (secrets.length > 0) {
 						outputChannel.appendLine(`[Pre-Commit Guard] Blocked by Secret Scanner — ${secrets.length} secret(s) found.`);
 						
@@ -3261,12 +3276,43 @@ async function runReview(
 	}
 
 	// F-042: Run Secret Scanner on the filtered diff
-	const scannerEnabled = vscode.workspace.getConfiguration('ollama-code-review').get<boolean>('secretScanner.enabled', true);
+	const scannerCfg = vscode.workspace.getConfiguration('ollama-code-review').get<{ enabled?: boolean; excludePatterns?: string[] }>('secretScanner', {});
+	const scannerEnabled = scannerCfg.enabled ?? true;
+	const scannerExcludePatterns = scannerCfg.excludePatterns ?? [];
 	let secretFindings: SecretFinding[] = [];
 	if (scannerEnabled) {
-		secretFindings = scanDiffForSecrets(filteredDiff);
+		const diffForSecretScan = scannerExcludePatterns.length > 0
+			? filterDiff(filteredDiff, { ignorePaths: scannerExcludePatterns, ignorePatterns: [], maxFileLines: 0, ignoreFormattingOnly: false }).filteredDiff
+			: filteredDiff;
+		secretFindings = scanDiffForSecrets(diffForSecretScan);
 		if (secretFindings.length > 0) {
 			outputChannel.appendLine(`[Secret Scanner] Found ${secretFindings.length} hardcoded secret(s) in the staged diff.`);
+
+			// Block: never send a diff containing secrets to the LLM.
+			const secretsMarkdown = renderSecretScannerMarkdown(secretFindings);
+			const action = await vscode.window.showWarningMessage(
+				`Secret Scanner: ${secretFindings.length} hardcoded secret(s) detected. The diff will NOT be sent to the AI model. Remove the secrets and try again.`,
+				{ modal: true },
+				'View Findings',
+				'Dismiss',
+			);
+
+			if (action === 'View Findings') {
+				const secretsStructured = toStructuredFindings(secretFindings);
+				const mockStructuredReview: ValidatedStructuredReviewResult = {
+					schemaVersion: STRUCTURED_REVIEW_SCHEMA_VERSION,
+					summary: 'Secret Scanner Results',
+					findings: secretsStructured,
+				};
+				const metrics = getLastPerformanceMetrics();
+				OllamaReviewPanel.createOrShow(secretsMarkdown, filteredDiff, context, metrics, mockStructuredReview, 'Secret Scan');
+				if (findingsTreeProvider) {
+					findingsTreeProvider.setFindings(secretsMarkdown, filteredDiff);
+					void vscode.commands.executeCommand('setContext', 'ollama-code-review.hasFindings', true);
+				}
+			}
+
+			return; // Do NOT proceed to LLM call
 		}
 	}
 
@@ -3845,13 +3891,15 @@ async function resolveImportsRecursively(
 	depth: number,
 	budget: { remaining: number },
 	resolver?: MonorepoResolver,
+	perFileLimit: number = IMPORT_PER_FILE_LIMIT,
+	maxDepth: number = IMPORT_MAX_DEPTH,
 ): Promise<Array<{ relativePath: string; content: string }>> {
-	if (visited.has(fileUri.fsPath) || depth > IMPORT_MAX_DEPTH || budget.remaining <= 0) {
+	if (visited.has(fileUri.fsPath) || depth > maxDepth || budget.remaining <= 0) {
 		return [];
 	}
 	visited.add(fileUri.fsPath);
 
-	const content = await readFileContent(fileUri, IMPORT_PER_FILE_LIMIT);
+	const content = await readFileContent(fileUri, perFileLimit);
 	if (!content) {
 		return [];
 	}
@@ -3881,7 +3929,7 @@ async function resolveImportsRecursively(
 			break;
 		}
 
-		const importedContent = await readFileContent(resolved, IMPORT_PER_FILE_LIMIT);
+		const importedContent = await readFileContent(resolved, perFileLimit);
 		if (!importedContent) {
 			continue;
 		}
@@ -3892,7 +3940,7 @@ async function resolveImportsRecursively(
 		results.push({ relativePath: relPath, content: truncated });
 
 		// Recurse into this file's imports
-		const nested = await resolveImportsRecursively(resolved, workspaceRoot, visited, depth + 1, budget, resolver);
+		const nested = await resolveImportsRecursively(resolved, workspaceRoot, visited, depth + 1, budget, resolver, perFileLimit, maxDepth);
 		results.push(...nested);
 	}
 
