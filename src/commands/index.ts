@@ -10,6 +10,7 @@ import {
 	getEffectiveReviewPrompt,
 	getEffectiveCommitPrompt,
 	getEffectiveFrameworks,
+	getEffectiveTestFramework,
 } from '../config/promptLoader';
 import {
 	getAllProfiles,
@@ -24,6 +25,8 @@ import {
 	GenerateTestsPanel,
 	getTestFileName,
 	detectTestFramework,
+	getFrameworkOptions,
+	FrameworkOption,
 	FixIssueActionProvider,
 	FixPreviewPanel,
 	FixTracker,
@@ -515,16 +518,84 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 
 		try {
+			// 1. Resolve framework preference (defaults -> settings -> YAML)
+			let framework = await getEffectiveTestFramework(outputChannel);
+			const detected = await detectTestFramework(editor.document);
+
+			// 2. Handle "ask" or explicit prompt logic
+			if (framework === 'ask' || framework === 'auto') {
+				// If auto, we still might want to show the picker if there are multiple strong signals
+				// or if the user wants to override the detection.
+				// For now, if auto, we use detected. If ask, we always show.
+				if (framework === 'ask') {
+					const options = getFrameworkOptions(editor.document.languageId);
+					const recent = context.workspaceState.get<string[]>('recentTestFrameworks', []);
+
+					const items: (vscode.QuickPickItem & { id?: string })[] = [];
+
+					// Detected first
+					items.push({
+						label: `Detected: ${detected}`,
+						description: 'Based on project files',
+						id: detected,
+						alwaysShow: true
+					});
+
+					// Recently used
+					if (recent.length > 0) {
+						items.push({ label: 'Recently Used', kind: vscode.QuickPickItemKind.Separator });
+						recent.filter(r => r !== detected).forEach(r => {
+							items.push({ label: r, id: r });
+						});
+					}
+
+					// Common for language
+					items.push({ label: `Common for ${editor.document.languageId}`, kind: vscode.QuickPickItemKind.Separator });
+					options.filter((opt: FrameworkOption) => opt.id !== detected && !recent.includes(opt.id)).forEach((opt: FrameworkOption) => {
+						items.push(opt);
+					});
+
+					// Manual entry
+					items.push({ label: '', kind: vscode.QuickPickItemKind.Separator });
+					items.push({ label: '$(edit) Other...', description: 'Enter a custom framework name', id: 'other' });
+
+					const picked = await vscode.window.showQuickPick(items, {
+						title: 'Select Test Framework',
+						placeHolder: `Detected: ${detected}`
+					});
+
+					if (!picked) { return; }
+
+					if (picked.id === 'other') {
+						const custom = await vscode.window.showInputBox({
+							prompt: 'Enter the name of the testing framework/library',
+							placeHolder: 'e.g. cypress, playwright, ava'
+						});
+						if (!custom) { return; }
+						framework = custom.toLowerCase();
+					} else if (picked.id) {
+						framework = picked.id;
+					} else {
+						return;
+					}
+
+					// Update recent
+					const updatedRecent = [framework, ...recent.filter(r => r !== framework)].slice(0, 5);
+					await context.workspaceState.update('recentTestFrameworks', updatedRecent);
+				} else {
+					framework = detected;
+				}
+			}
+
 			await vscode.window.withProgress({
 				location: vscode.ProgressLocation.Notification,
-				title: 'Ollama: Generating tests...',
+				title: `Ollama: Generating ${framework} tests...`,
 				cancellable: true
 			}, async (progress, token) => {
-				const testFramework = await detectTestFramework();
-				const result = await generateTests(selectedText, editor.document.languageId, testFramework);
+				const result = await generateTests(selectedText, editor.document.languageId, framework);
 				if (token.isCancellationRequested) { return; }
 
-				const testFileName = getTestFileName(path.basename(editor.document.fileName));
+				const testFileName = getTestFileName(path.basename(editor.document.fileName), editor.document.languageId, framework);
 				GenerateTestsPanel.createOrShow(
 					result.code,
 					testFileName,

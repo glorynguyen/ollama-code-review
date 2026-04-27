@@ -10,6 +10,7 @@ const sidebars: SidebarsConfig = {
       items: [
         'features/git-workflow',
         'features/editor-actions',
+        'features/batch-review',
         'features/ai-chat',
         'features/advanced-features',
         'features/release-orchestrator',

@@ -790,6 +790,11 @@
           ],
           "description": "Select the frameworks or libraries to tailor the code review. Use Ctrl+Click (Cmd+Click on Mac) for multiple selections."
         },
+        "ollama-code-review.testFramework": {
+          "type": "string",
+          "default": "auto",
+          "markdownDescription": "The testing framework to use for 'Generate Tests'. Options: `auto` (detect from project), `ask` (always prompt), or a specific framework name (e.g., `jest`, `vitest`, `pytest`, `mocha`)."
+        },
         "ollama-code-review.diffFilter": {
           "type": "object",
           "description": "Configure diff filtering to exclude noise from reviews",

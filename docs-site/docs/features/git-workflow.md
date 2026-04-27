@@ -41,6 +41,21 @@ Run the same code review across multiple AI models in parallel and compare resul
 - **Command:** `Ollama Code Review: Compare Models Review`.
 - **Workflow:** Select 2-4 models (local or cloud). The extension displays a comparison table with scores, duration, and findings for each model.
 
+## Findings Explorer & Severity Filter
+
+Manage large volumes of AI feedback efficiently with the Findings Explorer sidebar.
+
+- **Tree View:** Findings are grouped by file and sorted by severity (Critical first).
+- **Severity Filter:** Click the **Filter** button in the sidebar to show/hide findings by level (Critical, High, Medium, Low, Info).
+- **Markdown Export:** Export the currently filtered findings as a Markdown checklist, perfect for sharing in PR descriptions or Jira tickets.
+
+## View Finding Diff
+
+Quickly see the context of any AI finding using VS Code's native diff editor.
+
+- **How to trigger:** Click the **diff icon** (`$(diff)`) on a finding in the Findings Explorer.
+- **Workflow:** Opens a side-by-side diff (HEAD vs. working copy) and automatically scrolls to the line where the AI detected an issue.
+
 ## Pre-Commit Guard
 
 Automatically review staged changes with AI before every commit to catch issues before they enter your history.

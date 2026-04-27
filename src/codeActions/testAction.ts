@@ -313,55 +313,169 @@ export class GenerateTestsPanel {
 }
 
 /**
- * Determine appropriate test file name based on source file
+ * Determine appropriate test file name based on source file, language, and framework
  */
-export function getTestFileName(sourceFileName: string): string {
+export function getTestFileName(sourceFileName: string, languageId: string, framework: string): string {
 	const ext = path.extname(sourceFileName);
 	const baseName = path.basename(sourceFileName, ext);
 
 	// Check if it's already a test file
-	if (baseName.endsWith('.test') || baseName.endsWith('.spec')) {
+	if (baseName.endsWith('.test') || baseName.endsWith('.spec') || baseName.endsWith('_test')) {
 		return sourceFileName;
 	}
 
-	return `${baseName}.test${ext}`;
+	// Framework-specific naming conventions
+	switch (languageId) {
+		case 'go':
+			return `${baseName}_test.go`;
+		case 'python':
+			// Python convention is test_*.py for most frameworks
+			return `test_${baseName}.py`;
+		case 'javascript':
+		case 'typescript':
+		case 'javascriptreact':
+		case 'typescriptreact':
+			if (framework.toLowerCase() === 'mocha') {
+				return `${baseName}.spec${ext}`;
+			}
+			return `${baseName}.test${ext}`;
+		case 'rust':
+			return sourceFileName; // Rust usually puts tests in the same file or a tests/ folder
+		default:
+			return `${baseName}.test${ext}`;
+	}
 }
 
 /**
- * Determine test framework based on project configuration
+ * Determine test framework based on project configuration and deep signals
  */
-export async function detectTestFramework(): Promise<string> {
+export async function detectTestFramework(document: vscode.TextDocument): Promise<string> {
 	const workspaceFolders = vscode.workspace.workspaceFolders;
 	if (!workspaceFolders) {
-		return 'jest'; // Default to Jest
+		return getDefaultFramework(document.languageId);
 	}
+
+	const rootUri = workspaceFolders[0].uri;
 
 	try {
-		const packageJsonUri = vscode.Uri.joinPath(workspaceFolders[0].uri, 'package.json');
-		const packageJsonContent = await vscode.workspace.fs.readFile(packageJsonUri);
-		const packageJson = JSON.parse(packageJsonContent.toString());
+		const languageId = document.languageId;
 
-		const deps = {
-			...packageJson.dependencies,
-			...packageJson.devDependencies
-		};
+		// 1. JS/TS Detection
+		if (['javascript', 'typescript', 'javascriptreact', 'typescriptreact'].includes(languageId)) {
+			const packageJsonUri = vscode.Uri.joinPath(rootUri, 'package.json');
+			try {
+				const packageJsonContent = await vscode.workspace.fs.readFile(packageJsonUri);
+				const packageJson = JSON.parse(packageJsonContent.toString());
+				const deps = { ...packageJson.dependencies, ...packageJson.devDependencies };
+				const scripts = packageJson.scripts || {};
+				const scriptsStr = JSON.stringify(scripts);
 
-		if (deps['vitest']) {
-			return 'vitest';
-		}
-		if (deps['mocha']) {
-			return 'mocha';
-		}
-		if (deps['@testing-library/react']) {
-			return 'react-testing-library';
-		}
-		if (deps['jest']) {
+				if (deps['vitest'] || scriptsStr.includes('vitest')) { return 'vitest'; }
+				if (deps['mocha'] || scriptsStr.includes('mocha')) { return 'mocha'; }
+				if (deps['ava'] || scriptsStr.includes('ava')) { return 'ava'; }
+				if (deps['jest'] || scriptsStr.includes('jest')) { return 'jest'; }
+			} catch (e) {
+				console.debug('Could not parse package.json:', e instanceof Error ? e.message : String(e));
+			}
+
+			// Check for config files
+			const configs = ['jest.config.js', 'jest.config.ts', 'vitest.config.ts', 'vitest.config.js'];
+			for (const cfg of configs) {
+				try {
+					await vscode.workspace.fs.stat(vscode.Uri.joinPath(rootUri, cfg));
+					return cfg.startsWith('jest') ? 'jest' : 'vitest';
+				} catch (e) { /* ignore */ }
+			}
 			return 'jest';
 		}
+
+		// 2. Python Detection
+		if (languageId === 'python') {
+			// Check pyproject.toml
+			try {
+				const pyprojectUri = vscode.Uri.joinPath(rootUri, 'pyproject.toml');
+				const content = (await vscode.workspace.fs.readFile(pyprojectUri)).toString();
+				if (content.includes('[tool.pytest.ini_options]') || content.includes('pytest')) {
+					return 'pytest';
+				}
+			} catch (e) { /* ignore */ }
+
+			// Check requirements.txt or setup.cfg
+			const pyFiles = ['requirements.txt', 'setup.cfg', 'tox.ini'];
+			for (const f of pyFiles) {
+				try {
+					const content = (await vscode.workspace.fs.readFile(vscode.Uri.joinPath(rootUri, f))).toString();
+					if (content.includes('pytest')) { return 'pytest'; }
+					if (content.includes('nose2')) { return 'nose2'; }
+				} catch (e) { /* ignore */ }
+			}
+			return 'unittest';
+		}
+
+		// 3. Go Detection
+		if (languageId === 'go') {
+			try {
+				const goModUri = vscode.Uri.joinPath(rootUri, 'go.mod');
+				const content = (await vscode.workspace.fs.readFile(goModUri)).toString();
+				if (content.includes('github.com/stretchr/testify')) {
+					return 'testify';
+				}
+			} catch (e) { /* ignore */ }
+			return 'testing'; // standard library
+		}
+
 	} catch (error) {
-		// Package.json not found or invalid - fall back to default
-		console.log('Could not detect test framework from package.json:', error instanceof Error ? error.message : String(error));
+		console.log('Error detecting test framework:', error);
 	}
 
-	return 'jest';
+	return getDefaultFramework(document.languageId);
+}
+
+function getDefaultFramework(languageId: string): string {
+	switch (languageId) {
+		case 'python': return 'pytest';
+		case 'go': return 'testing';
+		case 'rust': return 'cargo test';
+		case 'java': return 'JUnit';
+		default: return 'jest';
+	}
+}
+
+export interface FrameworkOption extends vscode.QuickPickItem {
+	id: string;
+}
+
+/**
+ * Get framework options for a specific language
+ */
+export function getFrameworkOptions(languageId: string): FrameworkOption[] {
+	const common: Record<string, { label: string; description: string }[]> = {
+		'javascript': [
+			{ label: 'Jest', description: 'Recommended for most JS/TS projects' },
+			{ label: 'Vitest', description: 'Fast Vite-native testing framework' },
+			{ label: 'Mocha', description: 'Flexible test framework for Node.js' },
+			{ label: 'Ava', description: 'Futuristic test runner' }
+		],
+		'python': [
+			{ label: 'pytest', description: 'Recommended; easy to write and scale' },
+			{ label: 'unittest', description: 'Built-in Python testing library' },
+			{ label: 'nose2', description: 'The successor to nose' }
+		],
+		'go': [
+			{ label: 'testing', description: 'Go standard library testing' },
+			{ label: 'testify', description: 'Popular assertion and mocking toolkit' }
+		],
+		'rust': [
+			{ label: 'cargo test', description: 'Built-in Rust test runner' }
+		]
+	};
+
+	// Map aliases
+	const lang = ['typescript', 'javascriptreact', 'typescriptreact'].includes(languageId) ? 'javascript' : languageId;
+	const options = common[lang] || [{ label: 'Generic', description: 'Standard unit testing patterns' }];
+
+	return options.map(opt => ({
+		...opt,
+		id: opt.label.toLowerCase()
+	}));
 }

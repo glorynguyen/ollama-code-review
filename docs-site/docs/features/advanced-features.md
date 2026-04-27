@@ -105,14 +105,28 @@ When used by the **Copy Function with Imports** command, limits are configurable
 | `copyFunction.characterBudget` | `64000` | Total character budget for all functions |
 | `copyWithImports.noLimits` | `false` | Remove all limits (use with care on large files) |
 
-## RAG-Enhanced Reviews
+## Monorepo Support
 
-Boost review quality by automatically retrieving similar code from your indexed codebase and injecting it as additional context.
-- **Command:** `Ollama Code Review: Index Codebase`
+Ollama Code Review features deep awareness of monorepo architectures (Lerna, pnpm, Nx, Yarn Workspaces).
+
+- **Local Package Resolution:** When gathering context, the extension correctly identifies imports that point to other packages within the same monorepo, even when they appear in `node_modules`.
+- **Workspace-Wide Intelligence:** Review findings and agentic steps take into account the relationships between packages, providing better context for shared utilities or internal APIs.
 
 ## Team Knowledge Base
 
-Encode your team's architecture decisions and coding patterns in a `.ollama-review-knowledge.yaml` file. The AI references these entries during every review to ensure consistency.
+Encode your team's architecture decisions, coding patterns, and review rules in a `.ollama-review-knowledge.yaml` file.
+
+- **ADRs:** Document Architecture Decision Records so the AI can flag code that deviates from them.
+- **Patterns:** Define reusable code patterns (with examples) for the AI to enforce.
+- **Auto-Discovery:** Relevant knowledge entries are matched against your diff and injected into the review prompt automatically.
+- **Citations:** The AI cites specific entry IDs (e.g., `ADR-001`) when flagging violations.
+
+## RAG-Enhanced Reviews (Retrieval-Augmented Generation)
+
+Boost review quality by automatically retrieving similar code from your indexed codebase and injecting it as additional context.
+- **Semantic Search:** Uses vector embeddings to find code that is logically similar to your changes, even if keywords don't match exactly.
+- **Command:** `Ollama Code Review: Index Codebase` to build the local vector index.
+- **Privacy:** All indexing and retrieval happen locally (uses Ollama's `nomic-embed-text` by default).
 
 ## Reliability & Precision
 

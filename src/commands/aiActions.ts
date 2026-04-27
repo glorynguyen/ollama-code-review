@@ -74,8 +74,9 @@ You are an expert software engineer specializing in testing. Generate comprehens
 1. Create test cases that cover the main functionality.
 2. Include edge cases and error scenarios.
 3. Use descriptive test names that explain what is being tested.
-4. Follow ${testFramework} best practices and conventions.
-5. Include necessary imports and setup.
+4. Follow ${testFramework} best practices and conventions (e.g., use "describe/it" for Jest/Mocha, "def test_*" for pytest, "func TestX(t *testing.T)" for Go testing).
+5. Include all necessary imports, mocks, and setup logic required to make the tests runnable.
+6. Ensure the tests are idiomatic to both the language (${languageId}) and the framework (${testFramework}).
 
 **IMPORTANT:** Your response MUST follow this structure exactly:
 1. Start with the test code inside a markdown code block (e.g., \`\`\`${languageId}\n...\n\`\`\`).

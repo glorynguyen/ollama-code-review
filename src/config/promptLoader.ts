@@ -48,6 +48,8 @@ export interface OllamaReviewYamlConfig {
     };
     /** Override the list of frameworks used in review prompts. */
     frameworks?: string[];
+    /** Override the test framework used for test generation. */
+    testFramework?: 'auto' | 'ask' | string;
     /** Override diff filtering configuration. */
     diffFilter?: {
         ignorePaths?: string[];
@@ -218,6 +220,20 @@ export async function getEffectiveFrameworks(outputChannel?: vscode.OutputChanne
 }
 
 /**
+ * Returns the test framework respecting the config hierarchy:
+ * built-in default → VS Code settings → .ollama-review.yaml
+ */
+export async function getEffectiveTestFramework(outputChannel?: vscode.OutputChannel): Promise<string> {
+    const vsCodeSettings = vscode.workspace.getConfiguration('ollama-code-review');
+    const settingsFramework = vsCodeSettings.get<string>('testFramework', 'auto');
+
+    const projectConfig = await loadProjectConfig(outputChannel);
+    const yamlFramework = projectConfig?.testFramework;
+
+    return yamlFramework || settingsFramework;
+}
+
+/**
  * Returns a partial diff-filter config override from .ollama-review.yaml (if present).
  * The caller (diffFilter.ts) merges this on top of VS Code settings.
  */
@@ -264,6 +280,12 @@ function _validateConfig(config: OllamaReviewYamlConfig, outputChannel?: vscode.
     if (config.frameworks !== undefined) {
         if (!Array.isArray(config.frameworks)) {
             warn('"frameworks" must be a list of strings.');
+        }
+    }
+
+    if (config.testFramework !== undefined) {
+        if (typeof config.testFramework !== 'string') {
+            warn('"testFramework" must be a string.');
         }
     }
 

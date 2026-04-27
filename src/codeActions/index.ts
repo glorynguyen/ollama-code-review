@@ -15,8 +15,10 @@ export {
 	GenerateTestsActionProvider,
 	GenerateTestsPanel,
 	getTestFileName,
-	detectTestFramework
+	detectTestFramework,
+	getFrameworkOptions
 } from './testAction';
+export type { FrameworkOption } from './testAction';
 
 // Fix Issue Action
 export {
