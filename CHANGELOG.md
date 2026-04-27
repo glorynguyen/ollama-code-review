@@ -1,3 +1,10 @@
+# [4.7.0](https://github.com/glorynguyen/ollama-code-review/compare/v4.6.0...v4.7.0) (2026-04-27)
+
+
+### Features
+
+* **test-generation:** add multi-language framework detection and picker ([3d81d33](https://github.com/glorynguyen/ollama-code-review/commit/3d81d33dddaca0cd41d3426e36479fe162830b4b))
+
 # [4.6.0](https://github.com/glorynguyen/ollama-code-review/compare/v4.5.0...v4.6.0) (2026-04-26)
 
 
