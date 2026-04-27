@@ -11,10 +11,19 @@ Ollama Code Review supports a wide range of state-of-the-art cloud AI models.
 | **Mistral** | `mistral-large-latest`, `codestral-latest` | `mistralApiKey` |
 | **GLM** | `glm-4.7-flash` | `glmApiKey` |
 | **MiniMax** | `MiniMax-M2.5` | `minimaxApiKey` |
-| **v0** | `v0-auto`, `v0-max` | `v0ApiKey` |
-| **Hugging Face** | thousands of models | `hfApiKey` |
+| v0 | `v0-auto`, `v0-max` | `v0ApiKey` | Optimized for React and UI-heavy components. |
+| **Hugging Face** | thousands of models | `hfApiKey` | Access to the widest range of open-source models. |
 
-## Setup
+## Specialized Providers
+
+### v0 by Vercel
+The **v0** models are highly optimized for modern web development. While they excel at UI/React component generation, they are also remarkably effective at reviewing frontend code for best practices and performance bottlenecks.
+
+### Hugging Face
+Access thousands of open-source models directly through the Hugging Face Inference API. 
+- **Popular Models:** The extension provides a submenu of trending coding models (like `deepseek-coder` or `starcoder2`).
+- **History:** Your recently used HF models are automatically pinned for quick access.
+
 
 1.  **Get an API Key:** Visit the provider's website (links in the root README) and generate a key.
 2.  **Configure in VS Code:**

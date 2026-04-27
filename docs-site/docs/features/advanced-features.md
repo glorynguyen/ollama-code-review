@@ -32,6 +32,13 @@ Generate visual Mermaid.js diagrams from your code changes.
 - **Trigger:** Click the **📊 Diagram** button in the review panel.
 - **Types:** Class diagrams, flowcharts, sequence diagrams, and dependency graphs.
 
+## Model Recommendations (Auto-Select)
+
+Never worry about picking the right model again. The extension can automatically switch to the best model for each task.
+
+- **How it works:** When `ollama-code-review.autoSelectModel` is enabled, the recommendation engine scores all configured models based on the task type (review, commit message), languages in the diff, and the diff's size.
+- **Smart Logic:** It favors coding-specific models (like `qwen2.5-coder`) for reviews and lighter models for simple commit messages.
+
 ## Semantic Version Bump Advisor
 
 Instantly determine the right semantic version bump for your next release.
@@ -65,12 +72,15 @@ When the AI reviews a file, it doesn't just see the raw diff — it also sees th
 ### How It Works
 
 1. **Changed lines are detected** from the git diff (or the saved file for Auto-Review on Save).
-2. **Enclosing functions** are located using VS Code's language server (`vscode.executeDocumentSymbolProvider`). The innermost function wrapping each changed line is selected.
-3. **Call graph is BFS-expanded** up to a configurable depth. For each function, identifiers immediately followed by `(` are extracted. Their definitions are resolved via `vscode.executeDefinitionProvider`.
-4. **Relevant imports** from the changed file are collected (up to 20 lines).
-5. The result is a structured **"Smart Context"** block — function bodies with file paths and depths — prepended to the AI prompt so the model understands the business logic without receiving entire files.
+2. **Enclosing functions** are located using VS Code's language server.
+3. **Call graph is BFS-expanded** up to a configurable depth. 
+4. **Relevant imports** from the changed file are collected.
 
-Definitions inside `node_modules`, `.d.ts` files, `dist/`, `build/`, and `out/` are skipped automatically. In monorepo workspaces, a resolver can override this to follow cross-package definitions.
+### Commands Using Smart Context
+
+The same logic powers several convenient commands:
+- **Explain File with Imports:** Understand a complex file in the context of its dependencies.
+- **Copy File/Function with Imports:** Perfect for pasting self-contained snippets into external LLMs with all necessary context included.
 
 ### Auto-Review Context (Fixed Limits)
 
@@ -88,7 +98,7 @@ When used during **Auto-Review on Save**, the smart context applies conservative
 When used by the **Copy Function with Imports** command, limits are configurable via settings:
 
 | Setting | Default | Description |
-|---------|---------|-------------|
+|---------|-------------|---------|
 | `copyFunction.maxDepth` | `3` | How many levels deep to follow calls |
 | `copyFunction.maxFunctions` | `15` | Max total functions to collect |
 | `copyFunction.maxCharsPerFunction` | `8000` | Max characters per function body |
@@ -103,6 +113,19 @@ Boost review quality by automatically retrieving similar code from your indexed 
 ## Team Knowledge Base
 
 Encode your team's architecture decisions and coding patterns in a `.ollama-review-knowledge.yaml` file. The AI references these entries during every review to ensure consistency.
+
+## Reliability & Precision
+
+Ollama Code Review uses several techniques to ensure that AI-generated feedback is accurate and correctly placed.
+
+### Structured Review Schema
+The extension requests reviews in a strictly defined JSON schema. This allows it to reliably parse findings, severities, and suggested code blocks without being confused by the model's conversational filler.
+
+### Smart Anchor Validation
+One of the biggest challenges with AI reviews is "hallucinated" line numbers. Our **Anchor Validation** engine checks every AI suggestion against the actual file content:
+- **Exact Match:** Verifies the suggested "original code" exists in the target file.
+- **Fuzzy Recovery:** If a direct match fails, it uses Levenshtein distance to find the closest matching block near the suggested line.
+- **Auto-Discard:** If no reliable anchor can be found, the finding is automatically converted to a file-level comment to prevent misleading UI annotations.
 
 ## Compliance Profiles
 

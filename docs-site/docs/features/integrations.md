@@ -15,13 +15,29 @@ Automatically post review summaries to your team communication channels.
 - **Setup:** Create an incoming webhook for your platform and paste the URL into the corresponding setting (e.g., `ollama-code-review.notifications.slack.webhookUrl`).
 - **Triggering:** Use `ollama-code-review.notifications.triggerOn` to control which severity levels trigger a notification.
 
-## GitHub, GitLab & Bitbucket
+## Git Providers (PR/MR Reviews)
 
-Review Pull Requests or Merge Requests directly from VS Code.
+Review Pull Requests or Merge Requests directly from VS Code and post AI feedback as comments.
 
-- **Commands:** `Review GitHub PR`, `Review GitLab MR`, `Review Bitbucket PR`.
-- **Posting Comments:** Use the "Post Review" commands to publish the AI's feedback directly as PR/MR comments.
-- **Authentication:** Supports CLI tools (`gh`, `glab`), VS Code accounts, or manual API tokens.
+### GitHub
+- **Authentication:** Automatically uses the `gh` CLI or your VS Code GitHub account. Alternatively, set `ollama-code-review.github.token`.
+- **Comment Styles:** Choose between `summary` (one top-level comment) or `inline` (comments on specific lines) via `ollama-code-review.github.commentStyle`.
+
+### GitLab
+- **Authentication:** Uses the `glab` CLI or a Personal Access Token (`ollama-code-review.gitlab.token`) with `api` scope.
+- **Self-Hosted:** Configure `ollama-code-review.gitlab.baseUrl` for your own instance.
+
+### Bitbucket
+- **Authentication:** Uses Bitbucket App Passwords. Set your username and app password in `ollama-code-review.bitbucket.username` and `ollama-code-review.bitbucket.appPassword`.
+- **Scopes:** Requires `Pullrequests: Read` and `Pullrequests: Write`.
+
+## Azure DevOps (ADO)
+
+The extension integrates with Azure DevOps primarily through the **AI Release Orchestrator**.
+
+- **Authentication:** Set your Personal Access Token (PAT) using the command `Ollama Code Review: Set ADO Token`.
+- **Scopes:** Requires `Work Items: Read` and `Code: Read/Write` (for cherry-picking).
+- **Configuration:** Set your Organization URL and Project name in `ollama-code-review.ado.orgUrl` and `ollama-code-review.ado.project`.
 
 ## Browser Extension (Companion)
 
