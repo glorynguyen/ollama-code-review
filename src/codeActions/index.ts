@@ -22,11 +22,15 @@ export type { FrameworkOption } from './testAction';
 
 // Fix Issue Action
 export {
+	BatchFixPreviewPanel,
 	FixIssueActionProvider,
 	FixPreviewPanel,
-	FixTracker
+	FixTracker,
+	doRangesOverlap,
+	filterOverlappingBatchFixes,
+	sortBatchFixesForApply
 } from './fixAction';
-export type { AppliedFix } from './fixAction';
+export type { AppliedFix, BatchFixCandidate, SkippedBatchFix } from './fixAction';
 
 // Add Documentation Action
 export {

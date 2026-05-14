@@ -84,6 +84,23 @@ export interface AppliedFix {
 	issue: string;
 }
 
+export interface BatchFixCandidate {
+	finding: ReviewFinding;
+	fileUri: vscode.Uri;
+	filePath: string;
+	range: vscode.Range;
+	originalCode: string;
+	fixedCode: string;
+	explanation: string;
+	issue: string;
+	languageId: string;
+}
+
+export interface SkippedBatchFix {
+	finding: ReviewFinding;
+	reason: string;
+}
+
 /**
  * Track applied fixes across the session
  */
@@ -119,6 +136,47 @@ export class FixTracker {
 	public getFixCount(): number {
 		return this._fixes.length;
 	}
+}
+
+export function doRangesOverlap(a: vscode.Range, b: vscode.Range): boolean {
+	return a.start.isBefore(b.end) && b.start.isBefore(a.end);
+}
+
+export function sortBatchFixesForApply(candidates: readonly BatchFixCandidate[]): BatchFixCandidate[] {
+	return [...candidates].sort((a, b) => {
+		const fileCompare = a.fileUri.toString().localeCompare(b.fileUri.toString());
+		if (fileCompare !== 0) { return fileCompare; }
+		return b.range.start.compareTo(a.range.start);
+	});
+}
+
+export function filterOverlappingBatchFixes(candidates: readonly BatchFixCandidate[]): {
+	accepted: BatchFixCandidate[];
+	skipped: SkippedBatchFix[];
+} {
+	const accepted: BatchFixCandidate[] = [];
+	const skipped: SkippedBatchFix[] = [];
+	const byFile = new Map<string, BatchFixCandidate[]>();
+
+	for (const candidate of candidates) {
+		const key = candidate.fileUri.toString();
+		const existing = byFile.get(key) ?? [];
+		const overlap = existing.find(item => doRangesOverlap(item.range, candidate.range));
+
+		if (overlap) {
+			skipped.push({
+				finding: candidate.finding,
+				reason: `Overlaps another generated fix in ${candidate.filePath}. Apply this finding manually.`,
+			});
+			continue;
+		}
+
+		existing.push(candidate);
+		byFile.set(key, existing);
+		accepted.push(candidate);
+	}
+
+	return { accepted, skipped };
 }
 
 /**
@@ -440,6 +498,275 @@ export class FixPreviewPanel {
 
 	public dispose() {
 		FixPreviewPanel.currentPanel = undefined;
+		this._panel.dispose();
+		while (this._disposables.length) {
+			const disposable = this._disposables.pop();
+			if (disposable) {
+				disposable.dispose();
+			}
+		}
+	}
+}
+
+export class BatchFixPreviewPanel {
+	public static currentPanel: BatchFixPreviewPanel | undefined;
+	private readonly _panel: vscode.WebviewPanel;
+	private _disposables: vscode.Disposable[] = [];
+
+	private constructor(
+		panel: vscode.WebviewPanel,
+		private readonly candidates: BatchFixCandidate[],
+		private readonly skipped: SkippedBatchFix[],
+	) {
+		this._panel = panel;
+		this._panel.webview.html = this._getHtmlForWebview();
+
+		this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
+		this._panel.webview.onDidReceiveMessage(
+			async message => {
+				switch (message.command) {
+					case 'applyAll':
+						await this._applyAll();
+						break;
+					case 'dismiss':
+						this.dispose();
+						break;
+				}
+			},
+			null,
+			this._disposables
+		);
+	}
+
+	public static createOrShow(candidates: BatchFixCandidate[], skipped: SkippedBatchFix[]): void {
+		const column = vscode.ViewColumn.Beside;
+
+		if (BatchFixPreviewPanel.currentPanel) {
+			BatchFixPreviewPanel.currentPanel._panel.reveal(column);
+			BatchFixPreviewPanel.currentPanel.dispose();
+		}
+
+		const panel = vscode.window.createWebviewPanel(
+			'ollamaBatchFix',
+			'Batch Fix Preview',
+			column,
+			{ enableScripts: true }
+		);
+
+		BatchFixPreviewPanel.currentPanel = new BatchFixPreviewPanel(panel, candidates, skipped);
+	}
+
+	private async _applyAll(): Promise<void> {
+		if (this.candidates.length === 0) {
+			vscode.window.showInformationMessage('No generated fixes to apply.');
+			this.dispose();
+			return;
+		}
+
+		try {
+			const workspaceEdit = new vscode.WorkspaceEdit();
+			const sorted = sortBatchFixesForApply(this.candidates);
+
+			for (const candidate of sorted) {
+				workspaceEdit.replace(candidate.fileUri, candidate.range, candidate.fixedCode);
+			}
+
+			const applied = await vscode.workspace.applyEdit(workspaceEdit);
+			if (!applied) {
+				vscode.window.showErrorMessage('Failed to apply batch fixes.');
+				return;
+			}
+
+			const tracker = FixTracker.getInstance();
+			for (const candidate of this.candidates) {
+				tracker.recordFix({
+					timestamp: new Date(),
+					fileName: path.basename(candidate.filePath),
+					lineNumber: candidate.range.start.line + 1,
+					originalCode: candidate.originalCode,
+					fixedCode: candidate.fixedCode,
+					issue: candidate.issue,
+				});
+				await vscode.commands.executeCommand('ollama-code-review.ignoreFinding', candidate.finding);
+			}
+
+			vscode.window.showInformationMessage(`Applied ${this.candidates.length} batch fix${this.candidates.length === 1 ? '' : 'es'}.`);
+			this.dispose();
+		} catch (error) {
+			vscode.window.showErrorMessage(`Failed to apply batch fixes: ${error instanceof Error ? error.message : String(error)}`);
+		}
+	}
+
+	private _getHtmlForWebview(): string {
+		const files = new Map<string, BatchFixCandidate[]>();
+		for (const candidate of this.candidates) {
+			const existing = files.get(candidate.filePath) ?? [];
+			existing.push(candidate);
+			files.set(candidate.filePath, existing);
+		}
+
+		const fixSections = Array.from(files.entries()).map(([filePath, candidates]) => `
+			<section class="file-section">
+				<h3>${escapeHtml(filePath)}</h3>
+				${candidates.map(candidate => this._renderCandidate(candidate)).join('\n')}
+			</section>
+		`).join('\n');
+
+		const skippedSection = this.skipped.length > 0
+			? `<section class="skipped">
+				<h3>Skipped (${this.skipped.length})</h3>
+				<ul>
+					${this.skipped.map(item => `<li><strong>${escapeHtml(item.finding.severity.toUpperCase())}</strong>: ${escapeHtml(item.finding.message)}<br><span>${escapeHtml(item.reason)}</span></li>`).join('\n')}
+				</ul>
+			</section>`
+			: '';
+
+		return `
+<!DOCTYPE html>
+<html>
+<head>
+	<style>
+		body {
+			font-family: var(--vscode-font-family);
+			padding: 20px;
+			color: var(--vscode-foreground);
+			background: var(--vscode-editor-background);
+		}
+		.header {
+			display: flex;
+			justify-content: space-between;
+			align-items: flex-start;
+			gap: 16px;
+			margin-bottom: 16px;
+		}
+		h2, h3, h4 { margin-top: 0; }
+		.summary {
+			color: var(--vscode-descriptionForeground);
+			margin: 4px 0 0;
+		}
+		.actions {
+			display: flex;
+			gap: 8px;
+			flex-wrap: wrap;
+		}
+		button {
+			background: var(--vscode-button-background);
+			color: var(--vscode-button-foreground);
+			border: none;
+			padding: 8px 14px;
+			border-radius: 4px;
+			cursor: pointer;
+			font-size: 13px;
+		}
+		button:hover { background: var(--vscode-button-hoverBackground); }
+		button.secondary {
+			background: var(--vscode-button-secondaryBackground);
+			color: var(--vscode-button-secondaryForeground);
+		}
+		button.secondary:hover { background: var(--vscode-button-secondaryHoverBackground); }
+		.file-section, .skipped {
+			border-top: 1px solid var(--vscode-widget-border);
+			padding-top: 16px;
+			margin-top: 20px;
+		}
+		.fix-card {
+			border: 1px solid var(--vscode-widget-border);
+			border-radius: 6px;
+			margin: 12px 0;
+			overflow: hidden;
+		}
+		.fix-meta {
+			background: var(--vscode-sideBar-background);
+			padding: 10px 12px;
+			border-bottom: 1px solid var(--vscode-widget-border);
+		}
+		.fix-meta strong { text-transform: uppercase; }
+		.diff-container {
+			display: grid;
+			grid-template-columns: 1fr 1fr;
+			gap: 12px;
+			padding: 12px;
+		}
+		.diff-title {
+			font-size: 12px;
+			font-weight: 600;
+			text-transform: uppercase;
+			margin-bottom: 6px;
+			color: var(--vscode-descriptionForeground);
+		}
+		pre {
+			margin: 0;
+			padding: 10px;
+			background: var(--vscode-textCodeBlock-background);
+			border-radius: 4px;
+			overflow-x: auto;
+			font-size: 12px;
+			line-height: 1.4;
+		}
+		.explanation {
+			padding: 0 12px 12px;
+			color: var(--vscode-descriptionForeground);
+		}
+		.skipped li { margin-bottom: 10px; }
+		.skipped span { color: var(--vscode-descriptionForeground); }
+		@media (max-width: 900px) {
+			.header { display: block; }
+			.actions { margin-top: 12px; }
+			.diff-container { grid-template-columns: 1fr; }
+		}
+	</style>
+</head>
+<body>
+	<div class="header">
+		<div>
+			<h2>Batch Fix Preview</h2>
+			<p class="summary">${this.candidates.length} generated fix${this.candidates.length === 1 ? '' : 'es'} across ${files.size} file${files.size === 1 ? '' : 's'}${this.skipped.length ? `, ${this.skipped.length} skipped` : ''}.</p>
+		</div>
+		<div class="actions">
+			<button ${this.candidates.length === 0 ? 'disabled' : ''} onclick="applyAll()">Apply All</button>
+			<button class="secondary" onclick="dismiss()">Cancel</button>
+		</div>
+	</div>
+	${fixSections || '<p>No fixes were generated.</p>'}
+	${skippedSection}
+	<script>
+		const vscode = acquireVsCodeApi();
+		function applyAll() {
+			vscode.postMessage({ command: 'applyAll' });
+		}
+		function dismiss() {
+			vscode.postMessage({ command: 'dismiss' });
+		}
+	</script>
+</body>
+</html>`;
+	}
+
+	private _renderCandidate(candidate: BatchFixCandidate): string {
+		const line = candidate.range.start.line + 1;
+		return `
+			<div class="fix-card">
+				<div class="fix-meta">
+					<strong>${escapeHtml(candidate.finding.severity)}</strong>
+					<span>Line ${line}</span>
+					<div>${escapeHtml(candidate.finding.message)}</div>
+				</div>
+				<div class="diff-container">
+					<div>
+						<div class="diff-title">Original</div>
+						<pre><code>${escapeHtml(candidate.originalCode)}</code></pre>
+					</div>
+					<div>
+						<div class="diff-title">Fixed</div>
+						<pre><code>${escapeHtml(candidate.fixedCode)}</code></pre>
+					</div>
+				</div>
+				${candidate.explanation ? `<div class="explanation">${escapeHtml(candidate.explanation)}</div>` : ''}
+			</div>`;
+	}
+
+	public dispose(): void {
+		BatchFixPreviewPanel.currentPanel = undefined;
 		this._panel.dispose();
 		while (this._disposables.length) {
 			const disposable = this._disposables.pop();

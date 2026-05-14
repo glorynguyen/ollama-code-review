@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { scanDiffForSecrets } from '../secretScanner';
+import { scanDiffForSecrets, toStructuredFindings } from '../secretScanner';
 
 suite('Secret Scanner Test Suite', () => {
 	test('Should find AWS Access Key', () => {
@@ -112,5 +112,53 @@ Binary files a/image.png and b/image.png differ
 `;
 		const findings = scanDiffForSecrets(diff);
 		assert.strictEqual(findings.length, 0);
+	});
+
+	test('Should mask detected secret values in messages', () => {
+		const diff = `
+--- a/payments.ts
++++ b/payments.ts
+@@ -1,1 +1,2 @@
+ export const payments = {};
++export const stripeKey = "sk_test_4eC39HqLyjWDarjtT1zdp7dc";
+`;
+		const findings = scanDiffForSecrets(diff);
+
+		assert.strictEqual(findings.length, 1);
+		assert.ok(findings[0].message.includes('sk_t**********p7dc'));
+		assert.ok(!findings[0].message.includes('sk_test_4eC39HqLyjWDarjtT1zdp7dc'));
+	});
+
+	test('Should ignore readable identifier-like API token assignments', () => {
+		const diff = `
+--- a/ui.ts
++++ b/ui.ts
+@@ -1,1 +1,2 @@
+ export const cfg = {};
++export const apiToken = "HomepageTemplateLeftColumnBlocksTextList";
+`;
+		const findings = scanDiffForSecrets(diff);
+
+		assert.strictEqual(findings.length, 0);
+	});
+
+	test('Should convert secret findings to structured review findings', () => {
+		const diff = `
+--- a/config.ts
++++ b/config.ts
+@@ -20,1 +20,2 @@
+ export const cfg = {};
++export const awsKey = "AKIAIOSFODNN7EXAMPLE";
+`;
+		const findings = scanDiffForSecrets(diff);
+		const structured = toStructuredFindings(findings);
+
+		assert.strictEqual(structured.length, 1);
+		assert.strictEqual(structured[0].id, 'secret-0');
+		assert.strictEqual(structured[0].severity, 'critical');
+		assert.strictEqual(structured[0].category, 'Security');
+		assert.deepStrictEqual(structured[0].anchor, { file: 'config.ts', line: 21 });
+		assert.strictEqual(structured[0].anchorValidation.status, 'valid');
+		assert.ok(structured[0].fix?.summary);
 	});
 });

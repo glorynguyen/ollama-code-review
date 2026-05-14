@@ -204,6 +204,66 @@ let ragUseOllamaEmbeddings: boolean | undefined;
 // MCP Server instance (initialised in activate() if enabled)
 let mcpServerInstance: McpServerInstance | undefined;
 
+export interface SelectedFilesClipboardBundle {
+	content: string;
+	fileCount: number;
+}
+
+export async function buildSelectedFilesClipboardBundle(
+	candidates: readonly vscode.Uri[],
+	options: {
+		progress?: vscode.Progress<{ message?: string }>;
+		token?: vscode.CancellationToken;
+	} = {},
+): Promise<SelectedFilesClipboardBundle> {
+	const fileUris: vscode.Uri[] = [];
+	const seen = new Set<string>();
+
+	for (const candidate of candidates) {
+		if (options.token?.isCancellationRequested) {
+			return { content: '', fileCount: 0 };
+		}
+
+		try {
+			const stat = await vscode.workspace.fs.stat(candidate);
+			if ((stat.type & vscode.FileType.File) !== vscode.FileType.File) {
+				continue;
+			}
+
+			const key = candidate.toString();
+			if (!seen.has(key)) {
+				seen.add(key);
+				fileUris.push(candidate);
+			}
+		} catch {
+			// Ignore inaccessible selections and let the caller decide how to report an empty result.
+		}
+	}
+
+	const sections: string[] = [];
+	for (const fileUri of fileUris) {
+		if (options.token?.isCancellationRequested) {
+			return { content: '', fileCount: 0 };
+		}
+
+		const relativePath = vscode.workspace.asRelativePath(fileUri);
+		options.progress?.report({ message: `Reading ${relativePath}...` });
+
+		const content = await readFileContent(fileUri);
+		if (content === undefined) {
+			sections.push(`=== File: ${relativePath} ===\n[Could not read file]\n`);
+			continue;
+		}
+
+		sections.push(`=== File: ${relativePath} ===\n${content}\n`);
+	}
+
+	return {
+		content: sections.join('\n'),
+		fileCount: fileUris.length,
+	};
+}
+
 // ---------------------------------------------------------------------------
 // Project Code helpers (Jira ticket prefix for commit messages)
 // ---------------------------------------------------------------------------
@@ -2217,6 +2277,48 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 	);
 	context.subscriptions.push(copyFileWithImportsCommand);
+
+	const copySelectedFilesForLLMCommand = vscode.commands.registerCommand(
+		'ollama-code-review.copySelectedFilesForLLM',
+		async (uri?: vscode.Uri, selectedUris?: vscode.Uri[]) => {
+			const candidates = selectedUris?.length
+				? selectedUris
+				: uri
+					? [uri]
+					: vscode.window.activeTextEditor?.document.uri
+						? [vscode.window.activeTextEditor.document.uri]
+						: [];
+
+			if (candidates.length === 0) {
+				vscode.window.showWarningMessage('Select one or more files in the Explorer to copy them for an LLM.');
+				return;
+			}
+
+			try {
+				await vscode.window.withProgress({
+					location: vscode.ProgressLocation.Notification,
+					title: 'Ollama: Copying Selected Files...',
+					cancellable: true,
+				}, async (progress, token) => {
+					const bundle = await buildSelectedFilesClipboardBundle(candidates, { progress, token });
+					if (token.isCancellationRequested) { return; }
+
+					if (bundle.fileCount === 0) {
+						vscode.window.showWarningMessage('No readable files were selected.');
+						return;
+					}
+
+					await vscode.env.clipboard.writeText(bundle.content);
+					vscode.window.showInformationMessage(
+						`Copied ${bundle.fileCount} file${bundle.fileCount === 1 ? '' : 's'} to clipboard for LLM.`
+					);
+				});
+			} catch (error) {
+				handleError(error, 'Failed to copy selected files.');
+			}
+		}
+	);
+	context.subscriptions.push(copySelectedFilesForLLMCommand);
 
 	// Copy Function with Imports — uses smart context BFS call-graph traversal + monorepo resolver
 	const copyFunctionWithImportsCommand = vscode.commands.registerCommand(

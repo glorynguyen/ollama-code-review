@@ -175,6 +175,12 @@
         "icon": "$(copy)"
       },
       {
+        "command": "ollama-code-review.copySelectedFilesForLLM",
+        "title": "Copy Selected Files for LLM",
+        "category": "Ollama Code Review",
+        "icon": "$(files)"
+      },
+      {
         "command": "ollama-code-review.copyFunctionWithImports",
         "title": "Copy Function with Imports (for LLM)",
         "category": "Ollama Code Review",
@@ -310,6 +316,12 @@
         "title": "Clear Findings Explorer",
         "category": "Ollama Code Review",
         "icon": "$(clear-all)"
+      },
+      {
+        "command": "ollama-code-review.fixAllFindings",
+        "title": "Fix All Findings",
+        "category": "Ollama Code Review",
+        "icon": "$(wrench)"
       },
       {
         "command": "ollama-code-review.fixFinding",
@@ -505,6 +517,11 @@
           "group": "9_ollama@3"
         },
         {
+          "command": "ollama-code-review.copySelectedFilesForLLM",
+          "when": "!explorerResourceIsFolder",
+          "group": "9_ollama@4"
+        },
+        {
           "command": "ollama-code-review.reviewFolder",
           "when": "explorerResourceIsFolder",
           "group": "9_ollama@1"
@@ -590,6 +607,11 @@
         }
       ],
       "view/title": [
+        {
+          "command": "ollama-code-review.fixAllFindings",
+          "when": "view == ai-review.findings-explorer && ollama-code-review.hasFindings",
+          "group": "navigation@0"
+        },
         {
           "command": "ollama-code-review.filterFindings",
           "when": "view == ai-review.findings-explorer",
@@ -1469,7 +1491,8 @@
     "pretest": "yarn run compile && yarn run lint --fix",
     "lint": "eslint src",
     "test": "vscode-test",
-    "release": "semantic-release"
+    "release": "semantic-release",
+    "prepare": "husky"
   },
   "repository": {
     "type": "git",
@@ -1491,6 +1514,7 @@
     "@vscode/vsce": "^3.9.1",
     "esbuild": "^0.27.3",
     "eslint": "^9.32.0",
+    "husky": "^9.1.7",
     "mocha": "^11.3.0",
     "semantic-release": "^25.0.2",
     "ts-loader": "^9.5.4",

@@ -1,7 +1,13 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { ChatSidebarProvider } from '../chat/sidebarProvider';
-import { FixPreviewPanel } from '../codeActions';
+import {
+	BatchFixPreviewPanel,
+	FixPreviewPanel,
+	filterOverlappingBatchFixes,
+	type BatchFixCandidate,
+	type SkippedBatchFix,
+} from '../codeActions';
 import { type ReviewFinding } from '../github/commentMapper';
 import { ReviewDecorationsManager } from '../reviewDecorations';
 import { FindingsTreeProvider } from '../reviewFindings';
@@ -44,6 +50,45 @@ function updateFindingsFilterState(treeView: vscode.TreeView<unknown>, provider:
 	treeView.description = provider.isFiltered
 		? `Showing ${provider.filteredCount} of ${provider.count}`
 		: undefined;
+}
+
+async function buildBatchFixCandidate(finding: ReviewFinding): Promise<BatchFixCandidate | SkippedBatchFix> {
+	if (!finding.file || finding.file === '(no file reference)') {
+		return { finding, reason: 'Finding has no file reference.' };
+	}
+
+	const fileUri = await resolveWorkspaceFileUri(finding.file);
+	if (!fileUri) {
+		return { finding, reason: `Could not find file: ${finding.file}` };
+	}
+
+	const doc = await vscode.workspace.openTextDocument(fileUri);
+	if (doc.lineCount === 0) {
+		return { finding, reason: `File is empty: ${finding.file}` };
+	}
+
+	const targetLine = finding.line && finding.line >= 1 && finding.line <= doc.lineCount
+		? finding.line - 1
+		: 0;
+	const contextLines = 15;
+	const startLine = Math.max(0, targetLine - contextLines);
+	const endLine = Math.min(doc.lineCount - 1, targetLine + contextLines);
+	const range = new vscode.Range(startLine, 0, endLine, doc.lineAt(endLine).text.length);
+	const originalCode = doc.getText(range);
+	const issue = `[${finding.severity.toUpperCase()}] ${finding.message}${finding.suggestion ? '\n\nSuggested fix:\n' + finding.suggestion : ''}`;
+	const result = await generateFix(originalCode, issue, doc.languageId);
+
+	return {
+		finding,
+		fileUri,
+		filePath: finding.file,
+		range,
+		originalCode,
+		fixedCode: result.code,
+		explanation: result.explanation,
+		issue,
+		languageId: doc.languageId,
+	};
 }
 
 export function registerFindingsCommands(
@@ -208,6 +253,74 @@ export function registerFindingsCommands(
 			} catch (err) {
 				vscode.window.showErrorMessage(`Failed to generate fix: ${err instanceof Error ? err.message : String(err)}`);
 				commandContext.outputChannel.appendLine(`[F-033 fixFinding] Error: ${err}`);
+			}
+		},
+	);
+
+	const fixAllFindingsCommand = vscode.commands.registerCommand(
+		'ollama-code-review.fixAllFindings',
+		async () => {
+			const findings = provider.getFindings();
+			if (findings.length === 0) {
+				vscode.window.showInformationMessage('No findings to fix. Run a review first.');
+				return;
+			}
+
+			const fixable = findings.filter(f => f.file && f.file !== '(no file reference)');
+			if (fixable.length === 0) {
+				vscode.window.showInformationMessage('No file-backed findings can be auto-fixed.');
+				return;
+			}
+
+			const generated: BatchFixCandidate[] = [];
+			const skipped: SkippedBatchFix[] = [];
+
+			try {
+				await vscode.window.withProgress(
+					{
+						location: vscode.ProgressLocation.Notification,
+						title: 'Generating batch fixes...',
+						cancellable: true,
+					},
+					async (progress, token) => {
+						for (let i = 0; i < fixable.length; i++) {
+							if (token.isCancellationRequested) { return; }
+
+							const finding = fixable[i];
+							const label = finding.file ? `${finding.file}${finding.line ? `:${finding.line}` : ''}` : `finding ${i + 1}`;
+							progress.report({
+								message: `Fixing ${i + 1}/${fixable.length}: ${label}`,
+								increment: 100 / fixable.length,
+							});
+
+							try {
+								const result = await buildBatchFixCandidate(finding);
+								if ('fixedCode' in result) {
+									generated.push(result);
+								} else {
+									skipped.push(result);
+								}
+							} catch (error) {
+								skipped.push({
+									finding,
+									reason: error instanceof Error ? error.message : String(error),
+								});
+							}
+						}
+					},
+				);
+
+				if (generated.length === 0) {
+					const skippedText = skipped.length ? ` ${skipped.length} finding${skipped.length === 1 ? '' : 's'} skipped.` : '';
+					vscode.window.showWarningMessage(`No fixes were generated.${skippedText}`);
+					return;
+				}
+
+				const filtered = filterOverlappingBatchFixes(generated);
+				BatchFixPreviewPanel.createOrShow(filtered.accepted, [...skipped, ...filtered.skipped]);
+			} catch (err) {
+				vscode.window.showErrorMessage(`Failed to generate batch fixes: ${err instanceof Error ? err.message : String(err)}`);
+				commandContext.outputChannel.appendLine(`[F-045 fixAllFindings] Error: ${err}`);
 			}
 		},
 	);
@@ -402,6 +515,7 @@ export function registerFindingsCommands(
 			showAllFindingsCommand,
 			exportFindingsCommand,
 			fixFindingCommand,
+			fixAllFindingsCommand,
 			ignoreFindingCommand,
 			askFindingCommand,
 			viewFindingDiffCommand,
