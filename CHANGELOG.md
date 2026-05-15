@@ -1,3 +1,10 @@
+# [4.10.0](https://github.com/glorynguyen/ollama-code-review/compare/v4.9.0...v4.10.0) (2026-05-15)
+
+
+### Features
+
+* **findings:** normalize structured findings to legacy format ([bcfc065](https://github.com/glorynguyen/ollama-code-review/commit/bcfc065a6264811f21e77ac207750c6204866af4))
+
 # [4.9.0](https://github.com/glorynguyen/ollama-code-review/compare/v4.8.0...v4.9.0) (2026-05-15)
 
 
