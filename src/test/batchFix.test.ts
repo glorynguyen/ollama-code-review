@@ -3,12 +3,16 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import {
+	applyFixToEditor,
 	doRangesOverlap,
 	filterOverlappingBatchFixes,
 	sortBatchFixesForApply,
 	type BatchFixCandidate,
 } from '../codeActions';
+import { validateGeneratedFix } from '../commands/aiActions';
+import { normalizeReviewFindingInput } from '../commands/findingsCommands';
 import type { ReviewFinding } from '../github/commentMapper';
+import type { ValidatedStructuredReviewFinding } from '../reviewFindings';
 
 function finding(message: string, line: number): ReviewFinding {
 	return {
@@ -105,5 +109,137 @@ suite('Batch Fix Test Suite', () => {
 		const sorted = sortBatchFixesForApply([top, bottom, middle]);
 
 		assert.deepStrictEqual(sorted.map(item => item.issue), ['bottom', 'middle', 'top']);
+	});
+
+	test('normalizes structured findings for quick fix commands', () => {
+		const structured: ValidatedStructuredReviewFinding = {
+			id: 'finding-1',
+			severity: 'high',
+			title: 'Unsafe access',
+			summary: 'Guard the optional value before reading it.',
+			confidence: 0.9,
+			anchor: { file: 'src/example.ts', line: 12 },
+			evidence: [
+				{
+					kind: 'code',
+					summary: 'The value can be undefined.',
+				},
+			],
+			fix: {
+				summary: 'Add a guard clause.',
+				replacement: 'if (!value) { return; }',
+			},
+			anchorValidation: {
+				status: 'valid',
+				normalizedAnchor: { file: 'src/example.ts', line: 12 },
+			},
+		};
+
+		const normalized = normalizeReviewFindingInput(structured);
+
+		assert.ok(normalized);
+		assert.strictEqual(normalized.severity, 'high');
+		assert.strictEqual(normalized.file, 'src/example.ts');
+		assert.strictEqual(normalized.line, 12);
+		assert.strictEqual(normalized.suggestion, 'if (!value) { return; }');
+		assert.ok(normalized.message.includes('Unsafe access'));
+	});
+
+	test('uses original structured anchor for quick fix when validation is not valid', () => {
+		const structured: ValidatedStructuredReviewFinding = {
+			id: 'finding-2',
+			severity: 'medium',
+			title: 'Context line issue',
+			summary: 'The fix still targets this file and line.',
+			confidence: 0.8,
+			anchor: { file: 'src/example.ts', line: 18 },
+			evidence: [
+				{
+					kind: 'code',
+					summary: 'The issue was reported on unchanged context.',
+				},
+			],
+			anchorValidation: {
+				status: 'not-added-line',
+				reason: 'Line is not an added diff line.',
+			},
+		};
+
+		const normalizedWithoutFallback = normalizeReviewFindingInput(structured);
+		const normalizedForQuickFix = normalizeReviewFindingInput(structured, { useOriginalAnchorFallback: true });
+
+		assert.ok(normalizedWithoutFallback);
+		assert.strictEqual(normalizedWithoutFallback.file, undefined);
+		assert.ok(normalizedForQuickFix);
+		assert.strictEqual(normalizedForQuickFix.file, 'src/example.ts');
+		assert.strictEqual(normalizedForQuickFix.line, 18);
+	});
+
+	test('rejects generated fixes that contain multi-file instructions', () => {
+		const original = [
+			'removeFinding(finding: ReviewFinding): void {',
+			'    const index = this.findings.findIndex(f => this.matchesFinding(f, finding));',
+			'}',
+		].join('\n');
+		const generated = [
+			"import type { ReviewFinding } from '../types';",
+			'',
+			'export function matchesFinding(candidate: ReviewFinding, target: ReviewFinding): boolean {',
+			'    return candidate.severity === target.severity;',
+			'}',
+			'',
+			'// In FindingsTreeProvider and ReviewDecorationsManager:',
+			"import { matchesFinding } from './utils/findingMatcher';",
+			'',
+			'// Then update the usage in both classes:',
+			'removeFinding(finding: ReviewFinding): void {',
+			'    const index = this.findings.findIndex(f => matchesFinding(f, finding));',
+			'}',
+		].join('\n');
+
+		const validation = validateGeneratedFix(generated, original, 'typescript');
+
+		assert.strictEqual(validation.valid, false);
+		assert.ok(validation.reason?.includes('instructions') || validation.reason?.includes('imports'));
+	});
+
+	test('accepts direct replacement generated fixes', () => {
+		const original = 'const value = user.name;';
+		const generated = 'const value = user?.name ?? "Unknown";';
+
+		const validation = validateGeneratedFix(generated, original, 'typescript');
+
+		assert.strictEqual(validation.valid, true);
+	});
+
+	test('applies generated fix by replacing issue code with suggestion', async () => {
+		const tempPath = path.join('/private/tmp', `ollama-code-review-fix-${Date.now()}.ts`);
+		const issueCode = '    return user.name;';
+		const suggestion = '    return user?.name ?? "Unknown";';
+		const source = [
+			'function getName(user?: { name: string }) {',
+			issueCode,
+			'}',
+		].join('\n');
+
+		await fs.writeFile(tempPath, source, 'utf-8');
+
+		try {
+			const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(tempPath));
+			const editor = await vscode.window.showTextDocument(doc);
+			const issueRange = new vscode.Range(1, 0, 1, issueCode.length);
+
+			const applied = await applyFixToEditor(editor, issueRange, suggestion);
+
+			assert.strictEqual(applied, true);
+			assert.strictEqual(editor.document.lineAt(1).text, suggestion);
+			assert.ok(!editor.document.getText().includes(issueCode));
+			assert.ok(editor.document.getText().includes(suggestion));
+
+			await editor.document.save();
+			await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+		} finally {
+			await fs.unlink(tempPath).catch(() => undefined);
+		}
 	});
 });

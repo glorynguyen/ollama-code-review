@@ -179,6 +179,16 @@ export function filterOverlappingBatchFixes(candidates: readonly BatchFixCandida
 	return { accepted, skipped };
 }
 
+export async function applyFixToEditor(
+	editor: vscode.TextEditor,
+	range: vscode.Range,
+	fixedCode: string,
+): Promise<boolean> {
+	return editor.edit(editBuilder => {
+		editBuilder.replace(range, fixedCode);
+	});
+}
+
 /**
  * Create a fix preview panel that shows the diff and allows applying
  */
@@ -290,9 +300,11 @@ export class FixPreviewPanel {
 
 	private async _applyFix() {
 		try {
-			await this._editor.edit(editBuilder => {
-				editBuilder.replace(this._range, this._fixedCode);
-			});
+			const applied = await applyFixToEditor(this._editor, this._range, this._fixedCode);
+			if (!applied) {
+				vscode.window.showErrorMessage('Failed to apply fix: VS Code rejected the edit.');
+				return;
+			}
 
 			// Record the fix
 			const tracker = FixTracker.getInstance();

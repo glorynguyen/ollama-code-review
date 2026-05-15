@@ -118,6 +118,14 @@ You are an expert software engineer. Fix the following issue in the ${languageId
 1. Start with the fixed code inside a markdown code block (e.g., \`\`\`${languageId}\n...\n\`\`\`).
 2. After the code block, explain what was wrong and how you fixed it.
 
+**CRITICAL APPLY RULES:**
+- The code block must contain ONLY the complete replacement for the exact code snippet below.
+- The replacement must be directly insertable in place of the snippet without moving it elsewhere.
+- Do not include file names, diff hunks, markdown, prose, TODOs, or comments such as "In this file", "Then update", or "Replace with".
+- Do not include imports unless the original snippet already contains the import section being replaced.
+- Do not propose changes to other files.
+- If the issue cannot be fixed as one direct replacement for this snippet, respond exactly: CANNOT_APPLY_FIX: <brief reason>
+
 **Code with issue:**
 \`\`\`${languageId}
 ${codeSnippet}
@@ -127,13 +135,66 @@ Provide the fixed code now.
 `;
 
 	const response = await callAIProvider(prompt, config, model, endpoint, temperature);
+	if (/^\s*CANNOT_APPLY_FIX:/i.test(response)) {
+		throw new Error(response.trim());
+	}
+
 	const parsed = parseCodeResponse(response);
 
 	if (parsed) {
+		const validation = validateGeneratedFix(parsed.code, codeSnippet, languageId);
+		if (!validation.valid) {
+			throw new Error(`AI returned a fix that cannot be applied safely: ${validation.reason}`);
+		}
 		return parsed;
 	}
 
-	return { code: response, explanation: 'Fix applied.' };
+	throw new Error('AI did not return fixed code in the required markdown code block.');
+}
+
+export interface FixValidationResult {
+	valid: boolean;
+	reason?: string;
+}
+
+export function validateGeneratedFix(
+	fixedCode: string,
+	originalCode: string,
+	languageId: string,
+): FixValidationResult {
+	const trimmed = fixedCode.trim();
+	if (!trimmed) {
+		return { valid: false, reason: 'The generated fix is empty.' };
+	}
+
+	if (trimmed.includes('```')) {
+		return { valid: false, reason: 'The generated fix still contains markdown fences.' };
+	}
+
+	if (/^\s*(?:diff --git|@@|\+\+\+|---)\b/m.test(trimmed)) {
+		return { valid: false, reason: 'The generated fix is a diff instead of replacement code.' };
+	}
+
+	if (/^\s*(?:\/\/|#|\/\*)?\s*(?:In\s+[\w./-]+|Then\s+update|Then\s+replace|Replace\s+the|Update\s+the)\b.*:?\s*(?:\*\/)?$/im.test(trimmed)) {
+		return { valid: false, reason: 'The generated fix contains instructions instead of only replacement code.' };
+	}
+
+	if (isJavaScriptLike(languageId) && !containsStaticImport(originalCode) && containsStaticImport(trimmed)) {
+		return {
+			valid: false,
+			reason: 'The generated fix adds imports outside the replacement snippet.',
+		};
+	}
+
+	return { valid: true };
+}
+
+function isJavaScriptLike(languageId: string): boolean {
+	return ['javascript', 'javascriptreact', 'typescript', 'typescriptreact'].includes(languageId);
+}
+
+function containsStaticImport(code: string): boolean {
+	return /^\s*import\s+(?:type\s+)?(?:[\w*{}\s,]+from\s+)?['"][^'"]+['"];?\s*$/m.test(code);
 }
 
 /**

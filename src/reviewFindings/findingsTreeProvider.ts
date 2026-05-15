@@ -88,12 +88,7 @@ export class FindingsTreeProvider implements vscode.TreeDataProvider<TreeElement
 
 	/** Remove a specific finding and refresh the tree. */
 	removeFinding(finding: ReviewFinding): void {
-		const index = this.findings.findIndex(f =>
-			f.file === finding.file &&
-			f.line === finding.line &&
-			f.severity === finding.severity &&
-			f.message === finding.message
-		);
+		const index = this.findings.findIndex(f => this.matchesFinding(f, finding));
 
 		if (index !== -1) {
 			this.findings.splice(index, 1);
@@ -105,6 +100,25 @@ export class FindingsTreeProvider implements vscode.TreeDataProvider<TreeElement
 	/** Get all current findings (for external consumers). */
 	getFindings(): readonly ReviewFinding[] {
 		return this.findings;
+	}
+
+	private matchesFinding(candidate: ReviewFinding, target: ReviewFinding): boolean {
+		if (candidate.severity !== target.severity) {
+			return false;
+		}
+
+		const targetHasLocation = Boolean(target.file || target.line !== undefined);
+		const sameFile = target.file === undefined || candidate.file === target.file;
+		const sameLine = target.line === undefined || candidate.line === target.line;
+		const sameMessage = candidate.message === target.message ||
+			candidate.message.includes(target.message) ||
+			target.message.includes(candidate.message);
+
+		if (targetHasLocation) {
+			return sameFile && sameLine && (sameMessage || Boolean(target.file || target.line !== undefined));
+		}
+
+		return sameMessage;
 	}
 
 	/** Get total finding count. */

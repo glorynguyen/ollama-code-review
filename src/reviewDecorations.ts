@@ -182,12 +182,7 @@ export class ReviewDecorationsManager {
 
 	/** Remove a specific finding and re-apply decorations. */
 	removeFinding(finding: ReviewFinding): void {
-		const index = this.currentFindings.findIndex(f =>
-			f.file === finding.file &&
-			f.line === finding.line &&
-			f.severity === finding.severity &&
-			f.message === finding.message
-		);
+		const index = this.currentFindings.findIndex(f => this.matchesFinding(f, finding));
 
 		if (index !== -1) {
 			this.currentFindings.splice(index, 1);
@@ -208,6 +203,25 @@ export class ReviewDecorationsManager {
 		return counts;
 	}
 
+	private matchesFinding(candidate: ReviewFinding, target: ReviewFinding): boolean {
+		if (candidate.severity !== target.severity) {
+			return false;
+		}
+
+		const targetHasLocation = Boolean(target.file || target.line !== undefined);
+		const sameFile = target.file === undefined || candidate.file === target.file;
+		const sameLine = target.line === undefined || candidate.line === target.line;
+		const sameMessage = candidate.message === target.message ||
+			candidate.message.includes(target.message) ||
+			target.message.includes(candidate.message);
+
+		if (targetHasLocation) {
+			return sameFile && sameLine && sameMessage;
+		}
+
+		return sameMessage;
+	}
+
 	/** Dispose all decoration types and listeners. */
 	dispose(): void {
 		for (const dt of this.decorationTypes.values()) { dt.dispose(); }
@@ -216,7 +230,6 @@ export class ReviewDecorationsManager {
 		this.disposables = [];
 		ReviewDecorationsManager._instance = undefined;
 	}
-
 	// ── Internal ──────────────────────────────────────────────────────
 
 	private buildFileDecorations(): void {

@@ -22,6 +22,7 @@ export type { FrameworkOption } from './testAction';
 
 // Fix Issue Action
 export {
+	applyFixToEditor,
 	BatchFixPreviewPanel,
 	FixIssueActionProvider,
 	FixPreviewPanel,

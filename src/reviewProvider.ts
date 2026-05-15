@@ -5,7 +5,10 @@ import { getSkillsService } from './commands';
 import { PerformanceMetrics } from './extension';
 import { ChatSidebarProvider } from './chat/sidebarProvider';
 import { toModelLimitChatMessage } from './chat/modelErrorUtils';
-import type { ValidatedStructuredReviewResult } from './reviewFindings';
+import {
+  renderValidatedReviewMarkdown,
+  type ValidatedStructuredReviewResult,
+} from './reviewFindings';
 
 const CLAUDE_API_ENDPOINT = 'https://api.anthropic.com/v1/messages';
 const MINIMAX_API_ENDPOINT = 'https://api.minimax.io/v1/text/chatcompletion_v2';
@@ -83,12 +86,8 @@ export class OllamaReviewPanel {
             break;
           case 'ignoreFinding':
             if (message.finding && typeof message.finding.id === 'string') {
-              await vscode.commands.executeCommand('ollama-code-review.ignoreFinding', message.finding);
-              // Update local state and sync with webview
-              if (this._structuredReview && this._structuredReview.findings) {
-                this._structuredReview.findings = this._structuredReview.findings.filter(f => f.id !== message.finding.id);
-                this._panel.webview.postMessage({ command: 'updateFindings', findings: this._structuredReview.findings });
-              }
+              const result = await vscode.commands.executeCommand<{ score?: number }>('ollama-code-review.ignoreFinding', message.finding);
+              this._removeStructuredFinding(message.finding.id, result?.score);
             }
             break;
           case 'quickFix':
@@ -204,6 +203,31 @@ export class OllamaReviewPanel {
 
   public getReviewPrompt(): string | null {
     return this._reviewPrompt;
+  }
+
+  private _removeStructuredFinding(findingId: string, score?: number): void {
+    if (!this._structuredReview?.findings) {
+      return;
+    }
+
+    const nextFindings = this._structuredReview.findings.filter(f => f.id !== findingId);
+    if (nextFindings.length === this._structuredReview.findings.length) {
+      return;
+    }
+
+    this._structuredReview = {
+      ...this._structuredReview,
+      findings: nextFindings,
+    };
+    this._reviewContent = renderValidatedReviewMarkdown(this._structuredReview);
+    this._conversationHistory = [{ role: 'assistant', content: this._reviewContent }];
+    ChatSidebarProvider.getInstance()?.setLastReview(this._reviewContent);
+    this._syncMessages();
+    this._panel.webview.postMessage({
+      command: 'updateStructuredReview',
+      structuredReview: this._structuredReview,
+      score,
+    });
   }
 
   private _syncMessages() {
@@ -541,6 +565,11 @@ export class OllamaReviewPanel {
         /* Findings Styles */
         .findings-container { margin-top: 24px; border-top: 2px solid #333; padding-top: 20px; }
         .findings-title { font-size: 16px; font-weight: 600; margin-bottom: 16px; color: var(--vscode-descriptionForeground); display: flex; align-items: center; gap: 8px; }
+        .score-pill { margin-left: auto; font-size: 12px; font-weight: 700; border-radius: 999px; padding: 2px 8px; border: 1px solid transparent; }
+        .score-pill.good { color: #4caf50; border-color: rgba(76, 175, 80, 0.35); background: rgba(76, 175, 80, 0.08); }
+        .score-pill.ok { color: #ff9800; border-color: rgba(255, 152, 0, 0.35); background: rgba(255, 152, 0, 0.08); }
+        .score-pill.bad { color: #f44336; border-color: rgba(244, 67, 54, 0.35); background: rgba(244, 67, 54, 0.08); }
+        .findings-empty { color: var(--vscode-descriptionForeground); font-size: 13px; padding: 8px 0; }
         .finding-item { background: var(--vscode-editor-inactiveSelectionBackground); border-radius: 6px; padding: 12px; margin-bottom: 12px; border-left: 4px solid #555; }
         .finding-item.critical { border-left-color: #f44336; }
         .finding-item.high { border-left-color: #ff9800; }
@@ -663,6 +692,7 @@ export class OllamaReviewPanel {
         let metrics = ${metricsData};
         let structuredReview = ${structuredReviewData};
         let metricsExpanded = true;
+        let reviewScoreOverride = null;
 
         function formatBytes(bytes) {
             if (!bytes) return 'N/A';
@@ -684,6 +714,37 @@ export class OllamaReviewPanel {
         function formatTokensPerSec(tps) {
             if (!tps) return 'N/A';
             return tps.toFixed(1) + ' tok/s';
+        }
+
+        function countFindings(findings) {
+            const counts = { critical: 0, high: 0, medium: 0, low: 0, info: 0 };
+            (findings || []).forEach((finding) => {
+                const severity = (finding.severity || 'info').toLowerCase();
+                if (counts[severity] !== undefined) {
+                    counts[severity]++;
+                }
+            });
+            return counts;
+        }
+
+        function computeReviewScore(findings) {
+            if (reviewScoreOverride !== null && reviewScoreOverride !== undefined) {
+                return reviewScoreOverride;
+            }
+
+            const counts = countFindings(findings);
+            const deduction =
+                counts.critical * 20 +
+                counts.high * 10 +
+                counts.medium * 5 +
+                counts.low * 2;
+            return Math.max(0, Math.min(100, 100 - deduction));
+        }
+
+        function scoreClass(score) {
+            if (score >= 80) return 'good';
+            if (score >= 60) return 'ok';
+            return 'bad';
         }
 
         function renderMetrics() {
@@ -852,8 +913,24 @@ export class OllamaReviewPanel {
                 document.getElementById('chat').appendChild(wrapper);
             }
 
-            if (!structuredReview?.findings || structuredReview.findings.length === 0) {
+            if (!structuredReview?.findings) {
                 wrapper.innerHTML = '';
+                return;
+            }
+
+            const score = computeReviewScore(structuredReview.findings);
+            const scorePill = \`<span class="score-pill \${scoreClass(score)}">Score \${score}/100</span>\`;
+
+            if (structuredReview.findings.length === 0) {
+                wrapper.innerHTML = \`
+                    <div class="findings-container" id="findings-list">
+                      <div class="findings-title">
+                        <span>Review Findings (0)</span>
+                        \${scorePill}
+                      </div>
+                      <div class="findings-empty">No active findings.</div>
+                    </div>
+                \`;
                 return;
             }
 
@@ -861,6 +938,7 @@ export class OllamaReviewPanel {
                 <div class="findings-container" id="findings-list">
                   <div class="findings-title">
                     <span>📋 Review Findings (\${structuredReview.findings.length})</span>
+                    \${scorePill}
                   </div>
                   \${structuredReview.findings.map((f) => {
                     const file = f.anchor?.file || '';
@@ -984,6 +1062,21 @@ export class OllamaReviewPanel {
                     chatHistory = msg.messages;
                     render();
                     renderMermaidDiagrams();
+                    break;
+                case 'updateStructuredReview':
+                    structuredReview = msg.structuredReview;
+                    if (msg.score !== undefined) {
+                        reviewScoreOverride = msg.score;
+                    }
+                    render();
+                    renderMermaidDiagrams();
+                    break;
+                case 'updateFindings':
+                    if (structuredReview) {
+                        structuredReview.findings = msg.findings || [];
+                        reviewScoreOverride = null;
+                        render();
+                    }
                     break;
                 case 'showLoading':
                     document.getElementById('loading').style.display = 'block';

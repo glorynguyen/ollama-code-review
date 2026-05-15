@@ -8,9 +8,13 @@ import {
 	type BatchFixCandidate,
 	type SkippedBatchFix,
 } from '../codeActions';
-import { type ReviewFinding } from '../github/commentMapper';
+import { type ReviewFinding, type Severity } from '../github/commentMapper';
 import { ReviewDecorationsManager } from '../reviewDecorations';
-import { FindingsTreeProvider } from '../reviewFindings';
+import {
+	FindingsTreeProvider,
+	toLegacyReviewFinding,
+	type ValidatedStructuredReviewFinding,
+} from '../reviewFindings';
 import { computeScore, ReviewHistoryPanel, ReviewScoreStore } from '../reviewScore';
 import { generateFix } from './aiActions';
 import { type CommandContext } from './commandContext';
@@ -50,6 +54,68 @@ function updateFindingsFilterState(treeView: vscode.TreeView<unknown>, provider:
 	treeView.description = provider.isFiltered
 		? `Showing ${provider.filteredCount} of ${provider.count}`
 		: undefined;
+}
+
+function isSeverity(value: unknown): value is Severity {
+	return value === 'critical' || value === 'high' || value === 'medium' || value === 'low' || value === 'info';
+}
+
+function isStructuredFinding(value: unknown): value is ValidatedStructuredReviewFinding {
+	if (!value || typeof value !== 'object') {
+		return false;
+	}
+
+	const record = value as Record<string, unknown>;
+	return typeof record.id === 'string' &&
+		isSeverity(record.severity) &&
+		typeof record.title === 'string' &&
+		typeof record.summary === 'string' &&
+		Array.isArray(record.evidence);
+}
+
+export function normalizeReviewFindingInput(
+	value: unknown,
+	options: { useOriginalAnchorFallback?: boolean } = {},
+): ReviewFinding | undefined {
+	if (!value || typeof value !== 'object') {
+		return undefined;
+	}
+
+	const record = value as Record<string, unknown>;
+	if (isSeverity(record.severity) && typeof record.message === 'string') {
+		return value as ReviewFinding;
+	}
+
+	if (!isStructuredFinding(value)) {
+		return undefined;
+	}
+
+	const hasValidatedAnchor = value.anchorValidation !== undefined;
+	const legacy = hasValidatedAnchor
+		? toLegacyReviewFinding(value)
+		: {
+			severity: value.severity,
+			message: [`**${value.title}**`, value.summary].filter(Boolean).join('\n\n'),
+			file: value.anchor?.file,
+			line: value.anchor?.line,
+			suggestion: value.fix?.replacement ?? value.fix?.patch,
+		};
+	const canUseOriginalAnchor = !hasValidatedAnchor || options.useOriginalAnchorFallback;
+
+	return {
+		...legacy,
+		message: legacy.message || [`**${value.title}**`, value.summary].filter(Boolean).join('\n\n'),
+		file: legacy.file ?? (canUseOriginalAnchor ? value.anchor?.file : undefined),
+		line: legacy.line ?? (canUseOriginalAnchor ? value.anchor?.line : undefined),
+	};
+}
+
+function countFindingsBySeverity(findings: readonly ReviewFinding[]): Record<Severity, number> {
+	const counts: Record<Severity, number> = { critical: 0, high: 0, medium: 0, low: 0, info: 0 };
+	for (const finding of findings) {
+		counts[finding.severity]++;
+	}
+	return counts;
 }
 
 async function buildBatchFixCandidate(finding: ReviewFinding): Promise<BatchFixCandidate | SkippedBatchFix> {
@@ -196,10 +262,11 @@ export function registerFindingsCommands(
 		'ollama-code-review.fixFinding',
 		async (findingOrElement?: unknown) => {
 			try {
-				let finding: { severity: string; message: string; file?: string; line?: number; suggestion?: string } | undefined;
+				let finding: ReviewFinding | undefined;
 
-				if (findingOrElement && typeof findingOrElement === 'object' && 'message' in findingOrElement && 'severity' in findingOrElement) {
-					finding = findingOrElement as { severity: string; message: string; file?: string; line?: number; suggestion?: string };
+				const normalizedFinding = normalizeReviewFindingInput(findingOrElement, { useOriginalAnchorFallback: true });
+				if (normalizedFinding) {
+					finding = normalizedFinding;
 				} else if (findingOrElement) {
 					finding = provider.getFindingFromElement(findingOrElement);
 				}
@@ -327,13 +394,14 @@ export function registerFindingsCommands(
 
 	const ignoreFindingCommand = vscode.commands.registerCommand(
 		'ollama-code-review.ignoreFinding',
-		async (finding: ReviewFinding) => {
-			if (!finding) { return; }
+		async (findingInput: unknown) => {
+			const finding = normalizeReviewFindingInput(findingInput, { useOriginalAnchorFallback: true });
+			if (!finding) { return undefined; }
 
 			ReviewDecorationsManager.getInstance().removeFinding(finding);
 			provider.removeFinding(finding);
 
-			const summary = ReviewDecorationsManager.getInstance().getFindingSummary();
+			const summary = countFindingsBySeverity(provider.getFindings());
 			const scoreResult = computeScore(summary);
 			commandContext.showScoreStatusBar(scoreResult.score);
 
@@ -349,6 +417,7 @@ export function registerFindingsCommands(
 			void vscode.commands.executeCommand('setContext', 'ollama-code-review.hasFindings', provider.count > 0);
 			updateFindingsFilterState(treeView, provider);
 			vscode.window.setStatusBarMessage(`$(check) Finding ignored. New score: ${scoreResult.score}/100`, 3000);
+			return { score: scoreResult.score, findingCounts: summary };
 		},
 	);
 
