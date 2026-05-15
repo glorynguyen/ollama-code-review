@@ -1,3 +1,10 @@
+# [4.9.0](https://github.com/glorynguyen/ollama-code-review/compare/v4.8.0...v4.9.0) (2026-05-15)
+
+
+### Features
+
+* **release:** add conflict resolution and ADO connection management ([0fa9162](https://github.com/glorynguyen/ollama-code-review/commit/0fa9162ceeb715159f6a69abe67bbea672fadd67))
+
 # [4.8.0](https://github.com/glorynguyen/ollama-code-review/compare/v4.7.0...v4.8.0) (2026-05-15)
 
 
