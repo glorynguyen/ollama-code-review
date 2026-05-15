@@ -168,6 +168,7 @@ NodeModule._load = function (request: string, parent: any, isMain: boolean) {
 
 import { ReleaseService, Commit, DependencyRisk, CherryPickResult, ConflictState } from '../release/releaseService';
 import { ADOProvider, Ticket, PR } from '../release/adoProvider';
+import { ReleaseWebviewPanel } from '../release/releaseWebviewPanel';
 
 // Restore the original loader so other test files / VS Code internals are
 // unaffected.
@@ -565,17 +566,16 @@ suite('Release Module Test Suite', () => {
             assert.ok(result.message.includes('Invalid commit hash'));
         });
 
-        test('executeCherryPick handles existing branch', async () => {
+        test('executeCherryPick rejects existing branch instead of appending to it', async () => {
             const service = new ReleaseService(workspaceRoot);
             const hash = 'aabbccdd11223344556677889900aabbccdd1122';
 
             addSpawn(args => args[0] === 'fetch', { stdout: '' });
             addSpawn(args => args[0] === 'checkout' && args.includes('-b'), { code: 128, stderr: 'already exists' });
-            addSpawn(args => args[0] === 'checkout' && !args.includes('-b'), { stdout: '' });
-            addSpawn(args => args[0] === 'cherry-pick', { stdout: '' });
 
             const result = await service.executeCherryPick('release/1.0', [hash], 'main');
-            assert.strictEqual(result.success, true);
+            assert.strictEqual(result.success, false);
+            assert.ok(result.message.includes('already exist'));
         });
 
         test('executeCherryPick detects conflict and returns conflict state', async () => {
@@ -956,6 +956,38 @@ suite('Release Module Test Suite', () => {
         });
 
         // ---------------------------------------------------------------------
+        // testConnection
+        // ---------------------------------------------------------------------
+        test('testConnection probes the configured repository endpoint', async () => {
+            const provider = new ADOProvider(orgUrl, 'Project With Space', token, 'repo/name');
+            let capturedPath = '';
+            let capturedMethod = '';
+            let capturedAuth = '';
+            addRequest(opts => {
+                capturedPath = opts.path;
+                capturedMethod = opts.method;
+                capturedAuth = opts.headers.Authorization;
+                return opts.path.includes('/Project%20With%20Space/_apis/git/repositories/repo%2Fname?api-version=7.0');
+            }, { response: { id: 'repo/name' } });
+
+            await provider.testConnection();
+
+            assert.strictEqual(capturedPath, '/myorg/Project%20With%20Space/_apis/git/repositories/repo%2Fname?api-version=7.0');
+            assert.strictEqual(capturedMethod, 'GET');
+            assert.ok(capturedAuth.startsWith('Basic '));
+        });
+
+        test('testConnection rejects ADO API errors', async () => {
+            const provider = new ADOProvider(orgUrl, project, token, repoId);
+            addRequest(opts => opts.path.includes('/_apis/git/repositories/'), {
+                statusCode: 401,
+                response: { message: 'Unauthorized' }
+            });
+
+            await assert.rejects(async () => await provider.testConnection(), /ADO API Error: Unauthorized/);
+        });
+
+        // ---------------------------------------------------------------------
         // adoRequest internals
         // ---------------------------------------------------------------------
         test('adoRequest handles timeout', async () => {
@@ -1028,6 +1060,107 @@ suite('Release Module Test Suite', () => {
                 response: { errorCode: 401, message: 'Unauthorized' }
             });
             await assert.rejects(async () => await provider.lookupTicket('1'), /Unauthorized/);
+        });
+    });
+
+    suite('ReleaseWebviewPanel', () => {
+        function createPanelHarness() {
+            const handlers: Array<(message: any) => Promise<void> | void> = [];
+            const postedMessages: any[] = [];
+            const storedSecrets: Record<string, string> = {};
+            const panel = {
+                title: '',
+                webview: {
+                    html: '',
+                    asWebviewUri: (uri: any) => uri,
+                    onDidReceiveMessage: (handler: (message: any) => Promise<void> | void) => {
+                        handlers.push(handler);
+                        return { dispose: () => {} };
+                    },
+                    postMessage: async (message: any) => {
+                        postedMessages.push(message);
+                        return true;
+                    }
+                },
+                onDidDispose: () => ({ dispose: () => {} }),
+                dispose: () => {},
+                reveal: () => {}
+            };
+            const context = {
+                extensionUri: { fsPath: '/tmp/fake-extension' },
+                secrets: {
+                    get: async (key: string) => storedSecrets[key],
+                    store: async (key: string, value: string) => {
+                        storedSecrets[key] = value;
+                    }
+                },
+                workspaceState: {
+                    get: (_key: string, fallback: any) => fallback,
+                    update: async () => {}
+                }
+            };
+            const instance = new (ReleaseWebviewPanel as any)(panel, context, workspaceRoot);
+
+            return { handlers, postedMessages, storedSecrets, panel, instance };
+        }
+
+        test('renders ADO PAT setup controls in the webview', () => {
+            const harness = createPanelHarness();
+            const html = (harness.instance as any)._getHtmlForWebview(
+                harness.panel.webview,
+                'style-uri',
+                'core-uri',
+                'script-uri'
+            );
+
+            assert.ok(html.includes('id="ado-status-chip"'));
+            assert.ok(html.includes('id="ado-setup-modal"'));
+            assert.ok(html.includes('id="ado-token-input"'));
+            assert.ok(html.includes('id="toggle-ado-token-btn"'));
+            assert.ok(html.includes('id="open-ado-settings-btn"'));
+            assert.ok(html.includes('id="test-ado-btn"'));
+            assert.ok(html.includes('id="save-ado-token-btn"'));
+            assert.ok(html.includes('PAT is stored securely in VS Code Secrets'));
+        });
+
+        test('saveAdoToken stores a trimmed PAT and posts refreshed status', async () => {
+            const harness = createPanelHarness();
+
+            await harness.handlers[0]({ command: 'saveAdoToken', token: '  pat-secret  ' });
+
+            assert.strictEqual(harness.storedSecrets['ado.token'], 'pat-secret');
+            assert.ok(harness.postedMessages.some(message => (
+                message.command === 'adoStatus'
+                && message.message === 'Azure DevOps PAT saved securely.'
+                && message.data.hasToken === true
+            )));
+        });
+
+        test('saveAdoToken rejects empty PAT values without storing a secret', async () => {
+            const harness = createPanelHarness();
+
+            await harness.handlers[0]({ command: 'saveAdoToken', token: '   ' });
+
+            assert.strictEqual(harness.storedSecrets['ado.token'], undefined);
+            assert.ok(harness.postedMessages.some(message => (
+                message.command === 'adoStatusResult'
+                && message.success === false
+                && message.message.includes('Enter an Azure DevOps PAT')
+            )));
+        });
+
+        test('testAdoConnection reports incomplete ADO settings before requesting a PAT check', async () => {
+            const harness = createPanelHarness();
+            harness.storedSecrets['ado.token'] = 'pat-secret';
+
+            await harness.handlers[0]({ command: 'testAdoConnection' });
+
+            assert.ok(harness.postedMessages.some(message => (
+                message.command === 'adoStatusResult'
+                && message.success === false
+                && message.message.includes('settings are incomplete')
+            )));
+            assert.ok(harness.postedMessages.some(message => message.command === 'adoStatus'));
         });
     });
 });

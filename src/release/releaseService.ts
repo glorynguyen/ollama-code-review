@@ -300,8 +300,7 @@ export class ReleaseService {
             try {
                 await this.execGit(['checkout', '-b', newBranchName, `origin/${baseBranch}`]);
             } catch (e: unknown) {
-                // If it fails, try checking out existing branch
-                await this.execGit(['checkout', newBranchName]);
+                throw new Error(`Branch ${newBranchName} creation failed. It might already exist.`);
             }
 
             return await this.performCherryPicks(selectedHashes, newBranchName, baseBranch);
@@ -328,11 +327,33 @@ export class ReleaseService {
     }
 
     private async performCherryPicks(hashes: string[], branchName: string, baseBranch: string, isAppending: boolean = false): Promise<CherryPickResult> {
-        let successCount = 0;
-        let currentHashIndex = 0;
+        return this.performCherryPicksFromState({
+            hashes,
+            branchName,
+            baseBranch,
+            isAppending,
+            completedBefore: 0,
+            startIndex: 0,
+            selectedHashes: hashes,
+            totalCommits: hashes.length
+        });
+    }
 
-        for (const hash of hashes) {
-            currentHashIndex++;
+    private async performCherryPicksFromState(options: {
+        hashes: string[];
+        branchName: string;
+        baseBranch: string;
+        isAppending: boolean;
+        completedBefore: number;
+        startIndex: number;
+        selectedHashes: string[];
+        totalCommits: number;
+    }): Promise<CherryPickResult> {
+        let successCount = 0;
+
+        for (let i = 0; i < options.hashes.length; i++) {
+            const hash = options.hashes[i];
+            const currentHashIndex = options.startIndex + i + 1;
             try {
                 await this.execGit(['cherry-pick', hash]);
                 successCount++;
@@ -341,9 +362,15 @@ export class ReleaseService {
                 
                 if (errorOutput.includes('CONFLICT') ||
                     errorOutput.includes('Automatic merge failed') ||
-                    errorOutput.includes('could not apply')) {
+                    errorOutput.includes('could not apply') ||
+                    errorOutput.includes('fix conflicts and then run "git cherry-pick --continue"')) {
                     
                     const conflictingFiles = await this.getConflictingFiles();
+                    if (conflictingFiles.length === 0) {
+                        await this.execGit(['cherry-pick', '--abort']);
+                        throw new Error(`Conflict at commit ${hash.substring(0, 7)} but no conflicting files found. Process stopped.`);
+                    }
+
                     const fileContents: Record<string, string> = {};
                     for (const file of conflictingFiles) {
                         fileContents[file] = await this.getConflictContent(file);
@@ -351,17 +378,17 @@ export class ReleaseService {
 
                     const conflictState: ConflictState = {
                         state: 'CHERRY_PICK_CONFLICT',
-                        branchName: branchName,
-                        baseBranch: baseBranch,
-                        totalCommits: hashes.length,
-                        completedCommits: successCount,
-                        remainingCommits: hashes.length - currentHashIndex,
+                        branchName: options.branchName,
+                        baseBranch: options.baseBranch,
+                        totalCommits: options.totalCommits,
+                        completedCommits: options.completedBefore + successCount,
+                        remainingCommits: options.totalCommits - currentHashIndex,
                         currentCommit: hash,
                         currentCommitIndex: currentHashIndex,
-                        selectedHashes: hashes,
+                        selectedHashes: options.selectedHashes,
                         conflictingFiles: conflictingFiles,
                         fileContents: fileContents,
-                        isAppending: isAppending,
+                        isAppending: options.isAppending,
                         timestamp: new Date().toISOString()
                     };
                     
@@ -378,7 +405,79 @@ export class ReleaseService {
             }
         }
 
-        return { success: true, message: `${isAppending ? 'Appended' : 'Created branch with'} ${successCount} commits.` };
+        const totalSuccessCount = options.completedBefore + successCount;
+        return {
+            success: true,
+            message: `${options.isAppending ? 'Appended' : 'Created branch with'} ${totalSuccessCount} commits.`
+        };
+    }
+
+    public async resolveConflictFile(conflictState: ConflictState, filename: string, resolvedContent: string): Promise<CherryPickResult> {
+        if (!conflictState || conflictState.state !== 'CHERRY_PICK_CONFLICT') {
+            return { success: false, message: 'No active cherry-pick conflict state.' };
+        }
+
+        const resolvedPath = path.resolve(this.workspaceRoot, filename);
+        if (!resolvedPath.startsWith(path.resolve(this.workspaceRoot))) {
+            return { success: false, message: 'Invalid conflict file path.' };
+        }
+
+        try {
+            await fs.promises.writeFile(resolvedPath, resolvedContent, 'utf-8');
+            await this.execGit(['add', filename]);
+
+            const remainingConflicts = await this.getConflictingFiles();
+            if (remainingConflicts.length > 0) {
+                const fileContents: Record<string, string> = {};
+                for (const file of remainingConflicts) {
+                    fileContents[file] = await this.getConflictContent(file);
+                }
+
+                return {
+                    success: false,
+                    requiresConflictResolution: true,
+                    conflictState: {
+                        ...conflictState,
+                        conflictingFiles: remainingConflicts,
+                        fileContents,
+                        timestamp: new Date().toISOString()
+                    },
+                    message: `${remainingConflicts.length} conflict file(s) still need resolution.`
+                };
+            }
+
+            await this.execGit(['cherry-pick', '--continue']);
+
+            const remainingHashes = conflictState.selectedHashes.slice(conflictState.currentCommitIndex);
+            if (remainingHashes.length === 0) {
+                return {
+                    success: true,
+                    message: `${conflictState.isAppending ? 'Appended' : 'Created branch with'} ${conflictState.selectedHashes.length} commits.`
+                };
+            }
+
+            return await this.performCherryPicksFromState({
+                hashes: remainingHashes,
+                branchName: conflictState.branchName,
+                baseBranch: conflictState.baseBranch,
+                isAppending: conflictState.isAppending,
+                completedBefore: conflictState.currentCommitIndex,
+                startIndex: conflictState.currentCommitIndex,
+                selectedHashes: conflictState.selectedHashes,
+                totalCommits: conflictState.totalCommits
+            });
+        } catch (error: unknown) {
+            return { success: false, message: error instanceof Error ? error.message : String(error) };
+        }
+    }
+
+    public async abortCherryPick(): Promise<CherryPickResult> {
+        try {
+            await this.execGit(['cherry-pick', '--abort']);
+            return { success: true, message: 'Cherry-pick aborted successfully.' };
+        } catch (error: unknown) {
+            return { success: false, message: error instanceof Error ? error.message : String(error) };
+        }
     }
 
     public async getBranchCommitMessages(branch: string): Promise<Set<string>> {
@@ -403,7 +502,8 @@ export class ReleaseService {
             return 'Error: Invalid branch name format';
         }
         try {
-            return await this.execGit(['diff', target, source]);
+            await this.execGit(['fetch', 'origin', source, target]);
+            return await this.execGit(['diff', `origin/${target}...origin/${source}`]);
         } catch (error) {
             return `Error fetching diff: ${error}`;
         }

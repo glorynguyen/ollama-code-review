@@ -222,4 +222,8 @@ export class ADOProvider {
             return [];
         }
     }
+
+    public async testConnection(): Promise<void> {
+        await this.adoRequest(`/${encodeURIComponent(this.project)}/_apis/git/repositories/${encodeURIComponent(this.repoId)}?api-version=7.0`);
+    }
 }
