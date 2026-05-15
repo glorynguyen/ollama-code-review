@@ -1,3 +1,15 @@
+# [4.8.0](https://github.com/glorynguyen/ollama-code-review/compare/v4.7.0...v4.8.0) (2026-05-15)
+
+
+### Bug Fixes
+
+* **release:** disable Husky during release workflow ([d9efaed](https://github.com/glorynguyen/ollama-code-review/commit/d9efaed14ee1d0ca0287fa896f45714038e78a42))
+
+
+### Features
+
+* **commands:** add batch fix all findings and copy selected files ([dfdb493](https://github.com/glorynguyen/ollama-code-review/commit/dfdb493cd7f9402b6c46d352281afa8b9082285b))
+
 # [4.7.0](https://github.com/glorynguyen/ollama-code-review/compare/v4.6.0...v4.7.0) (2026-04-27)
 
 
