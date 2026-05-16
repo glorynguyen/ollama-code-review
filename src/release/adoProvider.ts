@@ -61,13 +61,24 @@ export class ADOProvider {
     constructor(orgUrl: string, project: string, token: string, repoId: string) {
         this.orgUrl = orgUrl;
         this.project = project;
-        this.token = token;
+        this.token = token.trim();
         this.repoId = repoId;
+    }
+
+    private buildAuthHeader(): string {
+        const token = this.token.replace(/^Basic\s+/i, '').trim();
+        const decoded = Buffer.from(token, 'base64').toString('utf8');
+
+        if (decoded.includes(':')) {
+            return 'Basic ' + token;
+        }
+
+        return 'Basic ' + Buffer.from(':' + token, 'utf8').toString('base64');
     }
 
     private adoRequest<T = any>(apiPath: string, method: string = 'GET', body: Record<string, any> | null = null): Promise<T> {
         return new Promise((resolve, reject) => {
-            const authHeader = 'Basic ' + Buffer.from(':' + this.token).toString('base64');
+            const authHeader = this.buildAuthHeader();
             
             let hostname: string;
             let orgName: string;
@@ -93,7 +104,10 @@ export class ADOProvider {
                 method: method,
                 headers: {
                     'Authorization': authHeader,
-                    'Content-Type': 'application/json'
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'User-Agent': 'ollama-code-review-vscode-extension',
+                    'X-TFS-FedAuthRedirect': 'Suppress',
                 },
                 timeout: 30000 // 30 seconds timeout
             };
@@ -102,16 +116,30 @@ export class ADOProvider {
                 let data = '';
                 res.on('data', (chunk) => data += chunk);
                 res.on('end', () => {
+                    const statusCode = res.statusCode || 0;
+                    const contentTypeHeader = res.headers?.['content-type'] || res.headers?.['Content-Type'] || '';
+                    const contentType = Array.isArray(contentTypeHeader) ? contentTypeHeader.join(', ') : String(contentTypeHeader);
+                    const preview = data.replace(/\s+/g, ' ').trim().substring(0, 220) || '(empty response)';
+                    const trimmed = data.trim();
+                    const looksJson = trimmed.startsWith('{') || trimmed.startsWith('[') || contentType.toLowerCase().includes('application/json');
+
                     try {
+                        if (!looksJson) {
+                            const authHint = statusCode === 203 || /^<!doctype html|^<html/i.test(trimmed)
+                                ? ' Azure DevOps returned an HTML page instead of REST JSON; the PAT may be invalid, expired, missing access to this organization/project/repository, or being redirected to sign-in.'
+                                : '';
+                            reject(new Error(`ADO API returned non-JSON response (HTTP ${statusCode || 'unknown'}, content-type: ${contentType || 'unknown'}).${authHint} Preview: ${preview}`));
+                            return;
+                        }
                         const json = JSON.parse(data);
-                        if (res.statusCode && res.statusCode >= 400) {
+                        if (statusCode >= 400) {
                             const message = json.message || json.errorCode || `HTTP ${res.statusCode}`;
-                            reject(new Error(`ADO API Error: ${message}`));
+                            reject(new Error(`ADO API Error (HTTP ${statusCode}): ${message}`));
                         } else {
                             resolve(json);
                         }
                     } catch (e) {
-                        reject(new Error(`Failed to parse ADO response: ${e}`));
+                        reject(new Error(`Failed to parse ADO JSON response (HTTP ${statusCode || 'unknown'}, content-type: ${contentType || 'unknown'}). Preview: ${preview}. ${e}`));
                     }
                 });
             });

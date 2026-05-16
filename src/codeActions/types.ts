@@ -20,17 +20,29 @@ export interface DocumentationResult {
 	explanation: string;
 }
 
+function extractFirstCodeBlock(response: string): { code: string; end: number } | null {
+	const codeBlockRegex = /```[^\S\r\n]*(?:[a-zA-Z0-9_+#.-]+)?[^\S\r\n]*(?:\r?\n)([\s\S]*?)(?:\r?\n)?```/;
+	const match = codeBlockRegex.exec(response);
+
+	if (match && match[1] !== undefined) {
+		return {
+			code: match[1],
+			end: (match.index ?? 0) + match[0].length,
+		};
+	}
+
+	return null;
+}
+
 /**
  * Parse AI response that contains a code block followed by explanation
  */
 export function parseCodeResponse(response: string): CodeActionResult | null {
-	const codeBlockRegex = /```(?:[a-zA-Z0-9]+)?\s*\n([\s\S]+?)\n```/;
-	const match = response.match(codeBlockRegex);
+	const codeBlock = extractFirstCodeBlock(response);
 
-	if (match && match[1]) {
-		const code = match[1];
-		const explanation = response.substring(match[0].length).trim();
-		return { code, explanation };
+	if (codeBlock) {
+		const explanation = response.substring(codeBlock.end).trim();
+		return { code: codeBlock.code, explanation };
 	}
 
 	// Fallback if no code block is found
@@ -45,12 +57,11 @@ export function parseCodeResponse(response: string): CodeActionResult | null {
  * Parse AI response for test generation
  */
 export function parseTestResponse(response: string, originalFileName: string): TestGenerationResult | null {
-	const codeBlockRegex = /```(?:[a-zA-Z0-9]+)?\s*\n([\s\S]+?)\n```/;
-	const match = response.match(codeBlockRegex);
+	const codeBlock = extractFirstCodeBlock(response);
 
-	if (match && match[1]) {
-		const testCode = match[1];
-		const explanation = response.substring(match[0].length).trim();
+	if (codeBlock) {
+		const testCode = codeBlock.code;
+		const explanation = response.substring(codeBlock.end).trim();
 
 		// Generate test file name based on original file
 		const ext = originalFileName.match(/\.[^.]+$/)?.[0] || '.ts';

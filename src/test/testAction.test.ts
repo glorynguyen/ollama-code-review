@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
 import { getTestFileName, getFrameworkOptions, detectTestFramework, GenerateTestsActionProvider, GenerateTestsPanel } from '../codeActions/testAction';
-import { parseTestResponse, extractSymbolName } from '../codeActions/types';
+import { parseCodeResponse, parseTestResponse, extractSymbolName } from '../codeActions/types';
 
 suite('TestAction Test Suite', () => {
 	vscode.window.showInformationMessage('Start TestAction tests.');
@@ -81,6 +81,7 @@ suite('TestAction Test Suite', () => {
 			assert.ok(result);
 			assert.strictEqual(result!.testCode, 'import { test } from "jest";');
 			assert.strictEqual(result!.testFileName, 'utils.test.ts');
+			assert.strictEqual(result!.explanation, 'Explanation goes here.');
 		});
 
 		test('should extract explanation from response', () => {
@@ -109,6 +110,23 @@ suite('TestAction Test Suite', () => {
 			const result = parseTestResponse(response, 'app.py');
 			assert.ok(result);
 			assert.strictEqual(result!.testCode, 'def test_fn():\n    assert True');
+		});
+	});
+
+	suite('parseCodeResponse', () => {
+		test('should extract explanation after a prefaced code block', () => {
+			const response = 'Sure, here is the fix:\n```typescript\nconst x = 1;\n```\nThis removes the unsafe access.';
+			const result = parseCodeResponse(response);
+			assert.ok(result);
+			assert.strictEqual(result!.code, 'const x = 1;');
+			assert.strictEqual(result!.explanation, 'This removes the unsafe access.');
+		});
+
+		test('should parse single-line code blocks without a trailing newline', () => {
+			const response = '```typescript\nconst x = 1;```';
+			const result = parseCodeResponse(response);
+			assert.ok(result);
+			assert.strictEqual(result!.code, 'const x = 1;');
 		});
 	});
 

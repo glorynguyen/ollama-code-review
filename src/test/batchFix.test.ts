@@ -6,6 +6,7 @@ import {
 	applyFixToEditor,
 	doRangesOverlap,
 	filterOverlappingBatchFixes,
+	resolveFixApplyRange,
 	sortBatchFixesForApply,
 	type BatchFixCandidate,
 } from '../codeActions';
@@ -235,6 +236,45 @@ suite('Batch Fix Test Suite', () => {
 			assert.strictEqual(editor.document.lineAt(1).text, suggestion);
 			assert.ok(!editor.document.getText().includes(issueCode));
 			assert.ok(editor.document.getText().includes(suggestion));
+
+			await editor.document.save();
+			await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+		} finally {
+			await fs.unlink(tempPath).catch(() => undefined);
+		}
+	});
+
+	test('relocates generated fix when original code moved before apply', async () => {
+		const tempPath = path.join('/private/tmp', `ollama-code-review-fix-moved-${Date.now()}.ts`);
+		const issueCode = '    return user.name;';
+		const suggestion = '    return user?.name ?? "Unknown";';
+		const source = [
+			'function getName(user?: { name: string }) {',
+			issueCode,
+			'}',
+		].join('\n');
+
+		await fs.writeFile(tempPath, source, 'utf-8');
+
+		try {
+			const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(tempPath));
+			const editor = await vscode.window.showTextDocument(doc);
+			const originalRange = new vscode.Range(1, 0, 1, issueCode.length);
+
+			await editor.edit(editBuilder => {
+				editBuilder.insert(new vscode.Position(0, 0), '// generated header\n');
+			});
+
+			const resolution = resolveFixApplyRange(editor.document, originalRange, issueCode);
+			assert.ok(resolution.range);
+			assert.strictEqual(resolution.relocated, true);
+			assert.strictEqual(resolution.range!.start.line, 2);
+
+			const applied = await applyFixToEditor(editor, originalRange, suggestion, issueCode);
+
+			assert.strictEqual(applied, true);
+			assert.strictEqual(editor.document.lineAt(2).text, suggestion);
+			assert.ok(!editor.document.getText().includes(issueCode));
 
 			await editor.document.save();
 			await vscode.commands.executeCommand('workbench.action.closeActiveEditor');

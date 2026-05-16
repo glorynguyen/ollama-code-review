@@ -18,8 +18,9 @@ export function registerReleaseCommands(context: CommandContext): vscode.Disposa
                 password: true,
                 ignoreFocusOut: true
             });
-            if (token) {
-                await context.extensionContext.secrets.store('ado.token', token);
+            const trimmedToken = token?.trim();
+            if (trimmedToken) {
+                await context.extensionContext.secrets.store('ado.token', trimmedToken);
                 vscode.window.showInformationMessage('Azure DevOps PAT stored securely.');
             }
         })

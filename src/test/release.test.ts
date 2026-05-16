@@ -801,7 +801,7 @@ suite('Release Module Test Suite', () => {
                 statusCode: 404,
                 response: { message: 'Not Found' }
             });
-            await assert.rejects(async () => await provider.lookupTicket('123'), /ADO API Error: Not Found/);
+            await assert.rejects(async () => await provider.lookupTicket('123'), /ADO API Error \(HTTP 404\): Not Found/);
         });
 
         // ---------------------------------------------------------------------
@@ -868,7 +868,7 @@ suite('Release Module Test Suite', () => {
                 statusCode: 400,
                 response: { message: 'Bad Request' }
             });
-            await assert.rejects(async () => await provider.searchTicketsByTitle('bug'), /ADO API Error: Bad Request/);
+            await assert.rejects(async () => await provider.searchTicketsByTitle('bug'), /ADO API Error \(HTTP 400\): Bad Request/);
         });
 
         // ---------------------------------------------------------------------
@@ -977,6 +977,50 @@ suite('Release Module Test Suite', () => {
             assert.ok(capturedAuth.startsWith('Basic '));
         });
 
+        test('testConnection sends trimmed raw PAT as Basic auth token', async () => {
+            const provider = new ADOProvider(orgUrl, project, '  pat-token  ', repoId);
+            let capturedAuth = '';
+            let capturedRedirectHeader = '';
+            addRequest(opts => {
+                capturedAuth = opts.headers.Authorization;
+                capturedRedirectHeader = opts.headers['X-TFS-FedAuthRedirect'];
+                return true;
+            }, { response: { id: repoId } });
+
+            await provider.testConnection();
+
+            assert.strictEqual(capturedAuth, 'Basic ' + Buffer.from(':pat-token', 'utf8').toString('base64'));
+            assert.strictEqual(capturedRedirectHeader, 'Suppress');
+        });
+
+        test('testConnection preserves already encoded Basic token values', async () => {
+            const encodedToken = Buffer.from('ado-user:pat-token', 'utf8').toString('base64');
+            const provider = new ADOProvider(orgUrl, project, encodedToken, repoId);
+            let capturedAuth = '';
+            addRequest(opts => {
+                capturedAuth = opts.headers.Authorization;
+                return true;
+            }, { response: { id: repoId } });
+
+            await provider.testConnection();
+
+            assert.strictEqual(capturedAuth, 'Basic ' + encodedToken);
+        });
+
+        test('testConnection accepts Basic-prefixed encoded token values', async () => {
+            const encodedToken = Buffer.from(':pat-token', 'utf8').toString('base64');
+            const provider = new ADOProvider(orgUrl, project, 'Basic ' + encodedToken, repoId);
+            let capturedAuth = '';
+            addRequest(opts => {
+                capturedAuth = opts.headers.Authorization;
+                return true;
+            }, { response: { id: repoId } });
+
+            await provider.testConnection();
+
+            assert.strictEqual(capturedAuth, 'Basic ' + encodedToken);
+        });
+
         test('testConnection rejects ADO API errors', async () => {
             const provider = new ADOProvider(orgUrl, project, token, repoId);
             addRequest(opts => opts.path.includes('/_apis/git/repositories/'), {
@@ -984,7 +1028,7 @@ suite('Release Module Test Suite', () => {
                 response: { message: 'Unauthorized' }
             });
 
-            await assert.rejects(async () => await provider.testConnection(), /ADO API Error: Unauthorized/);
+            await assert.rejects(async () => await provider.testConnection(), /ADO API Error \(HTTP 401\): Unauthorized/);
         });
 
         // ---------------------------------------------------------------------
@@ -1023,7 +1067,34 @@ suite('Release Module Test Suite', () => {
             };
 
             try {
-                await assert.rejects(async () => await provider.lookupTicket('1'), /Failed to parse/);
+                await assert.rejects(async () => await provider.lookupTicket('1'), /non-JSON response/);
+            } finally {
+                httpsRequestOverride = null;
+            }
+        });
+
+        test('adoRequest explains HTML auth responses from Azure DevOps', async () => {
+            const provider = new ADOProvider(orgUrl, project, token, repoId);
+            httpsRequestOverride = (options: any, callback?: (res: any) => void) => {
+                const req = new EventEmitter();
+                (req as any).write = () => {};
+                (req as any).end = () => {
+                    process.nextTick(() => {
+                        const res = new EventEmitter();
+                        (res as any).statusCode = 203;
+                        (res as any).headers = { 'content-type': 'text/html; charset=utf-8' };
+                        if (callback) {callback(res);}
+                        process.nextTick(() => {
+                            res.emit('data', Buffer.from('<html><head><title>Sign in</title></head><body>Login</body></html>'));
+                            res.emit('end');
+                        });
+                    });
+                };
+                return req;
+            };
+
+            try {
+                await assert.rejects(async () => await provider.testConnection(), /PAT may be invalid/);
             } finally {
                 httpsRequestOverride = null;
             }
@@ -1119,6 +1190,7 @@ suite('Release Module Test Suite', () => {
             assert.ok(html.includes('id="toggle-ado-token-btn"'));
             assert.ok(html.includes('id="open-ado-settings-btn"'));
             assert.ok(html.includes('id="test-ado-btn"'));
+            assert.ok(html.includes('id="ado-test-log"'));
             assert.ok(html.includes('id="save-ado-token-btn"'));
             assert.ok(html.includes('PAT is stored securely in VS Code Secrets'));
         });
@@ -1161,6 +1233,11 @@ suite('Release Module Test Suite', () => {
                 && message.message.includes('settings are incomplete')
             )));
             assert.ok(harness.postedMessages.some(message => message.command === 'adoStatus'));
+            assert.ok(harness.postedMessages.some(message => (
+                message.command === 'adoTestLog'
+                && message.level === 'error'
+                && message.message.includes('Stopped before API request')
+            )));
         });
     });
 });

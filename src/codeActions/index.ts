@@ -29,9 +29,10 @@ export {
 	FixTracker,
 	doRangesOverlap,
 	filterOverlappingBatchFixes,
+	resolveFixApplyRange,
 	sortBatchFixesForApply
 } from './fixAction';
-export type { AppliedFix, BatchFixCandidate, SkippedBatchFix } from './fixAction';
+export type { AppliedFix, BatchFixCandidate, FixRangeResolution, SkippedBatchFix } from './fixAction';
 
 // Add Documentation Action
 export {

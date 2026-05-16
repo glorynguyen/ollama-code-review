@@ -101,6 +101,12 @@ export interface SkippedBatchFix {
 	reason: string;
 }
 
+export interface FixRangeResolution {
+	range?: vscode.Range;
+	relocated: boolean;
+	reason?: string;
+}
+
 /**
  * Track applied fixes across the session
  */
@@ -179,14 +185,71 @@ export function filterOverlappingBatchFixes(candidates: readonly BatchFixCandida
 	return { accepted, skipped };
 }
 
+export function resolveFixApplyRange(
+	document: vscode.TextDocument,
+	preferredRange: vscode.Range,
+	originalCode: string,
+): FixRangeResolution {
+	if (document.getText(preferredRange) === originalCode) {
+		return { range: preferredRange, relocated: false };
+	}
+
+	if (!originalCode) {
+		return {
+			relocated: false,
+			reason: 'The original code snippet is empty.',
+		};
+	}
+
+	const documentText = document.getText();
+	const preferredOffset = document.offsetAt(preferredRange.start);
+	const matches: number[] = [];
+	let index = documentText.indexOf(originalCode);
+
+	while (index !== -1) {
+		matches.push(index);
+		index = documentText.indexOf(originalCode, index + Math.max(1, originalCode.length));
+	}
+
+	if (matches.length === 0) {
+		return {
+			relocated: false,
+			reason: 'The original code has changed since the fix was generated.',
+		};
+	}
+
+	const bestOffset = matches.reduce((best, candidate) => {
+		const bestDistance = Math.abs(best - preferredOffset);
+		const candidateDistance = Math.abs(candidate - preferredOffset);
+		return candidateDistance < bestDistance ? candidate : best;
+	});
+
+	return {
+		range: new vscode.Range(
+			document.positionAt(bestOffset),
+			document.positionAt(bestOffset + originalCode.length),
+		),
+		relocated: true,
+	};
+}
+
 export async function applyFixToEditor(
 	editor: vscode.TextEditor,
 	range: vscode.Range,
 	fixedCode: string,
+	originalCode?: string,
 ): Promise<boolean> {
-	return editor.edit(editBuilder => {
-		editBuilder.replace(range, fixedCode);
-	});
+	const resolution = originalCode !== undefined
+		? resolveFixApplyRange(editor.document, range, originalCode)
+		: { range, relocated: false };
+
+	if (!resolution.range) {
+		return false;
+	}
+
+	const workspaceEdit = new vscode.WorkspaceEdit();
+	workspaceEdit.replace(editor.document.uri, resolution.range, fixedCode);
+	return vscode.workspace.applyEdit(workspaceEdit);
 }
 
 /**
@@ -300,9 +363,9 @@ export class FixPreviewPanel {
 
 	private async _applyFix() {
 		try {
-			const applied = await applyFixToEditor(this._editor, this._range, this._fixedCode);
+			const applied = await applyFixToEditor(this._editor, this._range, this._fixedCode, this._originalCode);
 			if (!applied) {
-				vscode.window.showErrorMessage('Failed to apply fix: VS Code rejected the edit.');
+				vscode.window.showErrorMessage('Failed to apply fix: the original code changed since the fix was generated.');
 				return;
 			}
 
@@ -577,7 +640,38 @@ export class BatchFixPreviewPanel {
 
 		try {
 			const workspaceEdit = new vscode.WorkspaceEdit();
-			const sorted = sortBatchFixesForApply(this.candidates);
+			const resolvedCandidates: BatchFixCandidate[] = [];
+			const newlySkipped: SkippedBatchFix[] = [];
+			const documents = new Map<string, vscode.TextDocument>();
+
+			for (const candidate of this.candidates) {
+				const key = candidate.fileUri.toString();
+				let document = documents.get(key);
+				if (!document) {
+					document = await vscode.workspace.openTextDocument(candidate.fileUri);
+					documents.set(key, document);
+				}
+
+				const resolution = resolveFixApplyRange(document, candidate.range, candidate.originalCode);
+				if (!resolution.range) {
+					newlySkipped.push({
+						finding: candidate.finding,
+						reason: resolution.reason ?? `Could not locate original code in ${candidate.filePath}.`,
+					});
+					continue;
+				}
+
+				resolvedCandidates.push({ ...candidate, range: resolution.range });
+			}
+
+			const filtered = filterOverlappingBatchFixes(resolvedCandidates);
+			newlySkipped.push(...filtered.skipped);
+			const sorted = sortBatchFixesForApply(filtered.accepted);
+
+			if (sorted.length === 0) {
+				vscode.window.showErrorMessage('Failed to apply batch fixes: the original code changed since the fixes were generated.');
+				return;
+			}
 
 			for (const candidate of sorted) {
 				workspaceEdit.replace(candidate.fileUri, candidate.range, candidate.fixedCode);
@@ -590,7 +684,7 @@ export class BatchFixPreviewPanel {
 			}
 
 			const tracker = FixTracker.getInstance();
-			for (const candidate of this.candidates) {
+			for (const candidate of sorted) {
 				tracker.recordFix({
 					timestamp: new Date(),
 					fileName: path.basename(candidate.filePath),
@@ -602,7 +696,10 @@ export class BatchFixPreviewPanel {
 				await vscode.commands.executeCommand('ollama-code-review.ignoreFinding', candidate.finding);
 			}
 
-			vscode.window.showInformationMessage(`Applied ${this.candidates.length} batch fix${this.candidates.length === 1 ? '' : 'es'}.`);
+			const skippedText = newlySkipped.length
+				? ` ${newlySkipped.length} fix${newlySkipped.length === 1 ? '' : 'es'} skipped because the target code changed or overlapped.`
+				: '';
+			vscode.window.showInformationMessage(`Applied ${sorted.length} batch fix${sorted.length === 1 ? '' : 'es'}.${skippedText}`);
 			this.dispose();
 		} catch (error) {
 			vscode.window.showErrorMessage(`Failed to apply batch fixes: ${error instanceof Error ? error.message : String(error)}`);

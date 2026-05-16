@@ -60,11 +60,13 @@ export class ReleaseWebviewPanel {
     private _targetBranch: string | undefined;
     private _isUpdating: boolean = false;
     private _currentConflictState: ConflictState | undefined;
+    private readonly _outputChannel: vscode.OutputChannel;
 
     private constructor(panel: vscode.WebviewPanel, context: vscode.ExtensionContext, workspaceRoot: string) {
         this._panel = panel;
         this._extensionContext = context;
         this._releaseService = new ReleaseService(workspaceRoot);
+        this._outputChannel = vscode.window.createOutputChannel('Ollama Code Review - Release Orchestrator');
         
         this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
         this._panel.webview.onDidReceiveMessage(
@@ -375,7 +377,7 @@ export class ReleaseWebviewPanel {
         const orgUrl = config.get<string>('orgUrl');
         const project = config.get<string>('project');
         const repoId = config.get<string>('repoId');
-        const token = await this._extensionContext.secrets.get('ado.token');
+        const token = (await this._extensionContext.secrets.get('ado.token'))?.trim();
 
         this._adoProvider = undefined;
         if (orgUrl && project && token && repoId) {
@@ -406,11 +408,27 @@ export class ReleaseWebviewPanel {
         this._panel.webview.postMessage({ command: 'adoStatus', data: status, message });
     }
 
+    private _appendAdoTestLog(message: string, level: 'info' | 'success' | 'error' = 'info', clear = false) {
+        const line = `[${new Date().toISOString()}] [ADO PAT Test] ${message}`;
+        this._outputChannel.appendLine(line);
+        this._panel.webview.postMessage({
+            command: 'adoTestLog',
+            level,
+            message,
+            timestamp: new Date().toLocaleTimeString(),
+            clear
+        });
+    }
+
     private async _testAdoConnection() {
+        this._appendAdoTestLog('Starting Azure DevOps PAT connection test.', 'info', true);
         await this._initializeProvider();
         const status = await this._getAdoStatus();
+        this._appendAdoTestLog(`Configuration loaded: orgUrl=${status.orgUrl || '(missing)'}, project=${status.project || '(missing)'}, repoId=${status.repoId || '(missing)'}, pat=${status.hasToken ? 'present' : 'missing'}.`);
 
         if (!status.isConfigured) {
+            this._appendAdoTestLog('Stopped before API request: org URL, project, or repository setting is missing.', 'error');
+            this._outputChannel.show(true);
             this._panel.webview.postMessage({
                 command: 'adoStatusResult',
                 success: false,
@@ -421,6 +439,8 @@ export class ReleaseWebviewPanel {
         }
 
         if (!status.hasToken || !this._adoProvider) {
+            this._appendAdoTestLog('Stopped before API request: Azure DevOps PAT is missing from VS Code Secrets.', 'error');
+            this._outputChannel.show(true);
             this._panel.webview.postMessage({
                 command: 'adoStatusResult',
                 success: false,
@@ -431,17 +451,25 @@ export class ReleaseWebviewPanel {
         }
 
         try {
+            this._appendAdoTestLog('Sending repository lookup request to Azure DevOps.');
             await this._adoProvider.testConnection();
+            this._appendAdoTestLog('Azure DevOps accepted the PAT and repository lookup succeeded.', 'success');
             this._panel.webview.postMessage({
                 command: 'adoStatusResult',
                 success: true,
                 message: 'Azure DevOps connection looks good.'
             });
         } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : String(error);
+            this._appendAdoTestLog(`Connection test failed: ${message}`, 'error');
+            if (error instanceof Error && error.stack) {
+                this._outputChannel.appendLine(error.stack);
+            }
+            this._outputChannel.show(true);
             this._panel.webview.postMessage({
                 command: 'adoStatusResult',
                 success: false,
-                message: error instanceof Error ? error.message : String(error)
+                message
             });
         }
         await this._postAdoStatus();
@@ -615,52 +643,94 @@ export class ReleaseWebviewPanel {
     <script nonce="${nonce}" src="${coreScriptUri}"></script>
     <script nonce="${nonce}" src="${scriptUri}"></script>
     <style>
-        /* Ported CSS from diff.js */
-        :root { --primary: #0052cc; --bg: var(--vscode-sideBar-background); --border: var(--vscode-panel-border); --text: var(--vscode-foreground); }
+        :root {
+            --primary: var(--vscode-button-background);
+            --bg: var(--vscode-sideBar-background);
+            --border: var(--vscode-panel-border);
+            --text: var(--vscode-foreground);
+            --muted: var(--vscode-descriptionForeground);
+            --surface: color-mix(in srgb, var(--vscode-editor-background) 88%, var(--vscode-foreground) 12%);
+            --surface-soft: color-mix(in srgb, var(--vscode-editor-background) 94%, var(--vscode-foreground) 6%);
+            --focus: var(--vscode-focusBorder, var(--vscode-button-background));
+        }
         body { font-family: var(--vscode-font-family); background: var(--vscode-editor-background); color: var(--text); margin: 0; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
-        header { background: var(--vscode-editor-background); padding: 10px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; z-index: 10; }
-        .branch-tag { cursor: pointer; padding: 2px 6px; border-radius: 3px; background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); font-family: monospace; border: 1px solid transparent; }
-        .branch-tag:hover { border-color: var(--primary); background: var(--vscode-button-secondaryHoverBackground); }
-        .ado-chip { border: 1px solid var(--border); border-radius: 999px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); padding: 4px 10px; font-size: 0.78rem; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+        header { background: var(--vscode-editor-background); padding: 12px 28px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; gap: 18px; z-index: 10; }
+        .top-left, .top-actions, .branch-flow, .branch-picker { display: flex; align-items: center; }
+        .top-left { gap: 16px; min-width: 0; }
+        .top-actions { gap: 8px; }
+        .branch-flow { gap: 8px; min-width: 0; }
+        .branch-picker { gap: 7px; font-weight: 600; }
+        .branch-label { color: var(--muted); font-size: 0.74rem; font-weight: 500; text-transform: uppercase; }
+        .branch-tag { cursor: pointer; padding: 4px 8px; border-radius: 4px; background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); font-family: monospace; border: 1px solid transparent; }
+        .branch-tag:hover { border-color: var(--focus); background: var(--vscode-button-secondaryHoverBackground); }
+        .branch-arrow { color: var(--muted); font-size: 1.05rem; }
+        .ado-chip { border: 1px solid var(--border); border-radius: 999px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); padding: 5px 12px; font-size: 0.8rem; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
         .ado-chip.connected { border-color: rgba(63, 185, 80, 0.55); color: #3fb950; }
         .ado-chip.warning { border-color: rgba(210, 153, 34, 0.65); color: #d29922; }
         .ado-chip.error { border-color: rgba(248, 81, 73, 0.65); color: #ff7b72; }
         .main-container { display: flex; flex: 1; overflow: hidden; }
-        .col-left { width: 400px; background: var(--vscode-sideBar-background); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+        .col-left { width: 400px; background: var(--vscode-sideBar-background); border-right: 1px solid color-mix(in srgb, var(--border) 72%, transparent); display: flex; flex-direction: column; overflow: hidden; }
         .col-right { flex: 1; display: flex; flex-direction: column; background: var(--vscode-editor-background); overflow: hidden; }
-        .list-header { padding: 10px; background: var(--vscode-sideBar-background); font-weight: 600; font-size: 0.85rem; text-transform: uppercase; border-bottom: 1px solid var(--border); display:flex; justify-content:space-between; }
+        .list-header { padding: 14px 18px 10px; background: var(--vscode-sideBar-background); font-weight: 650; font-size: 0.78rem; letter-spacing: 0; text-transform: uppercase; border-bottom: 1px solid color-mix(in srgb, var(--border) 78%, transparent); display:flex; justify-content:space-between; align-items:center; gap: 10px; }
+        .list-title { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+        .list-kicker { color: var(--muted); font-size: 0.72rem; font-weight: 500; text-transform: none; }
+        .section-actions { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; }
+        .section-toggle { width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border-radius: 4px; }
+        .section-toggle .collapse-icon { width: 0; height: 0; border-top: 4px solid transparent; border-bottom: 4px solid transparent; border-left: 6px solid currentColor; transform: rotate(0deg); transition: transform 0.14s ease; }
+        .section-toggle[aria-expanded="true"] .collapse-icon { transform: rotate(90deg); }
+        .section-refresh { width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border-radius: 4px; }
         .commit-pool { flex: 1; overflow-y: auto; padding: 10px; }
-        .commit-card { background: var(--vscode-editor-background); border: 1px solid var(--border); border-radius: 3px; padding: 8px; margin-bottom: 8px; cursor: move; transition: 0.2s; position: relative; }
-        .commit-card:hover { border-color: var(--primary); }
+        .commit-card { background: var(--vscode-editor-background); border: 1px solid var(--border); border-radius: 6px; padding: 9px; margin-bottom: 8px; cursor: move; transition: 0.2s; position: relative; }
+        .commit-card:hover { border-color: var(--focus); }
         .commit-card.selected { border-color: var(--primary); background: var(--vscode-editor-selectionBackground); }
         .commit-card.dragging { opacity: 0.5; }
         .c-msg { font-size: 0.9rem; font-weight: 500; margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .c-meta { font-size: 0.75rem; opacity: 0.8; display: flex; justify-content: space-between; }
         .c-tag { background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); padding: 1px 4px; border-radius: 3px; font-family: monospace; }
         
-        .plan-header { padding: 15px; border-bottom: 1px solid var(--border); display: flex; gap: 10px; align-items: center; background: var(--vscode-editor-background); }
-        .ticket-search-wrapper { position: relative; width: 350px; }
-        .ticket-input { padding: 8px; border: 1px solid var(--border); border-radius: 4px; width: 100%; box-sizing: border-box; background: var(--vscode-input-background); color: var(--vscode-input-foreground); outline: none; }
+        .plan-header { padding: 16px 28px; border-bottom: 1px solid var(--border); display: grid; grid-template-columns: minmax(260px, 1fr) auto; gap: 16px; align-items: end; background: var(--vscode-editor-background); }
+        .plan-title { margin: 0 0 4px; font-size: 1rem; font-weight: 650; }
+        .plan-subtitle { color: var(--muted); font-size: 0.82rem; }
+        .ticket-entry { display: flex; gap: 8px; align-items: center; justify-content: flex-end; min-width: 420px; }
+        .ticket-search-wrapper { position: relative; flex: 1; min-width: 220px; }
+        .ticket-input { padding: 8px 10px; border: 1px solid var(--border); border-radius: 5px; width: 100%; box-sizing: border-box; background: var(--vscode-input-background); color: var(--vscode-input-foreground); outline: none; }
+        .ticket-input:focus { border-color: var(--focus); }
         .search-results { display: none; position: absolute; top: 100%; left: 0; right: 0; z-index: 20; max-height: 260px; overflow-y: auto; border: 1px solid var(--border); background: var(--vscode-menu-background); color: var(--vscode-menu-foreground); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
         .search-item { padding: 8px 10px; cursor: pointer; border-bottom: 1px solid var(--border); }
         .search-item:hover { background: var(--vscode-menu-selectionBackground); color: var(--vscode-menu-selectionForeground); }
         
-        .plan-board { flex: 1; overflow-y: auto; padding: 20px; background: var(--vscode-panel-background); display: flex; flex-direction: column; gap: 15px; }
-        .ticket-bucket { background: var(--vscode-editor-background); border-radius: 4px; border: 1px solid var(--border); overflow: hidden; display: flex; flex-direction: column; }
+        .plan-board { flex: 1; overflow-y: auto; padding: 18px 28px 28px; background: var(--vscode-panel-background); display: flex; flex-direction: column; gap: 14px; }
+        .draft-panel { background: var(--vscode-editor-background); border: 1px solid var(--border); border-radius: 8px; padding: 18px; }
+        .draft-panel.is-empty { min-height: 260px; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; }
+        .draft-title { margin: 0; font-size: 1.15rem; font-weight: 700; }
+        .draft-copy { color: var(--muted); line-height: 1.45; margin: 8px 0 0; max-width: 620px; }
+        .setup-steps { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 10px; margin: 18px 0; width: 100%; }
+        .setup-step { border: 1px solid color-mix(in srgb, var(--border) 78%, transparent); border-radius: 6px; padding: 10px; background: var(--surface-soft); }
+        .setup-step strong { display: block; margin-bottom: 5px; font-size: 0.82rem; }
+        .setup-step span { color: var(--muted); font-size: 0.78rem; line-height: 1.35; }
+        .draft-actions, .draft-metrics { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+        .draft-metrics { margin-top: 14px; }
+        .metric { border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; min-width: 120px; background: var(--surface-soft); }
+        .metric-value { font-size: 1.1rem; font-weight: 700; }
+        .metric-label { color: var(--muted); font-size: 0.74rem; }
+        .ticket-bucket { background: var(--vscode-editor-background); border-radius: 8px; border: 1px solid var(--border); overflow: hidden; display: flex; flex-direction: column; }
         .tb-header { padding: 10px 15px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
         .tb-title { font-weight: 600; display: flex; align-items: center; gap: 10px; }
         .tb-content { min-height: 60px; padding: 10px; background: var(--vscode-editor-background); }
         .tb-content.drag-over { background: var(--vscode-editor-selectionBackground); }
-        .empty-bucket { text-align: center; opacity: 0.5; font-size: 0.9rem; padding: 15px; border: 2px dashed var(--border); border-radius: 4px; }
+        .empty-bucket { text-align: center; color: var(--muted); font-size: 0.9rem; padding: 18px; border: 1px dashed color-mix(in srgb, var(--border) 82%, transparent); border-radius: 6px; background: var(--surface-soft); line-height: 1.45; }
+        .empty-bucket strong { color: var(--text); display: block; margin-bottom: 4px; }
+        .empty-action { margin-top: 10px; }
         
-        .btn { background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; padding: 8px 16px; border-radius: 2px; cursor: pointer; }
+        .btn { background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: 1px solid transparent; padding: 8px 14px; border-radius: 5px; cursor: pointer; font-weight: 600; line-height: 1.1; }
         .btn:hover { background: var(--vscode-button-hoverBackground); }
         .btn-sec { background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
         .btn-sec:hover { background: var(--vscode-button-secondaryHoverBackground); }
+        .btn:disabled, .btn-sec:disabled { opacity: 0.55; cursor: not-allowed; }
         
         /* New Filter & Availability Styles */
-        .filter-controls { display: flex; gap: 5px; padding: 10px; background: var(--vscode-sideBar-background); border-bottom: 1px solid var(--border); }
-        .filter-btn { flex: 1; padding: 4px 0; font-size: 0.75rem; border: 1px solid var(--border); background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border-radius: 3px; cursor: pointer; }
+        .filter-controls { display: flex; gap: 6px; padding: 10px 18px 12px; background: var(--vscode-sideBar-background); border-bottom: 1px solid var(--border); }
+        .filter-btn { flex: 1; padding: 7px 0; font-size: 0.78rem; border: 1px solid var(--border); background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border-radius: 5px; cursor: pointer; }
         .filter-btn.active { background: var(--vscode-button-background); color: var(--vscode-button-foreground); border-color: var(--vscode-button-background); }
         
         .commit-card.user-excluded { opacity: 0.5; background: var(--vscode-editor-inactiveSelectionBackground); border-style: dashed; }
@@ -686,8 +756,15 @@ export class ReleaseWebviewPanel {
         .setup-status { display: none; margin-top: 10px; font-size: 0.85rem; }
         .setup-status.success { color: #3fb950; }
         .setup-status.error { color: #ff7b72; }
+        .setup-log { display: none; margin-top: 14px; border: 1px solid var(--border); border-radius: 6px; background: var(--vscode-textCodeBlock-background, var(--surface-soft)); max-height: 170px; overflow: auto; font-family: var(--vscode-editor-font-family); font-size: 0.76rem; line-height: 1.45; }
+        .setup-log-header { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 7px 9px; border-bottom: 1px solid var(--border); color: var(--muted); font-family: var(--vscode-font-family); font-size: 0.75rem; }
+        .setup-log-body { padding: 8px 9px; white-space: pre-wrap; }
+        .setup-log-line { margin-bottom: 4px; }
+        .setup-log-line.success { color: #3fb950; }
+        .setup-log-line.error { color: #ff7b72; }
         .diff-container { flex: 1; overflow: auto; background: var(--vscode-editor-background); padding: 10px; border: 1px solid var(--border); margin-top: 15px; }
         .release-list-container { max-height: 220px; overflow-y: auto; border-bottom: 1px solid var(--border); }
+        .release-list-container.is-collapsed { display: none; }
         .release-item, .pr-item { padding: 8px 10px; border-bottom: 1px solid var(--border); cursor: pointer; font-size: 0.85rem; }
         .release-item:hover, .pr-item:hover { background: var(--vscode-list-hoverBackground); }
         .release-item.drag-over { outline: 2px dashed var(--primary); outline-offset: -4px; }
@@ -701,6 +778,13 @@ export class ReleaseWebviewPanel {
         .conflict-file-btn { border: 1px solid var(--border); background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); padding: 4px 8px; cursor: pointer; }
         .conflict-file-btn.active { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
         .conflict-editor { width: 100%; height: 45vh; box-sizing: border-box; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--border); font-family: var(--vscode-editor-font-family); padding: 10px; }
+
+        @media (max-width: 920px) {
+            header, .plan-header { align-items: stretch; flex-direction: column; }
+            .plan-header { display: flex; }
+            .ticket-entry { min-width: 0; justify-content: stretch; }
+            .setup-steps { grid-template-columns: 1fr 1fr; }
+        }
 
         /* diff2html professional VS Code theme integration */
         :root {
@@ -777,6 +861,32 @@ export class ReleaseWebviewPanel {
             border-color: var(--border) !important;
             color: var(--diff-muted) !important;
         }
+        .diff-container .d2h-file-side-diff {
+            overflow-x: auto !important;
+        }
+        .diff-container .d2h-code-side-line {
+            align-items: stretch;
+            display: inline-flex !important;
+            min-width: 100%;
+            padding: 0 !important;
+            width: max-content !important;
+        }
+        .diff-container .d2h-code-side-linenumber {
+            align-items: center;
+            display: inline-flex !important;
+            flex: 0 0 4em;
+            justify-content: flex-end;
+            padding: 0 0.5em;
+            position: static !important;
+        }
+        .diff-container .d2h-code-side-line .d2h-code-line-prefix {
+            flex: 0 0 auto;
+            padding: 0 0.35em;
+        }
+        .diff-container .d2h-code-side-line .d2h-code-line-ctn {
+            flex: 1 0 auto;
+            min-width: 0;
+        }
         .d2h-code-side-emptyplaceholder,
         .d2h-emptyplaceholder {
             background-color: var(--diff-empty-bg) !important;
@@ -826,37 +936,54 @@ export class ReleaseWebviewPanel {
 </head>
 <body>
     <header>
-        <div style="font-weight:bold; display:flex; align-items:center; gap:8px;">
-            <span id="source-branch" class="branch-tag" title="Click to change source branch">...</span>
-            <span>→</span>
-            <span id="target-branch" class="branch-tag" title="Click to change target branch">...</span>
-            <button class="btn btn-sec" id="refresh-btn" style="padding: 2px 8px; font-size: 0.8rem;" title="Compare branches and refresh commits">🔄 Compare</button>
+        <div class="top-left">
+            <div class="branch-flow">
+                <span class="branch-label">Compare</span>
+                <div class="branch-picker">
+                    <span id="source-branch" class="branch-tag" title="Click to change source branch">...</span>
+                    <span class="branch-arrow">→</span>
+                    <span id="target-branch" class="branch-tag" title="Click to change target branch">...</span>
+                </div>
+            </div>
+            <button class="btn btn-sec" id="refresh-btn" title="Compare branches and refresh commits">↻ Compare</button>
             <button class="ado-chip warning" id="ado-status-chip" title="Configure Azure DevOps connection">ADO: Checking...</button>
         </div>
-        <div style="display:flex; align-items:center; gap:8px;">
+        <div class="top-actions">
             <span id="action-status" style="font-size:0.8rem; color:#00875a; display:none; font-weight:bold;">Copied!</span>
-            <button class="btn btn-sec" id="ai-prompt-btn" title="Generate AI Release Note Prompt">✨ AI Note Prompt</button>
-            <button class="btn btn-sec" id="copy-cp-btn" title="Copy cherry-pick command for all planned commits">📋 Copy CP Cmd</button>
-            <button class="btn" id="show-release-modal-btn">🚀 Create Release</button>
+            <button class="btn btn-sec" id="ai-prompt-btn" title="Generate AI Release Note Prompt">AI Notes</button>
+            <button class="btn btn-sec" id="copy-cp-btn" title="Copy cherry-pick command for all planned commits">Copy Command</button>
+            <button class="btn" id="show-release-modal-btn">Create Release</button>
         </div>
     </header>
     <div class="main-container">
         <div class="col-left">
             <div class="list-header">
-                <span>Active Releases</span>
-                <button class="btn-sec" id="refresh-releases-btn" style="padding: 2px 8px;">↻</button>
+                <div class="list-title">
+                    <span>Active Releases</span>
+                    <span class="list-kicker">Previously created plans</span>
+                </div>
+                <div class="section-actions">
+                    <button class="btn btn-sec section-toggle" id="toggle-releases-btn" type="button" title="Expand active releases" aria-label="Expand active releases" aria-controls="release-list" aria-expanded="false"><span class="collapse-icon" aria-hidden="true"></span></button>
+                    <button class="btn btn-sec section-refresh" id="refresh-releases-btn" title="Refresh releases">↻</button>
+                </div>
             </div>
-            <div id="release-list" class="release-list-container"></div>
+            <div id="release-list" class="release-list-container is-collapsed" hidden></div>
             <div class="list-header" style="margin-top: 8px;">
-                <span>Pull Requests</span>
-                <button class="btn-sec" id="refresh-prs-btn" style="padding: 2px 8px;">↻</button>
+                <div class="list-title">
+                    <span>Pull Requests</span>
+                    <span class="list-kicker">From Azure DevOps</span>
+                </div>
+                <div class="section-actions">
+                    <button class="btn btn-sec section-toggle" id="toggle-prs-btn" type="button" title="Expand pull requests" aria-label="Expand pull requests" aria-controls="pr-section" aria-expanded="false"><span class="collapse-icon" aria-hidden="true"></span></button>
+                    <button class="btn btn-sec section-refresh" id="refresh-prs-btn" title="Refresh pull requests">↻</button>
+                </div>
             </div>
-            <div id="pr-section" class="release-list-container"></div>
+            <div id="pr-section" class="release-list-container is-collapsed" hidden></div>
             <div class="list-header" style="display: block;">
                 <div style="display:flex; justify-content:space-between; margin-bottom: 5px;">
                     <span>Unassigned Commits (<span id="pool-count">0</span>)</span>
                 </div>
-                <input id="commit-search" type="text" placeholder="Filter message..." style="width:100%; box-sizing:border-box; padding:5px; border:1px solid var(--border); border-radius:3px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); font-size:0.9rem;">
+                <input id="commit-search" type="text" placeholder="Filter commits by message..." style="width:100%; box-sizing:border-box; padding:7px 8px; border:1px solid var(--border); border-radius:5px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); font-size:0.9rem;">
             </div>
             <div class="filter-controls">
                 <button class="filter-btn active" id="filter-all">Show All</button>
@@ -866,12 +993,18 @@ export class ReleaseWebviewPanel {
         </div>
         <div class="col-right">
             <div class="plan-header">
-                <div class="ticket-search-wrapper">
-                    <input type="text" id="ticket-input" class="ticket-input" placeholder="Ticket ID or Title...">
-                    <div id="search-results" class="search-results"></div>
+                <div>
+                    <h2 class="plan-title">Release Draft</h2>
+                    <div class="plan-subtitle">Search ADO tickets, add manual placeholders, then drag commits into the right ticket.</div>
                 </div>
-                <button class="btn btn-sec" id="add-ticket-btn" title="Search for ticket in ADO">🔍 Search ADO</button>
-                <button class="btn btn-sec" id="add-manual-btn" title="Create a manual placeholder ticket">➕ Manual</button>
+                <div class="ticket-entry">
+                    <div class="ticket-search-wrapper">
+                        <input type="text" id="ticket-input" class="ticket-input" placeholder="Ticket ID, title, or manual note">
+                        <div id="search-results" class="search-results"></div>
+                    </div>
+                    <button class="btn btn-sec" id="add-ticket-btn" title="Search for ticket in ADO">Search ADO</button>
+                    <button class="btn btn-sec" id="add-manual-btn" title="Create a manual placeholder ticket">Manual</button>
+                </div>
             </div>
             <div id="plan-board" class="plan-board"></div>
         </div>
@@ -912,9 +1045,16 @@ export class ReleaseWebviewPanel {
                     <input id="ado-token-input" class="modal-input" type="password" placeholder="Paste Azure DevOps PAT">
                     <button class="btn-sec" id="toggle-ado-token-btn" style="white-space:nowrap;">Show</button>
                 </div>
-                <div class="setup-hint">PAT is stored securely in VS Code Secrets. Existing org, project, and repo values come from VS Code settings.</div>
+                <div class="setup-hint">PAT is stored securely in VS Code Secrets. You can paste a raw PAT or an already Base64-encoded Basic token value.</div>
             </div>
             <div id="ado-setup-status" class="setup-status"></div>
+            <div id="ado-test-log" class="setup-log" aria-live="polite">
+                <div class="setup-log-header">
+                    <span>Connection test log</span>
+                    <button class="btn-sec" id="clear-ado-log-btn" style="padding:2px 6px;">Clear</button>
+                </div>
+                <div id="ado-test-log-body" class="setup-log-body"></div>
+            </div>
             <div style="display:flex; justify-content:space-between; gap:8px; margin-top:18px;">
                 <button class="btn-sec" id="open-ado-settings-btn">Open ADO Settings</button>
                 <div style="display:flex; gap:8px;">
@@ -1000,6 +1140,23 @@ export class ReleaseWebviewPanel {
         let pendingTicketDetailsResolve = null;
         let pendingCommitBodyResolve = null;
         let pendingPrDiffResolve = null;
+        const savedWebviewState = vscode.getState() || {};
+        let collapsedSections = {
+            releases: savedWebviewState.collapsedSections?.releases ?? true,
+            prs: savedWebviewState.collapsedSections?.prs ?? true
+        };
+        const collapsibleSectionConfig = {
+            releases: {
+                buttonId: 'toggle-releases-btn',
+                containerId: 'release-list',
+                label: 'active releases'
+            },
+            prs: {
+                buttonId: 'toggle-prs-btn',
+                containerId: 'pr-section',
+                label: 'pull requests'
+            }
+        };
 
         window.addEventListener('click', () => {
             document.getElementById('context-menu').style.display = 'none';
@@ -1026,13 +1183,13 @@ export class ReleaseWebviewPanel {
                     sourceBranch = message.sourceBranch;
                     document.getElementById('source-branch').innerText = message.sourceBranch;
                     document.getElementById('target-branch').innerText = message.targetBranch;
-                    document.getElementById('refresh-btn').innerText = '🔄 Compare';
+                    document.getElementById('refresh-btn').innerText = '↻ Compare';
                     init();
                     loadPullRequests();
                     break;
                 case 'error':
                     alert('Error: ' + message.message);
-                    document.getElementById('refresh-btn').innerText = '🔄 Compare';
+                    document.getElementById('refresh-btn').innerText = '↻ Compare';
                     break;
                 case 'ticketDetailsBulk':
                     if (pendingTicketDetailsResolve) {
@@ -1067,6 +1224,9 @@ export class ReleaseWebviewPanel {
                     break;
                 case 'adoStatusResult':
                     showAdoSetupStatus(message.message, !!message.success);
+                    break;
+                case 'adoTestLog':
+                    appendAdoTestLog(message);
                     break;
                 case 'releaseDeleted':
                     showStatus('Release Deleted');
@@ -1118,11 +1278,56 @@ export class ReleaseWebviewPanel {
             }
         });
 
+        function persistCollapsibleSectionState() {
+            const currentState = vscode.getState() || {};
+            vscode.setState({
+                ...currentState,
+                collapsedSections
+            });
+        }
+
+        function setSectionCollapsed(section, collapsed, persist = true) {
+            const config = collapsibleSectionConfig[section];
+            if (!config) return;
+
+            collapsedSections[section] = collapsed;
+
+            const button = document.getElementById(config.buttonId);
+            const container = document.getElementById(config.containerId);
+            const action = collapsed ? 'Expand' : 'Collapse';
+
+            if (container) {
+                container.hidden = collapsed;
+                container.classList.toggle('is-collapsed', collapsed);
+            }
+
+            if (button) {
+                button.setAttribute('aria-expanded', String(!collapsed));
+                button.title = action + ' ' + config.label;
+                button.setAttribute('aria-label', action + ' ' + config.label);
+            }
+
+            if (persist) {
+                persistCollapsibleSectionState();
+            }
+        }
+
+        function toggleSection(section) {
+            setSectionCollapsed(section, !collapsedSections[section]);
+        }
+
+        function syncCollapsibleSections() {
+            Object.keys(collapsibleSectionConfig).forEach(section => {
+                setSectionCollapsed(section, collapsedSections[section], false);
+            });
+        }
+
         function init() {
             const pool = document.getElementById('commit-pool');
             pool.innerHTML = '';
             const board = document.getElementById('plan-board');
             board.innerHTML = '';
+            renderDraftPanel();
             
             const assignedHashes = new Set();
             Object.values(mapping).forEach(ticket => {
@@ -1138,9 +1343,9 @@ export class ReleaseWebviewPanel {
             });
 
             if (count === 0 && allCommits.length === 0) {
-                pool.innerHTML = '<div class="empty-bucket">No unique commits found between these branches.</div>';
+                pool.innerHTML = '<div class="empty-bucket"><strong>No branch differences</strong>No unique commits found between these branches.</div>';
             } else if (count === 0 && allCommits.length > 0) {
-                pool.innerHTML = '<div class="empty-bucket">All commits are already assigned to tickets.</div>';
+                pool.innerHTML = '<div class="empty-bucket"><strong>All commits assigned</strong>Every available commit is already in the release draft.</div>';
             }
             
             Object.values(mapping).forEach(t => {
@@ -1161,6 +1366,83 @@ export class ReleaseWebviewPanel {
             setupDragAndDrop();
         }
 
+        function renderDraftPanel() {
+            const board = document.getElementById('plan-board');
+            const panel = document.createElement('div');
+            panel.id = 'draft-panel';
+            panel.className = 'draft-panel';
+            board.appendChild(panel);
+            updateDraftSummary();
+        }
+
+        function updateDraftSummary() {
+            const panel = document.getElementById('draft-panel');
+            if (!panel) return;
+
+            const tickets = Array.from(document.querySelectorAll('.ticket-bucket'));
+            const plannedCommits = Array.from(document.querySelectorAll('.ticket-bucket .commit-card'));
+            const hasAdo = !!(adoStatus && adoStatus.isConfigured && adoStatus.hasToken);
+
+            if (tickets.length === 0) {
+                panel.className = 'draft-panel is-empty';
+                const connectLabel = hasAdo ? 'ADO Connected' : 'Connect Azure DevOps';
+                const connectDisabled = hasAdo ? ' disabled' : '';
+                panel.innerHTML =
+                    '<h2 class="draft-title">Create a release</h2>' +
+                    '<p class="draft-copy">Start by connecting Azure DevOps or adding a manual ticket, then compare branches and drag commits into the release draft.</p>' +
+                    '<div class="setup-steps">' +
+                        '<div class="setup-step"><strong>1. Connect</strong><span>Load pull requests and searchable ADO tickets.</span></div>' +
+                        '<div class="setup-step"><strong>2. Compare</strong><span>Find commits that have not reached the target branch.</span></div>' +
+                        '<div class="setup-step"><strong>3. Select</strong><span>Add tickets, then assign commits to each one.</span></div>' +
+                        '<div class="setup-step"><strong>4. Release</strong><span>Generate notes, copy commands, or create the branch.</span></div>' +
+                    '</div>' +
+                    '<div class="draft-actions">' +
+                        '<button class="btn" id="draft-connect-ado-btn"' + connectDisabled + '>' + connectLabel + '</button>' +
+                        '<button class="btn btn-sec" id="draft-manual-btn">Add Manual Ticket</button>' +
+                        '<button class="btn btn-sec" id="draft-compare-btn">Compare Branches</button>' +
+                    '</div>';
+
+                const connectBtn = document.getElementById('draft-connect-ado-btn');
+                if (connectBtn && !hasAdo) {
+                    connectBtn.addEventListener('click', showAdoSetupModal);
+                }
+                const manualBtn = document.getElementById('draft-manual-btn');
+                if (manualBtn) {
+                    manualBtn.addEventListener('click', () => {
+                        document.getElementById('ticket-input').focus();
+                    });
+                }
+                const compareBtn = document.getElementById('draft-compare-btn');
+                if (compareBtn) {
+                    compareBtn.addEventListener('click', refreshComparison);
+                }
+                return;
+            }
+
+            panel.className = 'draft-panel';
+            panel.innerHTML =
+                '<div style="display:flex; justify-content:space-between; gap:12px; align-items:flex-start;">' +
+                    '<div>' +
+                        '<h2 class="draft-title">Release Draft</h2>' +
+                        '<p class="draft-copy">Review the selected tickets and commits before creating the release branch.</p>' +
+                    '</div>' +
+                    '<div class="draft-actions">' +
+                        '<button class="btn btn-sec" id="draft-ai-notes-btn">AI Notes</button>' +
+                        '<button class="btn btn-sec" id="draft-copy-command-btn">Copy Command</button>' +
+                        '<button class="btn" id="draft-create-release-btn">Create Release</button>' +
+                    '</div>' +
+                '</div>' +
+                '<div class="draft-metrics">' +
+                    '<div class="metric"><div class="metric-value">' + tickets.length + '</div><div class="metric-label">Tickets selected</div></div>' +
+                    '<div class="metric"><div class="metric-value">' + plannedCommits.length + '</div><div class="metric-label">Commits planned</div></div>' +
+                    '<div class="metric"><div class="metric-value">' + document.getElementById('pool-count').innerText + '</div><div class="metric-label">Unassigned commits</div></div>' +
+                '</div>';
+
+            document.getElementById('draft-ai-notes-btn').addEventListener('click', generateAiPrompt);
+            document.getElementById('draft-copy-command-btn').addEventListener('click', copyLocalCherryPick);
+            document.getElementById('draft-create-release-btn').addEventListener('click', showReleaseModal);
+        }
+
         function renderReleaseList() {
             const container = document.getElementById('release-list');
             container.innerHTML = '';
@@ -1171,7 +1453,7 @@ export class ReleaseWebviewPanel {
             });
 
             if (entries.length === 0) {
-                container.innerHTML = '<div class="empty-bucket" style="margin:8px;">No releases created yet</div>';
+                container.innerHTML = '<div class="empty-bucket" style="margin:8px;"><strong>No releases yet</strong>Created release branches will appear here.</div>';
                 return;
             }
 
@@ -1304,7 +1586,9 @@ export class ReleaseWebviewPanel {
             if (!adoStatus || !adoStatus.isConfigured || !adoStatus.hasToken) {
                 container.innerHTML =
                     '<div class="empty-bucket" style="margin:8px;">' +
-                    'Azure DevOps is not connected.<br><button class="btn-sec" id="connect-ado-inline-btn" style="margin-top:8px;">Connect Azure DevOps</button>' +
+                    '<strong>Azure DevOps is not connected</strong>' +
+                    'Connect to view pull requests linked to this branch.' +
+                    '<br><button class="btn btn-sec empty-action" id="connect-ado-inline-btn">Connect Azure DevOps</button>' +
                     '</div>';
                 const btn = document.getElementById('connect-ado-inline-btn');
                 if (btn) {
@@ -1320,7 +1604,7 @@ export class ReleaseWebviewPanel {
             const container = document.getElementById('pr-section');
             container.innerHTML = '';
             if (!prs || prs.length === 0) {
-                container.innerHTML = '<div class="empty-bucket" style="margin:8px;">No pull requests found</div>';
+                container.innerHTML = '<div class="empty-bucket" style="margin:8px;"><strong>No pull requests found</strong>Try changing the compared branches or refreshing ADO.</div>';
                 return;
             }
 
@@ -1415,6 +1699,7 @@ export class ReleaseWebviewPanel {
             document.getElementById('ado-org-url').value = status?.orgUrl || 'Not configured';
             document.getElementById('ado-project').value = status?.project || 'Not configured';
             document.getElementById('ado-repo-id').value = status?.repoId || 'Not configured';
+            updateDraftSummary();
         }
 
         function showAdoSetupModal() {
@@ -1436,6 +1721,34 @@ export class ReleaseWebviewPanel {
             }
         }
 
+        function appendAdoTestLog(entry) {
+            const log = document.getElementById('ado-test-log');
+            const body = document.getElementById('ado-test-log-body');
+            if (!log || !body) return;
+
+            if (entry.clear) {
+                body.innerHTML = '';
+            }
+
+            const line = document.createElement('div');
+            line.className = 'setup-log-line ' + (entry.level || 'info');
+            line.innerText = '[' + (entry.timestamp || new Date().toLocaleTimeString()) + '] ' + (entry.message || '');
+            body.appendChild(line);
+            log.style.display = 'block';
+            log.scrollTop = log.scrollHeight;
+        }
+
+        function clearAdoTestLog() {
+            const body = document.getElementById('ado-test-log-body');
+            const log = document.getElementById('ado-test-log');
+            if (body) {
+                body.innerHTML = '';
+            }
+            if (log) {
+                log.style.display = 'none';
+            }
+        }
+
         function saveAdoToken() {
             const token = document.getElementById('ado-token-input').value.trim();
             if (!token) {
@@ -1446,6 +1759,7 @@ export class ReleaseWebviewPanel {
         }
 
         function testAdoConnection() {
+            appendAdoTestLog({ clear: true, level: 'info', message: 'Preparing connection test...', timestamp: new Date().toLocaleTimeString() });
             vscode.postMessage({ command: 'testAdoConnection' });
         }
 
@@ -1879,13 +2193,22 @@ export class ReleaseWebviewPanel {
             }
             const id = 'MANUAL-' + Date.now();
             renderTicketBucket({ id, title, state: 'Manual' });
+            updateCounts();
             saveState();
             input.value = '';
         }
 
         function showReleaseModal() { document.getElementById('release-modal').style.display = 'flex'; }
         function closeModal(id) { document.getElementById(id).style.display = 'none'; }
-        function updateCounts() { document.getElementById('pool-count').innerText = document.getElementById('commit-pool').querySelectorAll('.commit-card').length; }
+        function updateCounts() {
+            document.getElementById('pool-count').innerText = document.getElementById('commit-pool').querySelectorAll('.commit-card').length;
+            updateDraftSummary();
+        }
+
+        function refreshComparison() {
+            document.getElementById('refresh-btn').innerText = 'Comparing...';
+            vscode.postMessage({ command: 'refreshData' });
+        }
 
         // Setup all event listeners
         function setupEventListeners() {
@@ -1931,13 +2254,16 @@ export class ReleaseWebviewPanel {
             document.getElementById('close-diff-modal-btn').addEventListener('click', () => closeModal('diff-modal'));
             document.getElementById('close-release-details-btn').addEventListener('click', () => closeModal('release-details-modal'));
             document.getElementById('save-notes-btn').addEventListener('click', saveReleaseNotes);
+            document.getElementById('toggle-releases-btn').addEventListener('click', () => toggleSection('releases'));
             document.getElementById('refresh-releases-btn').addEventListener('click', () => renderReleaseList());
+            document.getElementById('toggle-prs-btn').addEventListener('click', () => toggleSection('prs'));
             document.getElementById('refresh-prs-btn').addEventListener('click', loadPullRequests);
             document.getElementById('ado-status-chip').addEventListener('click', showAdoSetupModal);
             document.getElementById('close-ado-setup-btn').addEventListener('click', () => closeModal('ado-setup-modal'));
             document.getElementById('open-ado-settings-btn').addEventListener('click', () => vscode.postMessage({ command: 'openAdoSettings' }));
             document.getElementById('save-ado-token-btn').addEventListener('click', saveAdoToken);
             document.getElementById('test-ado-btn').addEventListener('click', testAdoConnection);
+            document.getElementById('clear-ado-log-btn').addEventListener('click', clearAdoTestLog);
             document.getElementById('toggle-ado-token-btn').addEventListener('click', () => {
                 const input = document.getElementById('ado-token-input');
                 const button = document.getElementById('toggle-ado-token-btn');
@@ -1959,14 +2285,12 @@ export class ReleaseWebviewPanel {
                 vscode.postMessage({ command: 'selectBranch', type: 'target' });
             });
 
-            document.getElementById('refresh-btn').addEventListener('click', () => {
-                document.getElementById('refresh-btn').innerText = '⌛ Comparing...';
-                vscode.postMessage({ command: 'refreshData' });
-            });
+            document.getElementById('refresh-btn').addEventListener('click', refreshComparison);
         }
 
         // Initialize
         setupEventListeners();
+        syncCollapsibleSections();
 
         // Signal that webview is ready to receive data
         vscode.postMessage({ command: 'webviewReady' });
@@ -1978,6 +2302,7 @@ export class ReleaseWebviewPanel {
     public dispose() {
         ReleaseWebviewPanel.currentPanel = undefined;
         this._panel.dispose();
+        this._outputChannel.dispose();
         while (this._disposables.length) {
             const x = this._disposables.pop();
             if (x) {

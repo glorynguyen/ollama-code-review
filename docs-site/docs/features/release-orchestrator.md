@@ -1,49 +1,120 @@
 # AI Release Orchestrator
 
-The **AI Release Orchestrator** is a powerful tool designed to streamline the complex process of staging changes and creating release branches. It bridges the gap between your Git commits and your project management tool (Azure DevOps), helping you ensure that every release is complete, mapped to business value, and safe to deploy.
+The **AI Release Orchestrator** helps you build release branches from selected commits while keeping the work mapped to Azure DevOps tickets. It compares source and target branches, filters out commits that are already present, groups the remaining work into a release draft, and can create or update release branches with guided cherry-picking.
 
-## Key Features
+## What it does
 
-### 1. Commit-to-Ticket Mapping
-Automatically group Git commits by Azure DevOps work items. The orchestrator analyzes commit messages and metadata to suggest mappings, allowing you to visualize exactly which features and bug fixes are included in a release.
+### Branch comparison
 
-- **Drag-and-Drop Interface:** Easily move commits between ticket "buckets" or back to the unassigned pool.
-- **ADO Integration:** Real-time lookup of ticket titles, states, and descriptions.
-- **Search:** Find specific tickets by ID or title directly from the dashboard.
+Choose a **source** branch and **target** branch from the header, then run **Compare**. The orchestrator:
 
-### 2. Dependency Risk Analysis
-Before you create a release, the AI analyzes the selected commits for potential risks:
-- **Missing Dependencies:** Identifies if a selected commit depends on other code that hasn't been included in the release plan.
-- **Cherry-pick Conflicts:** Predicts potential merge conflicts based on branch history.
-- **Impact Assessment:** Summarizes the architectural impact of the combined changes.
+- reads commits from the source branch that are not in the target branch;
+- filters commits that are already present by content or matching commit message;
+- skips commits with no code changes;
+- limits the active candidate list to the first 50 commits;
+- extracts work item IDs from commit bodies that contain `#123` style references;
+- shows each commit diff in the panel or in a temporary diff editor.
 
-### 3. Automated Release Creation
-Once your plan is finalized, the Orchestrator automates the heavy lifting:
-- **Cherry-picking:** Executes the cherry-pick operations for all selected commits in the correct order.
-- **Branch Management:** Creates a new release branch (e.g., `release/v1.2.0`) based on your target branch.
-- **History Tracking:** Saves your release mappings and notes locally to help with future release cycles or generated change logs.
+The target branch defaults to `ollama-code-review.defaultBaseBranch`, which is `main` unless you change it.
 
-## Getting Started
+### Release draft
 
-### Prerequisites
-1. **Git Repository:** You must have a Git repository initialized in your workspace.
-2. **Azure DevOps PAT:** To enable ticket lookups, you'll need an Azure DevOps Personal Access Token (PAT) with `Work Items: Read` scope.
+Use the release draft to turn branch differences into a planned release:
 
-### Setup
-1. Open the command palette (`Ctrl+Shift+P` / `Cmd+Shift+P`).
-2. Run `Ollama Code Review: Open AI Release Orchestrator`.
-3. If prompted, set your Azure DevOps token using `Ollama Code Review: Set ADO Token`.
-4. Configure your ADO Organization URL and Project in VS Code Settings under `Ollama Code Review > Ado`.
+- search Azure DevOps work items by ID or title;
+- add manual placeholder tickets when a release item does not have an ADO ticket;
+- drag commits from the unassigned pool into ticket buckets;
+- right-click commits to copy the full hash, copy the commit body, copy the filtered diff, or mark the commit unavailable;
+- filter the commit pool to show all commits or only pickable commits;
+- copy a local `git cherry-pick ...` command for the planned commits.
+
+Draft mappings and commit availability are saved in VS Code workspace state, scoped to the target branch where applicable.
+
+### Azure DevOps context
+
+When Azure DevOps is configured, the panel can:
+
+- save a PAT securely in VS Code Secrets;
+- test the connection against the configured repository;
+- look up work item title, state, type, and description;
+- search active work items by title;
+- load pull requests targeting the selected target branch;
+- copy a PR diff for AI review or release-note preparation;
+- build an AI release-note prompt from selected ticket details and copy it to the clipboard.
+
+### Release branch creation
+
+When the plan is ready, choose **Create Release**, enter a branch name, and confirm. The orchestrator:
+
+- fetches `origin/<targetBranch>`;
+- creates the new branch from `origin/<targetBranch>`;
+- cherry-picks planned commits in chronological order;
+- checks for dependency risk before running unless you explicitly confirm;
+- records the created release in local release history.
+
+Dependency risk analysis warns when a selected commit touches a file that was also touched by an earlier skipped commit.
+
+### Conflict handling
+
+If a cherry-pick conflict happens, the orchestrator opens a conflict modal instead of abandoning the flow. You can:
+
+- review the conflicting files and current file contents;
+- edit the resolved content directly in the panel;
+- mark each file resolved, which stages it with `git add`;
+- continue the remaining cherry-picks after all conflicts are resolved;
+- abort the cherry-pick when needed.
+
+### Release history
+
+Created releases appear under **Active Releases**. From there you can:
+
+- review the recorded commit list;
+- save Markdown release notes;
+- delete local release history without deleting the Git branch;
+- drag a new commit onto an existing release to append it with another cherry-pick.
+
+## Setup
+
+1. Open a Git workspace in VS Code.
+2. Configure Azure DevOps settings:
+
+| Setting | Description |
+|---------|-------------|
+| `ollama-code-review.ado.orgUrl` | Azure DevOps organization URL, for example `https://dev.azure.com/yourorg`. |
+| `ollama-code-review.ado.project` | Azure DevOps project name. |
+| `ollama-code-review.ado.repoId` | Azure DevOps repository ID, GUID, or repository name. |
+
+3. Save an Azure DevOps PAT using either:
+
+- `Ollama Code Review: Set Azure DevOps Personal Access Token`
+- the **ADO** status chip inside the Release Orchestrator panel
+
+The PAT can be a raw token or an already Base64-encoded Basic token value. It is stored in VS Code Secrets.
+
+Recommended PAT scopes:
+
+- `Work Items: Read` for ticket lookup and search;
+- `Code: Read` for repository and pull request lookup.
+
+Cherry-picking itself runs through your local Git checkout, so release creation uses your local Git credentials.
 
 ## Workflow
 
-1. **Select Branches:** Choose your **Source** branch (where the work was done, e.g., `develop`) and **Target** branch (where the release will go, e.g., `main`).
-2. **Assign Commits:** Drag commits from the left-hand pool into ticket buckets. You can create new buckets by searching for ticket IDs.
-3. **Review Risks:** Click **Analyze Risks** to have the AI check for missing dependencies or potential conflicts.
-4. **Create Release:** Click **Create Release Branch**, provide a branch name, and let the Orchestrator execute the plan.
-5. **Add Notes:** Document any specific instructions or notes for the release, which are saved in your workspace state.
+1. Run `Ollama Code Review: Open AI Release Orchestrator`.
+2. Use the source and target branch chips to select the comparison.
+3. Click **Compare** to load candidate commits.
+4. Connect Azure DevOps, or add manual ticket placeholders.
+5. Drag commits into the relevant ticket buckets.
+6. Use **AI Notes** to copy a release-note prompt, or **Copy Command** to copy a local cherry-pick command.
+7. Click **Create Release**, enter the release branch name, and confirm.
+8. Resolve any conflicts in the conflict modal, or abort if the branch should not be created.
+9. Add release notes in **Active Releases** after the branch is created.
 
-## Best Practices
-- **Atomic Commits:** The Orchestrator works best when commits are focused and follow standard naming conventions (e.g., including `[#123]` in the message).
-- **Target Comparison:** The "Commit Pool" automatically filters out commits that are already present in the target branch to avoid duplicates.
-- **Review Before Execution:** Always check the AI's risk analysis report, especially for large releases with many cross-module dependencies.
+## Best practices
+
+- Include ADO work item references such as `#123` in commit bodies so commits can auto-map to tickets.
+- Keep commits focused so dependency warnings and cherry-pick conflicts are easier to reason about.
+- Compare against the exact branch that will receive the release.
+- Review the copied cherry-pick command before using it outside the panel.
+- Treat **Mark as Unavailable** as a planning aid only. It hides work from pickable views but does not change Git history.
+- Resolve conflicts carefully. The panel writes the resolved file content and stages it before continuing the cherry-pick.

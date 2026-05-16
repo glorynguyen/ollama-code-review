@@ -35,9 +35,9 @@ Review Pull Requests or Merge Requests directly from VS Code and post AI feedbac
 
 The extension integrates with Azure DevOps primarily through the **AI Release Orchestrator**.
 
-- **Authentication:** Set your Personal Access Token (PAT) using the command `Ollama Code Review: Set ADO Token`.
-- **Scopes:** Requires `Work Items: Read` and `Code: Read/Write` (for cherry-picking).
-- **Configuration:** Set your Organization URL and Project name in `ollama-code-review.ado.orgUrl` and `ollama-code-review.ado.project`.
+- **Authentication:** Set your Personal Access Token (PAT) using `Ollama Code Review: Set Azure DevOps Personal Access Token` or the ADO status chip in the Release Orchestrator.
+- **Scopes:** Requires `Work Items: Read` for ticket lookup and `Code: Read` for repository and pull request lookup. Cherry-picking uses your local Git credentials.
+- **Configuration:** Set your Organization URL, Project name, and repository ID or name in `ollama-code-review.ado.orgUrl`, `ollama-code-review.ado.project`, and `ollama-code-review.ado.repoId`.
 
 ## Browser Extension (Companion)
 
