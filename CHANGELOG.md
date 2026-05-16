@@ -1,3 +1,10 @@
+# [4.11.0](https://github.com/glorynguyen/ollama-code-review/compare/v4.10.0...v4.11.0) (2026-05-16)
+
+
+### Features
+
+* **release:** improve fix relocation and ADO connection handling ([ed3a8d3](https://github.com/glorynguyen/ollama-code-review/commit/ed3a8d3fbf5fa7aa04b26e67cfac386b02ad9ecf))
+
 # [4.10.0](https://github.com/glorynguyen/ollama-code-review/compare/v4.9.0...v4.10.0) (2026-05-15)
 
 
