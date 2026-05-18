@@ -1,3 +1,10 @@
+# [4.12.0](https://github.com/glorynguyen/ollama-code-review/compare/v4.11.0...v4.12.0) (2026-05-18)
+
+
+### Features
+
+* **diff:** filter lockfiles from diff output ([03a97c9](https://github.com/glorynguyen/ollama-code-review/commit/03a97c93c310b59e2c10e597e0a9295c129f7841))
+
 # [4.11.0](https://github.com/glorynguyen/ollama-code-review/compare/v4.10.0...v4.11.0) (2026-05-16)
 
 
