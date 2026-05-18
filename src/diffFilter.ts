@@ -76,8 +76,12 @@ export async function getDiffFilterConfigWithYaml(outputChannel?: vscode.OutputC
 	}
 
 	return {
-		ignorePaths: yamlOverrides.ignorePaths ?? settingsConfig.ignorePaths,
-		ignorePatterns: yamlOverrides.ignorePatterns ?? settingsConfig.ignorePatterns,
+		ignorePaths: yamlOverrides.ignorePaths
+			? [...settingsConfig.ignorePaths, ...yamlOverrides.ignorePaths]
+			: settingsConfig.ignorePaths,
+		ignorePatterns: yamlOverrides.ignorePatterns
+			? [...settingsConfig.ignorePatterns, ...yamlOverrides.ignorePatterns]
+			: settingsConfig.ignorePatterns,
 		maxFileLines: yamlOverrides.maxFileLines ?? settingsConfig.maxFileLines,
 		ignoreFormattingOnly: yamlOverrides.ignoreFormattingOnly ?? settingsConfig.ignoreFormattingOnly,
 	};

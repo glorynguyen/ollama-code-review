@@ -9,6 +9,7 @@ import {
 	isEmbeddingModelAvailable,
 	retrieveRelevantChunks,
 } from '../rag';
+import { filterDiff, getDiffFilterConfigWithYaml } from '../diffFilter';
 
 const execFileAsync = promisify(execFile);
 const ragEmbeddingAvailability = new Map<string, boolean>();
@@ -191,7 +192,8 @@ async function resolveDiff(): Promise<ResolvedContext | null> {
 			cwd: workspace.uri.fsPath,
 			maxBuffer: 4 * 1024 * 1024,
 		});
-		const trimmed = stdout.trim();
+		const { filteredDiff } = filterDiff(stdout, await getDiffFilterConfigWithYaml());
+		const trimmed = filteredDiff.trim();
 		if (!trimmed) {
 			return null;
 		}

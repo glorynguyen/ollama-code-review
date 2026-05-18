@@ -21,6 +21,29 @@ const ADO_CONFIG = {
     project: process.env.ADO_PROJECT,
     token: process.env.ADO_TOKEN
 };
+const LOCKFILE_NAMES = new Set([
+    'package-lock.json',
+    'npm-shrinkwrap.json',
+    'pnpm-lock.yaml',
+    'yarn.lock'
+]);
+
+function isLockfilePath(filePath) {
+    const normalized = filePath.replace(/\\/g, '/');
+    const fileName = path.posix.basename(normalized).toLowerCase();
+    return LOCKFILE_NAMES.has(fileName) || fileName.endsWith('.lock') || fileName.endsWith('-lock.yaml');
+}
+
+function filterLockfileDiff(diff) {
+    const fileDiffs = diff.split(/(?=^diff --git)/m);
+    return fileDiffs
+        .filter(fileDiff => {
+            if (!fileDiff.trim()) return false;
+            const match = fileDiff.match(/^diff --git a\/(.+?) b\/(.+?)$/m);
+            return !match || !isLockfilePath(match[2]);
+        })
+        .join('\n');
+}
 
 function analyzeDependencyRisks(selectedHashes, targetBranch, sourceBranch) {
     const rawCommits = getCommits(sourceBranch); 
@@ -247,7 +270,9 @@ function getCommitFiles(hash) {
 function getSpecificFilesDiff(hash, targetBranch, fileList) {
     try {
         if (!fileList || fileList.length === 0) return '';
-        const filesArg = fileList.map(f => `"${f}"`).join(' ');
+        const reviewableFiles = fileList.filter(file => !isLockfilePath(file));
+        if (reviewableFiles.length === 0) return '';
+        const filesArg = reviewableFiles.map(f => `"${f}"`).join(' ');
         return execSync(`git diff ${targetBranch} ${hash} -- ${filesArg}`, { encoding: 'utf-8', maxBuffer: 1024 * 1024 * 20 });
     } catch (error) { return ''; }
 }
@@ -2580,8 +2605,9 @@ if (args.length < 2) {
                     encoding: 'utf-8', 
                     maxBuffer: 1024 * 1024 * 50 // 50MB buffer for large PRs
                 });
+                const filteredDiff = filterLockfileDiff(diff);
                 res.writeHead(200, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ success: true, data: diff }));
+                res.end(JSON.stringify({ success: true, data: filteredDiff }));
             } catch (e) {
                 res.writeHead(500, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ success: false, message: e.message }));
