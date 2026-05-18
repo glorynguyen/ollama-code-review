@@ -1,3 +1,10 @@
+# [4.13.0](https://github.com/glorynguyen/ollama-code-review/compare/v4.12.0...v4.13.0) (2026-05-18)
+
+
+### Features
+
+* **mcp:** add Semble-backed semantic code search tools ([84dd991](https://github.com/glorynguyen/ollama-code-review/commit/84dd99148503f973a9446074c21e6c349820f3f7))
+
 # [4.12.0](https://github.com/glorynguyen/ollama-code-review/compare/v4.11.0...v4.12.0) (2026-05-18)
 
 
