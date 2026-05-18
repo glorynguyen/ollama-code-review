@@ -158,6 +158,7 @@ import { AutoReviewManager } from '../autoReview';
 import { MonorepoResolver } from '../autoReview/monorepo';
 import { buildFunctionContext, type FunctionContextEntry } from '../autoReview/smartContext';
 import { mcpBridge, createMcpServer, type McpServerInstance } from '../mcp';
+import { disposeSembleService } from '../mcp/sembleService';
 import { type CommandContext } from './commandContext';
 import { registerFindingsCommands } from './findingsCommands';
 import { registerReloadCommands } from './reloadCommands';
@@ -459,6 +460,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	// Store reference for cleanup on deactivation
 	setSkillsService(skillsService);
 	outputChannel = vscode.window.createOutputChannel("Ollama Code Review");
+	mcpBridge.initialize(context, outputChannel);
 	const suggestionProvider = new SuggestionContentProvider();
 
 	// Create status bar item for model selection (appears in bottom status bar)
@@ -4406,6 +4408,7 @@ export function deactivate() {
 		mcpServerInstance.stop().catch(() => {});
 		mcpServerInstance = undefined;
 	}
+	disposeSembleService();
 
 	// Dispose skills service (clears in-memory caches)
 	if (_skillsServiceInstance) {

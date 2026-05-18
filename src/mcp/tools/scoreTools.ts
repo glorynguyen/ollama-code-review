@@ -137,6 +137,7 @@ export function registerUtilityTools(server: McpServer): void {
 					autoKillPortConflicts: config.get('mcp.autoKillPortConflicts'),
 					allowedOrigins: config.get('mcp.allowedOrigins'),
 					authTokenConfigured: !!config.get('mcp.authToken'),
+					semblePythonPathConfigured: !!config.get('mcp.semble.pythonPath'),
 				},
 			};
 

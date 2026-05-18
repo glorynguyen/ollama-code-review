@@ -1429,6 +1429,11 @@
           "default": "",
           "markdownDescription": "Optional shared secret required by browser clients. When set, requests to the MCP server must include the `X-OCR-MCP-Token` header."
         },
+        "ollama-code-review.mcp.semble.pythonPath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Optional Python executable to use for Semble-backed MCP code search. Leave empty to use `python3` on macOS/Linux or `python` on Windows. The selected environment must have Semble installed with `pip install semble`."
+        },
         "ollama-code-review.mcp.externalServers": {
           "type": "object",
           "default": {},

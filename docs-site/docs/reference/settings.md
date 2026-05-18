@@ -26,6 +26,7 @@ All settings are prefixed with `ollama-code-review.*`.
 | `mcp.autoKillPortConflicts` | Automatically kill processes using the MCP port | `false` |
 | `mcp.allowedOrigins` | Allowed origins for browser MCP clients | `["chrome-extension://*"]` |
 | `mcp.authToken` | Security token for browser MCP clients | `""` |
+| `mcp.semble.pythonPath` | Python executable for Semble-backed MCP code search. Leave empty to use `python3` on macOS/Linux or `python` on Windows. | `""` |
 | `mcp.externalServers` | Configuration for connecting to external MCP servers | `{}` |
 | `autoReview.enabled` | Enable background review on file save | `false` |
 | `autoReview.minSeverity` | Only notify for findings at or above this level | `high` |

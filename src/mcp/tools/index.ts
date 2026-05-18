@@ -6,6 +6,7 @@ import { registerUtilityTools } from './scoreTools';
 import { registerBrowserTools } from './browserTools';
 import { registerImpactTools } from './impactTools';
 import { registerFileTools } from './fileTools';
+import { registerSembleTools } from './sembleTools';
 
 /**
  * Register all MCP tools on the server.
@@ -19,4 +20,5 @@ export function registerAllTools(server: McpServer): void {
 	registerBrowserTools(server);      // get_workspace_repos
 	registerImpactTools(server);       // get_impacted_files (Phase 3: Impact Graph Agent)
 	registerFileTools(server);         // write_file, update_file, delete_file
+	registerSembleTools(server);       // index_codebase, search_code, find_related_code, get_code_search_status
 }
