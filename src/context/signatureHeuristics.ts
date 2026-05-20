@@ -47,8 +47,12 @@ export function extractExports(content: string): ExportSignature[] {
 	for (const { type, regex } of patterns) {
 		regex.lastIndex = 0; // Reset for global regex
 		while ((match = regex.exec(content)) !== null) {
+			const name = match[1];
+			if (type === 'variable' && exports.some(e => e.name === name && e.type === 'function')) {
+				continue;
+			}
 			exports.push({
-				name: match[1],
+				name,
 				type,
 				signature: match[0].trim()
 			});

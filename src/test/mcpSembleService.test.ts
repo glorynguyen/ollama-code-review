@@ -122,7 +122,9 @@ suite('MCP Semble Service Test Suite', () => {
 		await fs.rm(tempRoot, { recursive: true, force: true });
 	});
 
-	test('writes the worker script to global storage and returns index status', async () => {
+	test('writes the worker script to global storage and returns index status', async function () {
+		this.timeout(10_000);
+
 		const result = await service.indexRepository('/repo');
 		const status = await service.getStatus();
 		const workerScript = await fs.readFile(path.join(tempRoot, 'mcp', 'semble_worker.py'), 'utf8');

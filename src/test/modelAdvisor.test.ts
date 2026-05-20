@@ -4,11 +4,57 @@
  */
 
 import * as assert from 'assert';
-import { bucketDiffSize, scoreModel, commandToTaskType, extractLanguagesFromDiff } from '../modelAdvisor';
+import * as vscode from 'vscode';
+import axios from 'axios';
+import {
+	bucketDiffSize,
+	scoreModel,
+	commandToTaskType,
+	extractLanguagesFromDiff,
+	getProfileAffinity,
+	getModelRecommendation,
+} from '../modelAdvisor';
 import type { ModelAdvisorInput, ModelProfile } from '../modelAdvisor/types';
-import { classifyOllamaModel } from '../modelAdvisor/profiles';
+import { classifyOllamaModel, MODEL_PROFILES } from '../modelAdvisor/profiles';
 
 suite('Model Advisor Tests', () => {
+	let originalAxiosGet: typeof axios.get;
+	const originalEnv = {
+		ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+		GLM_API_KEY: process.env.GLM_API_KEY,
+		HF_API_KEY: process.env.HF_API_KEY,
+		GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+		MISTRAL_API_KEY: process.env.MISTRAL_API_KEY,
+		MINIMAX_API_KEY: process.env.MINIMAX_API_KEY,
+	};
+
+	setup(() => {
+		originalAxiosGet = axios.get;
+		delete process.env.ANTHROPIC_API_KEY;
+		delete process.env.GLM_API_KEY;
+		delete process.env.HF_API_KEY;
+		delete process.env.GEMINI_API_KEY;
+		delete process.env.MISTRAL_API_KEY;
+		delete process.env.MINIMAX_API_KEY;
+	});
+
+	teardown(() => {
+		(axios as any).get = originalAxiosGet;
+		for (const [key, value] of Object.entries(originalEnv)) {
+			if (value === undefined) {
+				delete process.env[key];
+			} else {
+				process.env[key] = value;
+			}
+		}
+	});
+
+	function createConfig(values: Record<string, unknown>): vscode.WorkspaceConfiguration {
+		return {
+			get: (key: string, defaultValue?: unknown) => key in values ? values[key] : defaultValue,
+		} as vscode.WorkspaceConfiguration;
+	}
+
 	suite('bucketDiffSize', () => {
 		test('small diff: 1999 chars', () => {
 			assert.strictEqual(bucketDiffSize(1999), 'small');
@@ -156,6 +202,33 @@ suite('Model Advisor Tests', () => {
 
 			assert.ok(largeScore > smallScore, `Large diff (${largeScore}) should score higher than small (${smallScore}) for flagship`);
 		});
+
+		test('emits profile and language dominant reasons', () => {
+			const profileDominant = scoreModel({
+				modelId: 'test-fast',
+				providerName: 'test',
+				tier: 'fast',
+			}, {
+				taskType: 'agent-review',
+				languages: [],
+				contentLength: 50000,
+				activeProfile: 'general',
+			});
+			assert.strictEqual(profileDominant.reason, 'Strong match for general profile');
+
+			const languageDominant = scoreModel({
+				modelId: 'test-language',
+				providerName: 'test',
+				tier: 'local',
+				languageBonus: { rs: 0.6 },
+			}, {
+				taskType: 'agent-review',
+				languages: ['rs', 'ts'],
+				contentLength: 50000,
+				activeProfile: 'security',
+			});
+			assert.strictEqual(languageDominant.reason, 'Strong for rs, ts');
+		});
 	});
 
 	suite('commandToTaskType', () => {
@@ -217,6 +290,127 @@ diff --git a/config.py b/config.py
 +++ b/test.TS`;
 			const langs = extractLanguagesFromDiff(diff);
 			assert.ok(langs.includes('ts'), 'Should normalize TS to ts');
+		});
+	});
+
+	suite('getProfileAffinity', () => {
+		test('uses named profile affinity and default fallback', () => {
+			assert.strictEqual(getProfileAffinity('security', 'flagship'), 1);
+			assert.strictEqual(getProfileAffinity('unknown-profile', 'balanced'), 0.8);
+			assert.strictEqual(getProfileAffinity(undefined, 'fast'), 0.7);
+		});
+	});
+
+	suite('getModelRecommendation', () => {
+		test('filters unavailable providers, includes Ollama models, and preserves auto-select', async () => {
+			let requestedUrl = '';
+			(axios as any).get = async (url: string) => {
+				requestedUrl = url;
+				return {
+					data: {
+						models: [
+							{ name: 'qwen2.5-coder:14b' },
+							{ name: 'phi3:mini' },
+						],
+					},
+				};
+			};
+
+			const result = await getModelRecommendation({
+				taskType: 'generate-tests',
+				languages: ['py'],
+				contentLength: 8000,
+				activeProfile: 'general',
+			}, createConfig({
+				autoSelectModel: true,
+				endpoint: 'http://localhost:11434/api/generate/',
+			}));
+
+			assert.strictEqual(requestedUrl, 'http://localhost:11434/api/tags');
+			assert.strictEqual(result.autoSelect, true);
+			assert.strictEqual(result.recommended.providerName, 'ollama');
+			assert.strictEqual(result.recommended.modelId, 'qwen2.5-coder:14b');
+			assert.ok(result.alternatives.length > 0);
+			assert.ok(result.alternatives.every(item => item.providerName !== 'claude'));
+		});
+
+		test('includes configured cloud providers and survives Ollama lookup failures', async () => {
+			(axios as any).get = async () => {
+				throw new Error('Ollama unavailable');
+			};
+
+			const result = await getModelRecommendation({
+				taskType: 'review',
+				languages: ['ts'],
+				contentLength: 25000,
+				activeProfile: 'security',
+			}, createConfig({
+				claudeApiKey: 'claude-key',
+				glmApiKey: 'glm-key',
+				hfApiKey: 'hf-key',
+				geminiApiKey: 'gemini-key',
+				mistralApiKey: 'mistral-key',
+				minimaxApiKey: 'minimax-key',
+				'openaiCompatible.endpoint': 'https://openai-compatible.test',
+				'openaiCompatible.model': 'custom-model',
+			}));
+
+			const providers = new Set([
+				result.recommended.providerName,
+				...result.alternatives.map(item => item.providerName),
+			]);
+			assert.ok(providers.has('claude'));
+			assert.ok(providers.has('qwen'));
+			assert.strictEqual(result.autoSelect, false);
+		});
+
+		test('accepts provider availability from environment variables', async () => {
+			process.env.ANTHROPIC_API_KEY = 'env-claude';
+			process.env.GLM_API_KEY = 'env-glm';
+			process.env.HF_API_KEY = 'env-hf';
+			process.env.GEMINI_API_KEY = 'env-gemini';
+			process.env.MISTRAL_API_KEY = 'env-mistral';
+			process.env.MINIMAX_API_KEY = 'env-minimax';
+			(axios as any).get = async () => ({ data: { models: [] } });
+
+			const result = await getModelRecommendation({
+				taskType: 'commit-message',
+				languages: [],
+				contentLength: 100,
+				activeProfile: 'general',
+			}, createConfig({}));
+
+			const providers = new Set([
+				result.recommended.providerName,
+				...result.alternatives.map(item => item.providerName),
+			]);
+			assert.ok(providers.has('gemini') || providers.has('minimax'));
+			assert.ok(result.recommended.score >= result.alternatives[0].score);
+		});
+
+		test('uses default recommendation when no candidates are available', async () => {
+			const originalProfiles = MODEL_PROFILES.splice(0, MODEL_PROFILES.length);
+			(axios as any).get = async () => ({ data: { models: undefined } });
+
+			try {
+				const result = await getModelRecommendation({
+					taskType: 'review',
+					languages: [],
+					contentLength: 1,
+					activeProfile: undefined,
+				}, createConfig({ endpoint: 'http://localhost:11434' }));
+
+				assert.deepStrictEqual(result.recommended, {
+					modelId: 'kimi-k2.5:cloud',
+					providerName: 'kimi',
+					tier: 'balanced',
+					score: 0.5,
+					reason: 'Default recommendation',
+				});
+				assert.deepStrictEqual(result.alternatives, []);
+			} finally {
+				MODEL_PROFILES.push(...originalProfiles);
+			}
 		});
 	});
 });

@@ -171,7 +171,7 @@ export function validateGeneratedFix(
 		return { valid: false, reason: 'The generated fix still contains markdown fences.' };
 	}
 
-	if (/^\s*(?:diff --git|@@|\+\+\+|---)\b/m.test(trimmed)) {
+	if (/^\s*(?:diff --git|@@|\+\+\+|---)(?:\s|$)/m.test(trimmed)) {
 		return { valid: false, reason: 'The generated fix is a diff instead of replacement code.' };
 	}
 

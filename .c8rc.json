@@ -1,0 +1,32 @@
+{
+    "reporter": [
+        "text",
+        "lcov"
+    ],
+    "reports-dir": "coverage/unit",
+    "include": [
+        "out/diffFilter.js",
+        "out/secretScanner.js",
+        "out/modelAdvisor/**",
+        "out/context/importParser.js",
+        "out/context/signatureHeuristics.js",
+        "out/contentstack/codeParser.js",
+        "out/contentstack/validator.js",
+        "out/providers/promptFormats.js",
+        "out/reviewFindings/structuredReview.js",
+        "out/reviewFindings/types.js"
+    ],
+    "exclude": [
+        "out/test/**",
+        "test-support/**",
+        "coverage/**",
+        "dist/**",
+        "chrome-extension/**",
+        "packages/**"
+    ],
+    "check-coverage": true,
+    "lines": 95,
+    "functions": 95,
+    "branches": 95,
+    "statements": 95
+}

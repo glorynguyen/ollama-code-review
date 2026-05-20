@@ -161,4 +161,43 @@ Binary files a/image.png and b/image.png differ
 		assert.strictEqual(structured[0].anchorValidation.status, 'valid');
 		assert.ok(structured[0].fix?.summary);
 	});
+
+	test('Should ignore password assignments with env/config prefixes', () => {
+		const diff = `
+--- a/config.ts
++++ b/config.ts
+@@ -1,3 +1,5 @@
++export const pass1 = env.PASSWORD;
++export const pass2 = config.PASSWORD;
+`;
+		const findings = scanDiffForSecrets(diff);
+		assert.strictEqual(findings.length, 0);
+	});
+
+	test('Should reject invalid or low-entropy AWS Secret Access Key candidates', () => {
+		const diff = `
+--- a/config.ts
++++ b/config.ts
+@@ -1,5 +1,5 @@
++export const key1 = "ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQ"; // all uppercase
++export const key2 = "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopq"; // all lowercase
++export const key3 = "AaBbCcDdEeFfGgHhIiJjKkLlMmNnOoPpQqRrSsTt"; // no digits/specials
++export const key4 = "aAbBaAbBaAbBaAbBaAbBaAbBaAbBaAbBaAbBaAbB"; // low entropy
+`;
+		const findings = scanDiffForSecrets(diff);
+		assert.strictEqual(findings.length, 0);
+	});
+
+	test('Should detect high-entropy AWS secret values in keyword and standalone forms', () => {
+		const diff = `
+--- a/config.ts
++++ b/config.ts
+@@ -1,2 +1,4 @@
++export const awsSecretAccessKey = "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890/+AB";
++export const standalone = "ABCDEFGHIJKLMNOPQRSTabcdefghijklmnop12AB";
+`;
+		const findings = scanDiffForSecrets(diff);
+		assert.strictEqual(findings.length, 2);
+		assert.ok(findings.every(finding => finding.message.includes('AWS Secret Access Key')));
+	});
 });

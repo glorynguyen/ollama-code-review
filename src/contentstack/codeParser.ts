@@ -239,7 +239,7 @@ function _extractDotAccesses(
 ): void {
 	// Match: entry.fieldName (not followed by `(` which would be a method call)
 	const regex = new RegExp(
-		`\\b${_escapeRegex(varName)}\\.([a-zA-Z_][a-zA-Z0-9_]*)(?!\\s*\\()`,
+		`\\b${_escapeRegex(varName)}\\.([a-zA-Z_][a-zA-Z0-9_]*)\\b(?!\\s*\\()`,
 		'g'
 	);
 	let match;
@@ -289,7 +289,7 @@ function _extractOptionalChaining(
 	accesses: ExtractedFieldAccess[],
 ): void {
 	const regex = new RegExp(
-		`\\b${_escapeRegex(varName)}\\?\\.([a-zA-Z_][a-zA-Z0-9_]*)(?!\\s*\\()`,
+		`\\b${_escapeRegex(varName)}\\?\\.([a-zA-Z_][a-zA-Z0-9_]*)\\b(?!\\s*\\()`,
 		'g'
 	);
 	let match;
