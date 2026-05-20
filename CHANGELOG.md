@@ -1,3 +1,10 @@
+# [4.14.0](https://github.com/glorynguyen/ollama-code-review/compare/v4.13.0...v4.14.0) (2026-05-20)
+
+
+### Features
+
+* **review:** add diff caching and coverage tracking ([1b6baa1](https://github.com/glorynguyen/ollama-code-review/commit/1b6baa1a2b6664541adb728b96bae75f3fc26276))
+
 # [4.13.0](https://github.com/glorynguyen/ollama-code-review/compare/v4.12.0...v4.13.0) (2026-05-18)
 
 
