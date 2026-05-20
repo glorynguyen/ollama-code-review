@@ -6,6 +6,9 @@ All settings are prefixed with `ollama-code-review.*`.
 |---------|-------------|---------|
 | `model` | AI model to use (Ollama, Claude, Gemini, etc.) | `custom` |
 | `autoSelectModel` | Automatically switch to the best model based on task | `false` |
+| `cache.enabled` | Reuse exact review results when prompt and model config match | `true` |
+| `cache.ttlMinutes` | Minutes before cached review results expire | `1440` |
+| `cache.maxEntries` | Maximum review results to keep in local cache | `50` |
 | `claudeApiKey` | Anthropic API key | `""` |
 | `geminiApiKey` | Google AI Studio API key | `""` |
 | `mistralApiKey` | Mistral AI API key | `""` |
@@ -30,6 +33,10 @@ All settings are prefixed with `ollama-code-review.*`.
 | `mcp.externalServers` | Configuration for connecting to external MCP servers | `{}` |
 | `autoReview.enabled` | Enable background review on file save | `false` |
 | `autoReview.minSeverity` | Only notify for findings at or above this level | `high` |
+| `coverage.includeGlob` | Glob pattern for files to include in the Coverage view | `**/*.{ts,js,tsx,jsx,py,java,cs,go,rb,php,rs,swift,kt,vue,svelte,c,cpp,h}` |
+| `coverage.excludeGlob` | Comma-separated glob patterns to exclude from Coverage | `node_modules, dist, build, ...` |
+| `coverage.staleAfterDays` | Mark files as stale after this many days since their last review | `14` |
+| `coverage.maxFiles` | Maximum workspace files to scan for Coverage | `1000` |
 | `contentstack.enabled` | Enable Contentstack schema validation | `false` |
 | `contentstack.schemaSource` | Source for schemas (local or api) | `local` |
 | `copyFunction.maxDepth` | BFS depth for call-graph expansion in Copy Function with Imports | `3` |

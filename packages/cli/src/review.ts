@@ -21,6 +21,12 @@ For each finding, clearly state:
 - Description of the issue
 - Suggested fix or improvement
 
+Do not report deterministic build/tooling issues that TypeScript, ESLint,
+formatting, or the configured build step would catch, unless the diff provides
+full-file evidence that the build step is absent, disabled, or unreliable. Do
+not infer that a symbol, export, import, type, or file is missing only because
+it is not shown in the diff.
+
 \${profile}
 
 Code diff to review:

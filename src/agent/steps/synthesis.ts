@@ -6,9 +6,22 @@
  * its own findings and removes false positives.
  */
 
+import * as vscode from 'vscode';
 import type { AgentStep, AgentContext, DeepReview, SynthesisResult, DiffAnalysis } from '../types';
 import { isAICallerFn, isDiffAnalysis } from '../types';
-import { normalizeReviewResult } from '../../reviewFindings';
+import { filterReviewNoise, normalizeReviewResult, type ValidatedStructuredReviewResult } from '../../reviewFindings';
+
+function applyReviewNoiseFilter(result: ValidatedStructuredReviewResult, ctx: AgentContext): ValidatedStructuredReviewResult {
+	const config = vscode.workspace.getConfiguration('ollama-code-review');
+	const filterResult = filterReviewNoise(result, {
+		suppressBuildVerifiableFindings: config.get<boolean>('reviewNoiseFilter.suppressBuildVerifiableFindings', true),
+		minConfidenceToKeep: config.get<number>('reviewNoiseFilter.minConfidenceToKeep', 0.9),
+	});
+	if (filterResult.suppressedCount > 0) {
+		ctx.outputChannel.appendLine(`[Agent] Review noise filter suppressed ${filterResult.suppressedCount} build-verifiable finding(s)`);
+	}
+	return filterResult.result;
+}
 
 export const synthesisStep: AgentStep<DeepReview, SynthesisResult> = {
 	name: 'synthesis',
@@ -25,7 +38,7 @@ export const synthesisStep: AgentStep<DeepReview, SynthesisResult> = {
 			ctx.outputChannel.appendLine('[Agent] Step 5: Returning deep review without self-critique');
 			return { 
 				finalReview: deepReview.reviewMarkdown,
-				structuredFindings: deepReview.structuredReview ?? normalizeReviewResult(deepReview.reviewMarkdown, ctx.diff),
+				structuredFindings: deepReview.structuredReview ?? applyReviewNoiseFilter(normalizeReviewResult(deepReview.reviewMarkdown, ctx.diff), ctx),
 			};
 		}
 
@@ -63,14 +76,14 @@ Output the refined review in full. Do not add meta-commentary about what you cha
 			return {
 				finalReview: refinedReview,
 				selfCritiqueNotes: `Self-critique refined ${deepReview.reviewMarkdown.length} → ${refinedReview.length} chars`,
-				structuredFindings: normalizeReviewResult(refinedReview, ctx.diff),
+				structuredFindings: applyReviewNoiseFilter(normalizeReviewResult(refinedReview, ctx.diff), ctx),
 			};
 		} catch (err) {
 			ctx.outputChannel.appendLine(`[Agent] Step 5: Self-critique failed (non-fatal): ${err}`);
 			const hasExistingFindings = !!deepReview.structuredReview;
 			const structuredFindings = hasExistingFindings
 				? deepReview.structuredReview
-				: normalizeReviewResult(deepReview.reviewMarkdown, ctx.diff);
+				: applyReviewNoiseFilter(normalizeReviewResult(deepReview.reviewMarkdown, ctx.diff), ctx);
 			if (!hasExistingFindings) {
 				ctx.outputChannel.appendLine('[Agent] Step 5: structuredReview missing from deep review; re-parsing markdown');
 			}

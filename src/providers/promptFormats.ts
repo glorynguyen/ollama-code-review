@@ -44,6 +44,8 @@ export function buildProviderPrompt(prompt: string, options?: GenerateOptions): 
 		'- Use new-file line numbers only.',
 		'- If you are not confident in the exact file/line, omit the anchor instead of guessing.',
 		'- Every finding must include at least one evidence item.',
+		'- Do not report deterministic build/tooling issues like missing exports, unresolved imports, TypeScript type errors, unused imports, or formatting-only issues unless full context proves the configured build step will not catch them.',
+		'- Do not infer missing symbols, exports, imports, types, or files only because they are absent from the diff.',
 		'- If there are no issues, return an empty findings array and a concise summary.',
 	].join('\n');
 }

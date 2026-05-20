@@ -5,7 +5,6 @@ import styles from './styles.module.css';
 
 type FeatureItem = {
   title: string;
-  Svg: React.ComponentType<React.ComponentProps<'svg'>>;
   description: ReactNode;
 };
 
@@ -32,14 +31,14 @@ const FeatureList: FeatureItem[] = [
     title: 'Expert Quality',
     description: (
       <>
-        Specialized agent skills, multi-model comparisons, and compliance profiles 
-        ensure your code meets the highest standards.
+        Specialized agent skills, multi-model comparisons, cached re-runs,
+        coverage tracking, and compliance profiles keep reviews sharp and fast.
       </>
     ),
   },
 ];
 
-function Feature({title, description}: Omit<FeatureItem, 'Svg'>) {
+function Feature({title, description}: FeatureItem) {
   return (
     <div className={clsx('col col--4')}>
       <div className="text--center padding-horiz--md">

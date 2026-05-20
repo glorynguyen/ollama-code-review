@@ -7,6 +7,7 @@ export {
 } from './types';
 export {
 	buildDiffAnchorIndex,
+	filterReviewNoise,
 	normalizeReviewResult,
 	renderValidatedReviewMarkdown,
 	toLegacyReviewFinding,
@@ -29,3 +30,7 @@ export type {
 	ValidatedStructuredReviewFinding,
 	ValidatedStructuredReviewResult,
 } from './types';
+export type {
+	ReviewNoiseFilterOptions,
+	ReviewNoiseFilterResult,
+} from './structuredReview';

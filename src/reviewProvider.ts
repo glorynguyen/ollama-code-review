@@ -659,6 +659,16 @@ export class OllamaReviewPanel {
             margin-right: 6px;
             animation: pulse 2s infinite;
         }
+        .cache-badge {
+            display: inline-flex;
+            align-items: center;
+            background: rgba(86, 156, 214, 0.16);
+            color: #569cd6;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            margin-left: 8px;
+        }
         @keyframes pulse {
             0%, 100% { opacity: 1; }
             50% { opacity: 0.5; }
@@ -761,6 +771,19 @@ export class OllamaReviewPanel {
             if (metrics.provider || metrics.model) {
                 const provider = metrics.provider ? metrics.provider.charAt(0).toUpperCase() + metrics.provider.slice(1) : '';
                 metricsHtml.push('<div class="metric-item"><span class="metric-label">Model</span><span class="metric-value">' + (metrics.model || 'Unknown') + '</span></div>');
+                if (provider) {
+                    metricsHtml.push('<div class="metric-item"><span class="metric-label">Provider</span><span class="metric-value">' + provider + '</span></div>');
+                }
+            }
+
+            if (metrics.cached) {
+                const cacheDate = metrics.cacheCreatedAt ? new Date(metrics.cacheCreatedAt) : null;
+                const cacheLabel = cacheDate && !Number.isNaN(cacheDate.getTime()) ? cacheDate.toLocaleString() : 'Yes';
+                metricsHtml.push('<div class="metric-item"><span class="metric-label">Cache</span><span class="metric-value highlight">Hit</span></div>');
+                metricsHtml.push('<div class="metric-item"><span class="metric-label">Cached At</span><span class="metric-value">' + cacheLabel + '</span></div>');
+                if (metrics.cacheHitCount !== undefined) {
+                    metricsHtml.push('<div class="metric-item"><span class="metric-label">Cache Uses</span><span class="metric-value">' + metrics.cacheHitCount.toLocaleString() + '</span></div>');
+                }
             }
 
             // Active review profile
@@ -810,6 +833,7 @@ export class OllamaReviewPanel {
                     metricsHtml.push('<div class="metric-item"><span class="metric-label">VRAM Usage</span><span class="metric-value highlight">' + formatBytes(metrics.activeModel.sizeVram) + '</span></div>');
                 }
             }
+            const cacheBadge = metrics.cached ? '<span class="cache-badge">Cached</span>' : '';
 
             const toggleClass = metricsExpanded ? '' : 'collapsed';
             const contentClass = metricsExpanded ? '' : 'hidden';
@@ -818,6 +842,7 @@ export class OllamaReviewPanel {
                 <div class="metrics-header" onclick="toggleMetrics()">
                     <span class="metrics-toggle \${toggleClass}">▼</span>
                     <span class="metrics-title">System Info</span>
+                    \${cacheBadge}
                     \${activeModelBadge}
                 </div>
                 <div class="metrics-content \${contentClass}" id="metrics-content">

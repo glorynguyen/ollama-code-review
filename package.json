@@ -28,6 +28,7 @@
     "onLanguage:typescriptreact",
     "onView:scm",
     "onView:ai-review.chat-sidebar",
+    "onView:ai-review.coverage",
     "onCommand:ai-review.focusChat"
   ],
   "main": "./dist/extension.js",
@@ -227,6 +228,36 @@
         "title": "Show Review Analytics Dashboard",
         "category": "Ollama Code Review",
         "icon": "$(dashboard)"
+      },
+      {
+        "command": "ollama-code-review.refreshReviewCoverage",
+        "title": "Refresh Review Coverage",
+        "category": "Ollama Code Review",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "ollama-code-review.copyReviewCoverageSummary",
+        "title": "Copy Review Coverage Summary",
+        "category": "Ollama Code Review",
+        "icon": "$(clippy)"
+      },
+      {
+        "command": "ollama-code-review.openCoverageFile",
+        "title": "Open Coverage File",
+        "category": "Ollama Code Review",
+        "icon": "$(file)"
+      },
+      {
+        "command": "ollama-code-review.reviewCoverageFile",
+        "title": "Review Coverage File",
+        "category": "Ollama Code Review",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "ollama-code-review.restoreCoverageReview",
+        "title": "Restore Coverage Review",
+        "category": "Ollama Code Review",
+        "icon": "$(history)"
       },
       {
         "command": "ollama-code-review.reloadKnowledgeBase",
@@ -451,6 +482,10 @@
           "id": "ai-review.findings-explorer",
           "name": "Findings",
           "when": "ollama-code-review.hasFindings"
+        },
+        {
+          "id": "ai-review.coverage",
+          "name": "Coverage"
         }
       ]
     },
@@ -604,6 +639,16 @@
           "command": "ollama-code-review.viewFindingDiff",
           "when": "view == ai-review.findings-explorer && viewItem == findingsFile",
           "group": "navigation"
+        },
+        {
+          "command": "ollama-code-review.reviewCoverageFile",
+          "when": "view == ai-review.coverage && (viewItem == coverageFileNever || viewItem == coverageFileReviewed)",
+          "group": "inline@1"
+        },
+        {
+          "command": "ollama-code-review.restoreCoverageReview",
+          "when": "view == ai-review.coverage && viewItem == coverageFileReviewed",
+          "group": "inline@2"
         }
       ],
       "view/title": [
@@ -631,6 +676,16 @@
           "command": "ollama-code-review.clearFindings",
           "when": "view == ai-review.findings-explorer",
           "group": "navigation@4"
+        },
+        {
+          "command": "ollama-code-review.refreshReviewCoverage",
+          "when": "view == ai-review.coverage",
+          "group": "navigation@0"
+        },
+        {
+          "command": "ollama-code-review.copyReviewCoverageSummary",
+          "when": "view == ai-review.coverage",
+          "group": "navigation@1"
         }
       ]
     },
@@ -641,6 +696,63 @@
           "type": "boolean",
           "default": false,
           "description": "Automatically select the best model based on task type and diff size."
+        },
+        "ollama-code-review.cache": {
+          "type": "object",
+          "default": {},
+          "markdownDescription": "**F-046** - Review Diff Caching / Deduplication. Reuses exact structured review results when the final prompt, model, endpoint, and temperature are unchanged.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true,
+              "description": "Enable cached review results for repeated reviews with the same prompt and model configuration."
+            },
+            "ttlMinutes": {
+              "type": "number",
+              "default": 1440,
+              "minimum": 1,
+              "maximum": 43200,
+              "description": "Minutes before a cached review expires."
+            },
+            "maxEntries": {
+              "type": "number",
+              "default": 50,
+              "minimum": 1,
+              "maximum": 500,
+              "description": "Maximum number of review results to keep in the local cache."
+            }
+          }
+        },
+        "ollama-code-review.coverage": {
+          "type": "object",
+          "default": {},
+          "markdownDescription": "**F-047** - Review Coverage & Staleness Tracking. Shows which workspace files have never been reviewed, are stale, or still have findings.",
+          "properties": {
+            "includeGlob": {
+              "type": "string",
+              "default": "**/*.{ts,js,tsx,jsx,py,java,cs,go,rb,php,rs,swift,kt,vue,svelte,c,cpp,h}",
+              "description": "Glob pattern for files to include in the Review Coverage view."
+            },
+            "excludeGlob": {
+              "type": "string",
+              "default": "**/node_modules/**,**/dist/**,**/build/**,**/out/**,**/.next/**,**/coverage/**,**/*.min.js,**/*.d.ts",
+              "description": "Comma-separated glob patterns for files to exclude from Review Coverage."
+            },
+            "staleAfterDays": {
+              "type": "number",
+              "default": 14,
+              "minimum": 1,
+              "maximum": 365,
+              "description": "Mark files as stale when their latest review is at least this many days old."
+            },
+            "maxFiles": {
+              "type": "number",
+              "default": 1000,
+              "minimum": 10,
+              "maximum": 10000,
+              "description": "Maximum number of workspace files to scan for Review Coverage."
+            }
+          }
         },
         "ollama-code-review.skills.defaultRepository": {
           "type": "string",
@@ -898,6 +1010,25 @@
               },
               "default": [],
               "description": "Glob patterns for files that must never be added to the review context (imports, tests, type-defs, and self-context). Examples: [\"src/generated/**\", \"**/*.pb.ts\"]"
+            }
+          }
+        },
+        "ollama-code-review.reviewNoiseFilter": {
+          "type": "object",
+          "description": "Configure post-processing that suppresses low-value findings already covered by deterministic build or lint steps.",
+          "default": {},
+          "properties": {
+            "suppressBuildVerifiableFindings": {
+              "type": "boolean",
+              "default": true,
+              "description": "Suppress speculative findings about missing exports, unresolved imports, TypeScript errors, lint-only issues, and formatting-only issues when normal build/lint checks should catch them."
+            },
+            "minConfidenceToKeep": {
+              "type": "number",
+              "default": 0.9,
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Keep build-verifiable findings at or above this confidence threshold; lower-confidence matching findings are suppressed."
             }
           }
         },

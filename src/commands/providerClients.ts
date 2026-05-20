@@ -214,6 +214,9 @@ export interface PerformanceMetrics {
 		expiresAt?: string;
 	};
 	activeProfile?: string;
+	cached?: boolean;
+	cacheCreatedAt?: string;
+	cacheHitCount?: number;
 }
 
 let lastPerformanceMetrics: PerformanceMetrics | null = null;

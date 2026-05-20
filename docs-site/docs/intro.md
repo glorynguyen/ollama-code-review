@@ -19,7 +19,7 @@ Modern software development moves fast. Traditional code reviews can be a bottle
 - **🛠️ Deep VS Code Integration:** Integrated with the Source Control panel, editor context menus, and inline annotations.
 - **🧠 Context-Aware:** Automatically gathers related files, tests, and type definitions to give the AI a full picture of your changes.
 - **🛡️ Compliance Profiles:** Audit your code against standards like OWASP Top 10, PCI-DSS, GDPR, HIPAA, and more.
-- **🎨 Visual Feedback:** Architecture diagrams, quality scores, and history trends.
+- **🎨 Visual Feedback:** Architecture diagrams, quality scores, history trends, cached repeat reviews, and review coverage by file.
 - **🤖 Agentic Workflows:** Multi-step pipeline for deep analysis, self-critique, and autonomous workspace editing.
 
 ## Next Steps

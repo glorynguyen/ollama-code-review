@@ -174,6 +174,46 @@ export function normalizeReviewResult(reviewContent: string, diff: string): Vali
 	return validateStructuredReviewResult(rawResult, diff);
 }
 
+export interface ReviewNoiseFilterOptions {
+	suppressBuildVerifiableFindings?: boolean;
+	minConfidenceToKeep?: number;
+}
+
+export interface ReviewNoiseFilterResult {
+	result: ValidatedStructuredReviewResult;
+	suppressedCount: number;
+}
+
+export function filterReviewNoise(
+	result: ValidatedStructuredReviewResult,
+	options: ReviewNoiseFilterOptions = {},
+): ReviewNoiseFilterResult {
+	if (!options.suppressBuildVerifiableFindings) {
+		return { result, suppressedCount: 0 };
+	}
+
+	const minConfidenceToKeep = options.minConfidenceToKeep ?? 0.9;
+	const findings = result.findings.filter(
+		finding => !isBuildVerifiableFinding(finding, minConfidenceToKeep),
+	);
+	const suppressedCount = result.findings.length - findings.length;
+
+	if (suppressedCount === 0) {
+		return { result, suppressedCount };
+	}
+
+	return {
+		result: {
+			...result,
+			summary: findings.length === 0
+				? 'I have reviewed the changes and found no significant issues.'
+				: result.summary,
+			findings,
+		},
+		suppressedCount,
+	};
+}
+
 export function renderValidatedReviewMarkdown(result: ValidatedStructuredReviewResult): string {
 	if (result.findings.length === 0) {
 		return result.summary.trim() || 'I have reviewed the changes and found no significant issues.';
@@ -550,6 +590,61 @@ function renderFindingMarkdown(finding: ValidatedStructuredReviewFinding): strin
 	}
 
 	return lines.join('\n');
+}
+
+const BUILD_VERIFIABLE_PATTERNS: RegExp[] = [
+	/\b(non[- ]exported|not exported|missing export|no exported member|exported member)\b/i,
+	/\b(unresolved import|missing import|cannot find module|module not found)\b/i,
+	/\b(cannot find name|property .* does not exist|not assignable|implicit(?:ly)? has an? any type)\b/i,
+	/\b(type ?script|tsc|type[- ]?check|type error|compiler error|compilation error|compile error)\b/i,
+	/\b(eslint|lint error|prettier|formatting[- ]only|unused import|unused variable|no-unused-vars)\b/i,
+	/\b(fail|fails|failed|failing|break|breaks|broken)\s+(?:the\s+)?(?:build|compile|compilation|type[- ]?check|lint)\b/i,
+];
+
+const SPECULATIVE_EVIDENCE_PATTERNS: RegExp[] = [
+	/\bnot shown in (?:the )?diff\b/i,
+	/\bdiff (?:only )?shows\b/i,
+	/\bonly shown as\b/i,
+	/\bmay reference\b/i,
+	/\bmight fail to compile\b/i,
+	/\bmay fail to compile\b/i,
+	/\bif [\s\S]{0,80}\b(?:doesn't exist|does not exist|is missing|is not exported|isn't exported)\b/i,
+];
+
+const RUNTIME_OR_SECURITY_PATTERNS: RegExp[] = [
+	/\b(security|vulnerabilit|injection|xss|ssrf|auth(?:entication|orization)?|secret|credential)\b/i,
+	/\b(data loss|race condition|deadlock|memory leak|infinite loop|runtime crash|crash at runtime)\b/i,
+];
+
+function isBuildVerifiableFinding(finding: ValidatedStructuredReviewFinding, minConfidenceToKeep: number): boolean {
+	const text = getFindingSearchText(finding);
+	if (!BUILD_VERIFIABLE_PATTERNS.some(pattern => pattern.test(text))) {
+		return false;
+	}
+
+	if (RUNTIME_OR_SECURITY_PATTERNS.some(pattern => pattern.test(text))) {
+		return false;
+	}
+
+	return finding.confidence < minConfidenceToKeep
+		|| SPECULATIVE_EVIDENCE_PATTERNS.some(pattern => pattern.test(text));
+}
+
+function getFindingSearchText(finding: ValidatedStructuredReviewFinding): string {
+	const evidenceText = finding.evidence
+		.map(evidence => [evidence.kind, evidence.summary, evidence.quote].filter(Boolean).join(' '))
+		.join(' ');
+	const fixText = finding.fix
+		? [finding.fix.summary, finding.fix.replacement, finding.fix.patch].filter(Boolean).join(' ')
+		: '';
+
+	return [
+		finding.title,
+		finding.summary,
+		finding.category,
+		evidenceText,
+		fixText,
+	].filter(Boolean).join(' ');
 }
 
 function normalizeFilePath(file: string | undefined): string | undefined {

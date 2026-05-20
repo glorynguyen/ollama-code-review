@@ -6,11 +6,12 @@
  * This produces the bulk of the review findings.
  */
 
+import * as vscode from 'vscode';
 import type { AgentStep, AgentContext, PatternAnalysis, DeepReview, DiffAnalysis } from '../types';
 import type { GatheredContext } from '../types';
 import { isAICallerFn, isDiffAnalysis, isGatheredContext } from '../types';
 import { formatContextForPrompt } from '../../context';
-import { normalizeReviewResult } from '../../reviewFindings';
+import { filterReviewNoise, normalizeReviewResult } from '../../reviewFindings';
 
 export const deepReviewStep: AgentStep<PatternAnalysis, DeepReview> = {
 	name: 'deepReview',
@@ -83,6 +84,11 @@ ${diffSummary}${patternsSection}${skillContext}${profileContext}${impactSection}
 - Provide a concrete suggestion or code snippet for each finding
 - Use Markdown formatting
 - If you find no issues, respond with: "I have reviewed the changes and found no significant issues."
+
+**Do Not Report Deterministic Build Issues:**
+- Do not report issues that TypeScript, ESLint, formatting, or the configured build step would deterministically catch, unless the diff provides full-file evidence that the build step is absent, disabled, or unreliable.
+- Do not infer that a symbol, export, import, type, or file is missing only because it is not shown in the diff.
+- Suppress missing exports, unresolved imports, TypeScript type errors, unused imports, formatting-only issues, and lint-only naming/style violations when the concern is only "this might fail to compile".
 ${contextSection}
 
 **Code diff to review:**
@@ -93,7 +99,15 @@ ${ctx.diff}
 		// Pass responseFormat to signal the provider to return structured findings.
 		// Note: synthesisStep intentionally omits this option since it refines free-form markdown.
 		const reviewMarkdown = await callAI(prompt, { responseFormat: 'structured-review' });
-		const structuredReview = normalizeReviewResult(reviewMarkdown, ctx.diff);
+		const config = vscode.workspace.getConfiguration('ollama-code-review');
+		const filterResult = filterReviewNoise(normalizeReviewResult(reviewMarkdown, ctx.diff), {
+			suppressBuildVerifiableFindings: config.get<boolean>('reviewNoiseFilter.suppressBuildVerifiableFindings', true),
+			minConfidenceToKeep: config.get<number>('reviewNoiseFilter.minConfidenceToKeep', 0.9),
+		});
+		if (filterResult.suppressedCount > 0) {
+			ctx.outputChannel.appendLine(`[Agent] Review noise filter suppressed ${filterResult.suppressedCount} build-verifiable finding(s)`);
+		}
+		const structuredReview = filterResult.result;
 		ctx.outputChannel.appendLine(`[Agent] Step 4: Deep review completed (${reviewMarkdown.length} chars)`);
 
 		return { reviewMarkdown, structuredReview };

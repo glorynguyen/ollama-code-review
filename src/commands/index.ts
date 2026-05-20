@@ -115,11 +115,13 @@ import {
 	buildContentstackPromptSection,
 } from '../contentstack';
 import { ReviewDecorationsManager, getAnnotationsConfig } from '../reviewDecorations';
+import { ReviewCoverageProvider } from '../reviewCoverage';
 import {
 	type PerformanceMetrics,
 	checkActiveModels,
 	getLastPerformanceMetrics,
 	clearPerformanceMetrics,
+	setLastPerformanceMetrics,
 } from './providerClients';
 import { type ProviderRequestContext, providerRegistry } from '../providers';
 import {
@@ -146,6 +148,7 @@ import { buildReviewPrompt as buildSharedReviewPrompt, DEFAULT_REVIEW_PROMPT } f
 import {
 	FindingsTreeProvider,
 	STRUCTURED_REVIEW_SCHEMA_VERSION,
+	filterReviewNoise,
 	normalizeReviewResult,
 	renderValidatedReviewMarkdown,
 	toLegacyReviewFinding,
@@ -157,6 +160,12 @@ import type { ModelAdvisorInput } from '../modelAdvisor';
 import { AutoReviewManager } from '../autoReview';
 import { MonorepoResolver } from '../autoReview/monorepo';
 import { buildFunctionContext, type FunctionContextEntry } from '../autoReview/smartContext';
+import {
+	createPromptHash,
+	createReviewCacheKey,
+	getReviewCacheSettings,
+	ReviewCacheStore,
+} from '../reviewCache';
 import { mcpBridge, createMcpServer, type McpServerInstance } from '../mcp';
 import { disposeSembleService } from '../mcp/sembleService';
 import { type CommandContext } from './commandContext';
@@ -196,6 +205,7 @@ let extensionGlobalStoragePath: string | undefined;
 
 // F-031: Findings Explorer tree provider (initialised in activate())
 let findingsTreeProvider: FindingsTreeProvider | undefined;
+let reviewCoverageProvider: ReviewCoverageProvider | undefined;
 
 // F-009: RAG vector store (initialised lazily in activate())
 let ragVectorStore: JsonVectorStore | undefined;
@@ -385,6 +395,9 @@ interface ReviewGenerationResult {
 	rawResponse: string;
 	reviewPrompt: string;
 	structuredReview: ValidatedStructuredReviewResult;
+	cached?: boolean;
+	cacheCreatedAt?: string;
+	cacheHitCount?: number;
 }
 
 interface RunReviewOptions {
@@ -1824,6 +1837,75 @@ export async function activate(context: vscode.ExtensionContext) {
 	);
 	context.subscriptions.push(showAnalyticsDashboardCommand);
 
+	// F-047: Review Coverage & Staleness Tracking
+	reviewCoverageProvider = new ReviewCoverageProvider(() => extensionGlobalStoragePath);
+	const coverageTreeView = vscode.window.createTreeView('ai-review.coverage', {
+		treeDataProvider: reviewCoverageProvider,
+		showCollapseAll: true,
+	});
+	context.subscriptions.push(coverageTreeView);
+	void reviewCoverageProvider.refresh();
+
+	const refreshReviewCoverageCommand = vscode.commands.registerCommand(
+		'ollama-code-review.refreshReviewCoverage',
+		async () => {
+			await reviewCoverageProvider?.refresh();
+		}
+	);
+
+	const copyReviewCoverageSummaryCommand = vscode.commands.registerCommand(
+		'ollama-code-review.copyReviewCoverageSummary',
+		async () => {
+			if (!reviewCoverageProvider) {
+				vscode.window.showWarningMessage('Review coverage is not available.');
+				return;
+			}
+			await vscode.env.clipboard.writeText(reviewCoverageProvider.getSummaryMarkdown());
+			vscode.window.showInformationMessage('Review coverage summary copied to clipboard.');
+		}
+	);
+
+	const openCoverageFileCommand = vscode.commands.registerCommand(
+		'ollama-code-review.openCoverageFile',
+		async (uri?: vscode.Uri) => {
+			if (!uri) { return; }
+			const doc = await vscode.workspace.openTextDocument(uri);
+			await vscode.window.showTextDocument(doc, { preview: true });
+		}
+	);
+
+	const reviewCoverageFileCommand = vscode.commands.registerCommand(
+		'ollama-code-review.reviewCoverageFile',
+		async (element?: unknown) => {
+			const file = reviewCoverageProvider?.getFileItem(element);
+			if (!file) {
+				vscode.window.showWarningMessage('Select a file in the Review Coverage view first.');
+				return;
+			}
+			await vscode.commands.executeCommand('ollama-code-review.reviewFile', file.uri);
+		}
+	);
+
+	const restoreCoverageReviewCommand = vscode.commands.registerCommand(
+		'ollama-code-review.restoreCoverageReview',
+		async (element?: unknown) => {
+			const file = reviewCoverageProvider?.getFileItem(element);
+			if (!file?.lastReview) {
+				vscode.window.showWarningMessage('This file does not have a stored review to restore.');
+				return;
+			}
+			await vscode.commands.executeCommand('ollama-code-review.restoreReviewFromHistory', file.lastReview);
+		}
+	);
+
+	context.subscriptions.push(
+		refreshReviewCoverageCommand,
+		copyReviewCoverageSummaryCommand,
+		openCoverageFileCommand,
+		reviewCoverageFileCommand,
+		restoreCoverageReviewCommand,
+	);
+
 	// F-043: Auto-Review on Save — Background Code Quality Monitor
 	const autoReviewManager = AutoReviewManager.create(
 		context,
@@ -2115,7 +2197,7 @@ export async function activate(context: vscode.ExtensionContext) {
 					vscode.window.showWarningMessage(`File is larger than ${maxKb} KB. Only the first ${maxKb} KB will be reviewed.`);
 				}
 				const truncated = content.slice(0, maxKb * 1024);
-				await runFileReview(truncated, `[File Review: ${relativePath}]`, context);
+				await runFileReview(truncated, `[File Review: ${relativePath}]`, context, 'file', [relativePath]);
 			} catch (error) {
 				handleError(error, 'Failed to review file.');
 			}
@@ -2601,6 +2683,7 @@ ${diff.slice(0, 12000)}
 				const relativeFolderPath = vscode.workspace.asRelativePath(folderUri);
 				let combined = '';
 				let totalChars = 0;
+				const reviewedFiles: string[] = [];
 				const budgetChars = maxKb * 1024 * 10; // Allow up to 10× maxKb for folder reviews
 
 				for (const file of files) {
@@ -2610,6 +2693,7 @@ ${diff.slice(0, 12000)}
 						const content = Buffer.from(bytes).toString('utf-8').slice(0, maxKb * 1024);
 						const rel = vscode.workspace.asRelativePath(file);
 						combined += `\n--- ${rel} ---\n${content}\n`;
+						reviewedFiles.push(rel);
 						totalChars += content.length;
 					} catch {
 						// Skip unreadable files
@@ -2621,7 +2705,7 @@ ${diff.slice(0, 12000)}
 					return;
 				}
 
-				await runFileReview(combined.trim(), `[Folder Review: ${relativeFolderPath} — ${files.length} file(s)]`, context, 'folder');
+				await runFileReview(combined.trim(), `[Folder Review: ${relativeFolderPath} — ${reviewedFiles.length} file(s)]`, context, 'folder', reviewedFiles);
 			} catch (error) {
 				handleError(error, 'Failed to review folder.');
 			}
@@ -2646,7 +2730,8 @@ ${diff.slice(0, 12000)}
 				selectedText,
 				`[Selection Review: ${relativePath} lines ${startLine}–${endLine}]`,
 				context,
-				'selection'
+				'selection',
+				[relativePath],
 			);
 		}
 	);
@@ -2977,6 +3062,7 @@ ${diff.slice(0, 12000)}
 							diff: filteredDiff,
 						};
 						store.addScore(scoreEntry);
+						void reviewCoverageProvider?.refresh();
 					}
 					showScoreStatusBar(scoreResult.score);
 
@@ -3283,6 +3369,7 @@ ${diff.slice(0, 12000)}
 								diff: filteredDiff,
 							};
 							store.addScore(scoreEntry);
+							void reviewCoverageProvider?.refresh();
 						}
 						showScoreStatusBar(bestEntry.score);
 					}
@@ -3417,6 +3504,28 @@ function mergeSecretFindingsIntoReview(
 
 	const secretsMarkdown = renderSecretScannerMarkdown(secretFindings);
 	return { combinedReviewText: secretsMarkdown + reviewText, structuredReview: mergedReview };
+}
+
+function applyReviewNoiseFilter(
+	structuredReview: ValidatedStructuredReviewResult,
+	config: vscode.WorkspaceConfiguration,
+): { structuredReview: ValidatedStructuredReviewResult; suppressedCount: number } {
+	const suppressBuildVerifiableFindings = config.get<boolean>(
+		'reviewNoiseFilter.suppressBuildVerifiableFindings',
+		true,
+	);
+	const minConfidenceToKeep = config.get<number>(
+		'reviewNoiseFilter.minConfidenceToKeep',
+		0.9,
+	);
+	const filtered = filterReviewNoise(structuredReview, {
+		suppressBuildVerifiableFindings,
+		minConfidenceToKeep,
+	});
+	return {
+		structuredReview: filtered.result,
+		suppressedCount: filtered.suppressedCount,
+	};
 }
 
 async function runReview(
@@ -3622,6 +3731,7 @@ async function runReview(
 					diff: filteredDiff,
 				};
 				store.addScore(scoreEntry);
+				void reviewCoverageProvider?.refresh();
 				outputChannel.appendLine(`[Score] Quality score: ${scoreResult.score}/100 (${findingCounts.critical}C ${findingCounts.high}H ${findingCounts.medium}M ${findingCounts.low}L)`);
 			}
 			showScoreStatusBar(scoreResult.score);
@@ -3731,6 +3841,7 @@ async function runReview(
 				diff: filteredDiff,
 			};
 			store.addScore(scoreEntry);
+			void reviewCoverageProvider?.refresh();
 			outputChannel.appendLine(`[Score] Quality score: ${scoreResult.score}/100 (${findingCounts.critical}C ${findingCounts.high}H ${findingCounts.medium}M ${findingCounts.low}L)`);
 		}
 
@@ -3793,7 +3904,13 @@ async function runReview(
  * Bypasses diff filtering and uses a simpler file-review prompt so the model
  * knows there is no diff context. Integrates with F-016 scoring and F-018 notifications.
  */
-async function runFileReview(content: string, label: string, context: vscode.ExtensionContext, reviewType: import('../reviewScore').ReviewType = 'file') {
+async function runFileReview(
+	content: string,
+	label: string,
+	context: vscode.ExtensionContext,
+	reviewType: import('../reviewScore').ReviewType = 'file',
+	filesReviewed: string[] = [],
+) {
 	if (!content || !content.trim()) {
 		vscode.window.showInformationMessage('No content to review.');
 		return;
@@ -3850,11 +3967,13 @@ async function runFileReview(content: string, label: string, context: vscode.Ext
 				// F-011: Analytics fields
 				durationMs: Date.now() - reviewStartTime,
 				reviewType,
+				filesReviewed,
 				categories: parseIssueCategories(review),
 				findings: normalizeReviewResult(review, content),
 				diff: content,
 			};
 			store.addScore(scoreEntry);
+			void reviewCoverageProvider?.refresh();
 		}
 		showScoreStatusBar(scoreResult.score);
 
@@ -4209,6 +4328,7 @@ async function getOllamaReview(diff: string, context?: vscode.ExtensionContext, 
 	const model = getOllamaModel(config);
 	const endpoint = config.get<string>('endpoint', 'http://localhost:11434/api/generate');
 	const temperature = config.get<number>('temperature', 0);
+	const provider = providerRegistry.resolve(model);
 	const prompt = await buildReviewPrompt({
 		diff,
 		context,
@@ -4226,9 +4346,56 @@ async function getOllamaReview(diff: string, context?: vscode.ExtensionContext, 
 		outputChannel.appendLine(`[Review] Failed to copy prompt to clipboard: ${err}`);
 	}
 
+	const cacheSettings = getReviewCacheSettings(config);
+	const cacheStore = context?.globalStorageUri?.fsPath
+		? ReviewCacheStore.getInstance(context.globalStorageUri.fsPath)
+		: undefined;
+	const cacheKey = createReviewCacheKey({
+		prompt,
+		model,
+		endpoint,
+		temperature,
+		providerName: provider.name,
+	});
+
+	if (cacheStore) {
+		const cached = cacheStore.get(cacheKey, cacheSettings);
+		if (cached) {
+			outputChannel.appendLine(`[Review Cache] Hit for ${model}; reused review from ${cached.createdAt}.`);
+			vscode.window.setStatusBarMessage('$(database) Review loaded from cache', 5000);
+			setLastPerformanceMetrics({
+				model,
+				provider: provider.name as PerformanceMetrics['provider'],
+				activeProfile: context ? getActiveProfileName(context) : undefined,
+				cached: true,
+				cacheCreatedAt: cached.createdAt,
+				cacheHitCount: cached.hitCount,
+			});
+			const cachedReview = applyReviewNoiseFilter(
+				normalizeReviewResult(cached.rawResponse || cached.reviewText, diff),
+				config,
+			);
+			const cachedReviewText = renderValidatedReviewMarkdown(cachedReview.structuredReview);
+			if (cachedReview.suppressedCount > 0) {
+				outputChannel.appendLine(`[Review Noise Filter] Suppressed ${cachedReview.suppressedCount} build-verifiable finding(s) from cached review.`);
+			}
+			if (_onChunk) {
+				_onChunk(cachedReviewText);
+			}
+			return {
+				reviewText: cachedReviewText,
+				rawResponse: cached.rawResponse,
+				reviewPrompt: cached.reviewPrompt,
+				structuredReview: cachedReview.structuredReview,
+				cached: true,
+				cacheCreatedAt: cached.createdAt,
+				cacheHitCount: cached.hitCount,
+			};
+		}
+	}
+
 	// Clear previous metrics before the API call
 	clearPerformanceMetrics();
-	const provider = providerRegistry.resolve(model);
 	const requestContext: ProviderRequestContext = {
 		config,
 		model,
@@ -4239,10 +4406,28 @@ async function getOllamaReview(diff: string, context?: vscode.ExtensionContext, 
 		captureMetrics: true,
 		responseFormat: 'structured-review',
 	});
-	const structuredReview = normalizeReviewResult(rawResponse, diff);
+	const filterResult = applyReviewNoiseFilter(normalizeReviewResult(rawResponse, diff), config);
+	const structuredReview = filterResult.structuredReview;
+	if (filterResult.suppressedCount > 0) {
+		outputChannel.appendLine(`[Review Noise Filter] Suppressed ${filterResult.suppressedCount} build-verifiable finding(s).`);
+	}
 	const reviewText = renderValidatedReviewMarkdown(structuredReview);
 	if (_onChunk) {
 		_onChunk(reviewText);
+	}
+
+	if (cacheStore) {
+		cacheStore.set({
+			key: cacheKey,
+			model,
+			providerName: provider.name,
+			promptHash: createPromptHash(prompt),
+			reviewText,
+			rawResponse,
+			reviewPrompt: prompt,
+			structuredReview,
+		}, cacheSettings);
+		outputChannel.appendLine(`[Review Cache] Stored result for ${model}.`);
 	}
 
 	return {
