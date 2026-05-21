@@ -1,3 +1,10 @@
+# [4.17.0](https://github.com/glorynguyen/ollama-code-review/compare/v4.16.0...v4.17.0) (2026-05-21)
+
+
+### Features
+
+* **setup:** add cloud provider configuration to setup guide ([0669a54](https://github.com/glorynguyen/ollama-code-review/commit/0669a54c4426363fb990f641a354e182442f77f1))
+
 # [4.16.0](https://github.com/glorynguyen/ollama-code-review/compare/v4.15.0...v4.16.0) (2026-05-21)
 
 
