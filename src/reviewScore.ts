@@ -47,6 +47,8 @@ export interface ReviewScore {
 	findings?: ValidatedStructuredReviewResult;
 	/** F-048: The original diff reviewed (optional, for restoration). Truncated to 100 KB. */
 	diff?: string;
+	/** F-044: Fix verification stats accumulated during this review session */
+	fixVerifications?: { total: number; successful: number };
 }
 
 /** Maximum diff size (in characters) persisted per score entry to limit storage growth. */
@@ -176,6 +178,21 @@ export class ReviewScoreStore {
 			};
 			this._save();
 		}
+	}
+
+	/** F-044: Increment fix verification stats on the most recent score entry. */
+	recordFixVerification(successful: boolean): void {
+		if (this._scores.length === 0) { return; }
+		const entry = this._scores[0];
+		const current = entry.fixVerifications ?? { total: 0, successful: 0 };
+		this._scores[0] = {
+			...entry,
+			fixVerifications: {
+				total: current.total + 1,
+				successful: current.successful + (successful ? 1 : 0),
+			},
+		};
+		this._save();
 	}
 
 	getAllScores(): ReviewScore[] {
