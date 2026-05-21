@@ -1,3 +1,10 @@
+# [4.15.0](https://github.com/glorynguyen/ollama-code-review/compare/v4.14.0...v4.15.0) (2026-05-21)
+
+
+### Features
+
+* **mcp:** add persistent code search registry for multi-repo support ([9f7b75a](https://github.com/glorynguyen/ollama-code-review/commit/9f7b75a3225fbbe658453d47fdcd317fe5cb9fe3))
+
 # [4.14.0](https://github.com/glorynguyen/ollama-code-review/compare/v4.13.0...v4.14.0) (2026-05-20)
 
 
