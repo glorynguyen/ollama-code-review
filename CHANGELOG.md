@@ -1,3 +1,15 @@
+# [4.18.0](https://github.com/glorynguyen/ollama-code-review/compare/v4.17.0...v4.18.0) (2026-05-21)
+
+
+### Bug Fixes
+
+* **F-044:** fix TS2367 — return result from withProgress instead of mutating outer variable ([3a6fb1f](https://github.com/glorynguyen/ollama-code-review/commit/3a6fb1ff5d482843ae13999d7217b3afbf160eb6))
+
+
+### Features
+
+* **F-044:** implement Fix Verification Loop ([60889dd](https://github.com/glorynguyen/ollama-code-review/commit/60889dd5c01ca37c177f9514d96b5d1d0f4b965a))
+
 # [4.17.0](https://github.com/glorynguyen/ollama-code-review/compare/v4.16.0...v4.17.0) (2026-05-21)
 
 
