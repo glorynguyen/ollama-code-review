@@ -1,3 +1,10 @@
+# [4.16.0](https://github.com/glorynguyen/ollama-code-review/compare/v4.15.0...v4.16.0) (2026-05-21)
+
+
+### Features
+
+* **gitlens:** add commit review support from GitLens context menus ([5529f53](https://github.com/glorynguyen/ollama-code-review/commit/5529f534710e296154499f3a6eb272639f3da2be))
+
 # [4.15.0](https://github.com/glorynguyen/ollama-code-review/compare/v4.14.0...v4.15.0) (2026-05-21)
 
 
