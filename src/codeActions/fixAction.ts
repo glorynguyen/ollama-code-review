@@ -84,6 +84,13 @@ export interface AppliedFix {
 	issue: string;
 }
 
+/** F-044: Payload for the onFindingFixApplied event. */
+export interface FindingFixAppliedEvent {
+	fix: AppliedFix;
+	finding: ReviewFinding;
+	fileUri: vscode.Uri;
+}
+
 export interface BatchFixCandidate {
 	finding: ReviewFinding;
 	fileUri: vscode.Uri;
@@ -114,8 +121,11 @@ export class FixTracker {
 	private static _instance: FixTracker;
 	private _fixes: AppliedFix[] = [];
 	private _onFixApplied = new vscode.EventEmitter<AppliedFix>();
+	private _onFindingFixApplied = new vscode.EventEmitter<FindingFixAppliedEvent>();
 
 	public readonly onFixApplied = this._onFixApplied.event;
+	/** F-044: Fires after a fix is applied when the source finding is known. */
+	public readonly onFindingFixApplied = this._onFindingFixApplied.event;
 
 	private constructor() { }
 
@@ -129,6 +139,15 @@ export class FixTracker {
 	public recordFix(fix: AppliedFix): void {
 		this._fixes.push(fix);
 		this._onFixApplied.fire(fix);
+	}
+
+	/** F-044: Record a fix and, if a source finding is provided, trigger verification. */
+	public recordFixWithFinding(fix: AppliedFix, finding: ReviewFinding | undefined, fileUri: vscode.Uri): void {
+		this._fixes.push(fix);
+		this._onFixApplied.fire(fix);
+		if (finding) {
+			this._onFindingFixApplied.fire({ fix, finding, fileUri });
+		}
 	}
 
 	public getRecentFixes(count: number = 10): AppliedFix[] {
@@ -369,18 +388,22 @@ export class FixPreviewPanel {
 				return;
 			}
 
-			// Record the fix
 			const tracker = FixTracker.getInstance();
-			tracker.recordFix({
+			const appliedFix: AppliedFix = {
 				timestamp: new Date(),
 				fileName: path.basename(this._editor.document.fileName),
 				lineNumber: this._range.start.line + 1,
 				originalCode: this._originalCode,
 				fixedCode: this._fixedCode,
-				issue: this._issue
-			});
+				issue: this._issue,
+			};
+			// F-044: use recordFixWithFinding so verification can fire when finding is known
+			tracker.recordFixWithFinding(appliedFix, this._finding, this._editor.document.uri);
 
-			vscode.window.showInformationMessage('Fix applied successfully!');
+			const msg = this._finding
+				? 'Fix applied. Verifying in background…'
+				: 'Fix applied successfully!';
+			vscode.window.showInformationMessage(msg);
 			this.dispose();
 		} catch (error) {
 			vscode.window.showErrorMessage(`Failed to apply fix: ${error}`);

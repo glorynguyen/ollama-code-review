@@ -4,8 +4,10 @@ import { ChatSidebarProvider } from '../chat/sidebarProvider';
 import {
 	BatchFixPreviewPanel,
 	FixPreviewPanel,
+	FixTracker,
 	filterOverlappingBatchFixes,
 	type BatchFixCandidate,
+	type FindingFixAppliedEvent,
 	type SkippedBatchFix,
 } from '../codeActions';
 import { type ReviewFinding, type Severity } from '../github/commentMapper';
@@ -16,9 +18,10 @@ import {
 	type ValidatedStructuredReviewFinding,
 } from '../reviewFindings';
 import { computeScore, ReviewHistoryPanel, ReviewScoreStore } from '../reviewScore';
-import { generateFix } from './aiActions';
+import { callAIProvider, generateFix } from './aiActions';
 import { type CommandContext } from './commandContext';
 import { runGitCommand } from './uiHelpers';
+import { getOllamaModel } from '../utils';
 
 interface FindingsCommandsRegistration {
 	provider: FindingsTreeProvider;
@@ -156,6 +159,136 @@ async function buildBatchFixCandidate(finding: ReviewFinding): Promise<BatchFixC
 		languageId: doc.languageId,
 	};
 }
+
+// ── F-044: Fix Verification Loop ─────────────────────────────────────────────
+
+function buildVerificationPrompt(finding: ReviewFinding, currentCode: string, languageId: string): string {
+	const issueDesc = `[${finding.severity.toUpperCase()}] ${finding.message}`;
+	const suggestionBlock = finding.suggestion
+		? `\n\nOriginal suggestion:\n${finding.suggestion}`
+		: '';
+	return `You are a code reviewer performing a targeted fix verification.
+
+**Original Issue:**
+${issueDesc}${suggestionBlock}
+
+**Updated code (after the fix was applied):**
+\`\`\`${languageId}
+${currentCode}
+\`\`\`
+
+Has the specific issue described above been resolved in the updated code?
+
+Reply with exactly one of these two tokens on the first line, followed by a brief one-sentence explanation:
+- RESOLVED — the fix successfully addresses the original issue
+- STILL_PRESENT — the original issue still exists in the updated code
+
+Be strict: only reply RESOLVED if the specific problem is definitively gone.`;
+}
+
+async function verifyFix(
+	event: FindingFixAppliedEvent,
+	provider: FindingsTreeProvider,
+	commandContext: CommandContext,
+): Promise<void> {
+	const { finding, fileUri, fix } = event;
+	const { outputChannel } = commandContext;
+	outputChannel.appendLine(
+		`[F-044 verifyFix] Verifying: ${finding.severity} — ${finding.message.slice(0, 80)}`,
+	);
+
+	try {
+		const doc = await vscode.workspace.openTextDocument(fileUri);
+		const targetLine = Math.max(0, fix.lineNumber - 1);
+		const contextLines = 25;
+		const startLine = Math.max(0, targetLine - contextLines);
+		const endLine = Math.min(doc.lineCount - 1, targetLine + contextLines);
+		const range = new vscode.Range(startLine, 0, endLine, doc.lineAt(endLine).text.length);
+		const currentCode = doc.getText(range);
+		const languageId = doc.languageId;
+
+		const config = vscode.workspace.getConfiguration('ollama-code-review');
+		const model = getOllamaModel(config);
+		const endpoint = config.get<string>('endpoint', 'http://localhost:11434/api/generate');
+		const temperature = config.get<number>('temperature', 0);
+
+		let verificationResult: 'resolved' | 'still_present' | 'unknown' = 'unknown';
+
+		await vscode.window.withProgress(
+			{ location: vscode.ProgressLocation.Notification, title: 'Verifying fix…', cancellable: false },
+			async () => {
+				try {
+					const prompt = buildVerificationPrompt(finding, currentCode, languageId);
+					const response = await callAIProvider(prompt, config, model, endpoint, temperature);
+					outputChannel.appendLine(
+						`[F-044 verifyFix] AI response: ${response.trim().slice(0, 200)}`,
+					);
+
+					const trimmed = response.trim().toUpperCase();
+					if (trimmed.startsWith('RESOLVED')) {
+						verificationResult = 'resolved';
+					} else if (trimmed.startsWith('STILL_PRESENT')) {
+						verificationResult = 'still_present';
+					} else if (/\b(?:fixed|resolved|no longer|addressed|corrected)\b/i.test(response)) {
+						verificationResult = 'resolved';
+					} else if (/\b(?:still\s+present|still\s+exists|not\s+fixed|not\s+resolved|persists|remains)\b/i.test(response)) {
+						verificationResult = 'still_present';
+					}
+				} catch (aiErr) {
+					outputChannel.appendLine(`[F-044 verifyFix] AI call failed: ${aiErr}`);
+				}
+			},
+		);
+
+		const globalStoragePath = commandContext.getGlobalStoragePath();
+		if (globalStoragePath) {
+			ReviewScoreStore.getInstance(globalStoragePath).recordFixVerification(
+				verificationResult === 'resolved',
+			);
+		}
+
+		if (verificationResult === 'resolved') {
+			ReviewDecorationsManager.getInstance().removeFinding(finding);
+			provider.removeFinding(finding);
+
+			const summary = countFindingsBySeverity(provider.getFindings());
+			const scoreResult = computeScore(summary);
+			commandContext.showScoreStatusBar(scoreResult.score);
+
+			if (globalStoragePath) {
+				ReviewScoreStore.getInstance(globalStoragePath).updateLastScore(summary);
+			}
+
+			void vscode.commands.executeCommand(
+				'setContext',
+				'ollama-code-review.hasFindings',
+				provider.count > 0,
+			);
+			vscode.window.setStatusBarMessage(
+				`$(verified-filled) Fix verified — issue resolved! Score: ${scoreResult.score}/100`,
+				6000,
+			);
+			outputChannel.appendLine('[F-044 verifyFix] ✓ Finding verified as fixed.');
+		} else if (verificationResult === 'still_present') {
+			const choice = await vscode.window.showWarningMessage(
+				'Fix may be insufficient — the original issue was still detected in the updated code.',
+				'Re-Fix',
+				'Dismiss',
+			);
+			if (choice === 'Re-Fix') {
+				await vscode.commands.executeCommand('ollama-code-review.fixFinding', finding);
+			}
+			outputChannel.appendLine('[F-044 verifyFix] ⚠ Issue may still be present after fix.');
+		} else {
+			vscode.window.setStatusBarMessage('$(check) Fix applied. Verification inconclusive.', 4000);
+			outputChannel.appendLine('[F-044 verifyFix] Verification inconclusive — AI response was ambiguous.');
+		}
+	} catch (err) {
+		outputChannel.appendLine(`[F-044 verifyFix] Unexpected error: ${err}`);
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 export function registerFindingsCommands(
 	commandContext: CommandContext,
@@ -574,6 +707,11 @@ export function registerFindingsCommands(
 		},
 	);
 
+	// F-044: Subscribe to fix-applied events so we can verify each fix automatically
+	const fixVerificationSubscription = FixTracker.getInstance().onFindingFixApplied(
+		(event: FindingFixAppliedEvent) => { void verifyFix(event, provider, commandContext); },
+	);
+
 	return {
 		provider,
 		disposables: [
@@ -588,6 +726,7 @@ export function registerFindingsCommands(
 			ignoreFindingCommand,
 			askFindingCommand,
 			viewFindingDiffCommand,
+			fixVerificationSubscription,
 		],
 	};
 }

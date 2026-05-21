@@ -32,7 +32,7 @@ export {
 	resolveFixApplyRange,
 	sortBatchFixesForApply
 } from './fixAction';
-export type { AppliedFix, BatchFixCandidate, FixRangeResolution, SkippedBatchFix } from './fixAction';
+export type { AppliedFix, BatchFixCandidate, FindingFixAppliedEvent, FixRangeResolution, SkippedBatchFix } from './fixAction';
 
 // Add Documentation Action
 export {
