@@ -10,6 +10,30 @@ export interface McpListenOptions {
 }
 
 const execFileAsync = promisify(execFile);
+const PROTECTED_PORT_OWNER_MARKERS = [
+	'--type=extensionhost',
+	'--type=extension-host',
+	'extensionhost',
+	'extension host',
+	'code helper (plugin)',
+	'code - insiders helper (plugin)',
+	'cursor helper (plugin)',
+	'windsurf helper (plugin)',
+];
+
+interface PortCleanupResult {
+	killedPids: number[];
+	protectedPids: number[];
+}
+
+export function isProtectedMcpPortOwner(commandLine: string | undefined): boolean {
+	if (!commandLine) {
+		return false;
+	}
+
+	const normalized = commandLine.toLowerCase();
+	return PROTECTED_PORT_OWNER_MARKERS.some(marker => normalized.includes(marker));
+}
 
 function resolveAllowedOrigin(originHeader: string | undefined): string | null {
 	if (!originHeader) {
@@ -122,11 +146,14 @@ export async function listen(server: http.Server, port: number, options: McpList
 		}
 
 		options.log?.(`Port ${port} is in use — attempting to terminate the existing listener.`);
-		const killedPids = await killProcessesUsingPort(port, options.log);
-		if (killedPids.length === 0) {
+		const cleanupResult = await killProcessesUsingPort(port, options.log);
+		if (cleanupResult.killedPids.length === 0) {
+			const protectedHint = cleanupResult.protectedPids.length > 0
+				? ' The port is owned by another VS Code extension host, so it was left running to avoid restarting the extension host repeatedly.'
+				: '';
 			throw new Error(
 				`Port ${port} is already in use and no owning process could be terminated automatically. ` +
-				'Change ollama-code-review.mcp.port in settings or disable auto-kill.',
+				`Change ollama-code-review.mcp.port in settings or disable auto-kill.${protectedHint}`,
 			);
 		}
 
@@ -163,13 +190,24 @@ function wrapListenError(port: number, err: NodeJS.ErrnoException): Error {
 	return err;
 }
 
-async function killProcessesUsingPort(port: number, log?: (message: string) => void): Promise<number[]> {
+async function killProcessesUsingPort(port: number, log?: (message: string) => void): Promise<PortCleanupResult> {
 	const pids = (await getListeningPids(port)).filter(pid => pid !== process.pid);
+	const killedPids: number[] = [];
+	const protectedPids: number[] = [];
+
 	for (const pid of pids) {
+		const commandLine = await getProcessCommandLine(pid);
+		if (isProtectedMcpPortOwner(commandLine)) {
+			protectedPids.push(pid);
+			log?.(`Skipping process ${pid} using MCP port ${port} because it appears to be a VS Code extension host: ${formatProcessCommand(commandLine)}`);
+			continue;
+		}
+
 		log?.(`Terminating process ${pid} using MCP port ${port}.`);
 		await terminatePid(pid);
+		killedPids.push(pid);
 	}
-	return pids;
+	return { killedPids, protectedPids };
 }
 
 async function getListeningPids(port: number): Promise<number[]> {
@@ -212,6 +250,30 @@ async function getListeningPidsWindows(port: number): Promise<number[]> {
 		}
 	}
 	return [...pids];
+}
+
+async function getProcessCommandLine(pid: number): Promise<string | undefined> {
+	try {
+		if (process.platform === 'win32') {
+			const { stdout } = await execFileAsync('wmic', ['process', 'where', `ProcessId=${pid}`, 'get', 'CommandLine', '/value']);
+			const match = stdout.match(/CommandLine=(.*)/s);
+			return match?.[1]?.trim() || undefined;
+		}
+
+		const { stdout } = await execFileAsync('ps', ['-p', String(pid), '-o', 'command=']);
+		return stdout.trim() || undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+function formatProcessCommand(commandLine: string | undefined): string {
+	if (!commandLine) {
+		return '<unknown command>';
+	}
+
+	const singleLine = commandLine.replace(/\s+/g, ' ').trim();
+	return singleLine.length > 180 ? `${singleLine.slice(0, 177)}...` : singleLine;
 }
 
 function matchesPort(address: string, port: number): boolean {

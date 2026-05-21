@@ -4,6 +4,7 @@
 [![VS Marketplace Installs](https://img.shields.io/visual-studio-marketplace/i/VinhNguyen-Vincent.ollama-code-review?style=for-the-badge&label=Installs&color=4B9CD3&logo=visual-studio-code&logoColor=white)](https://marketplace.visualstudio.com/items?itemName=VinhNguyen-Vincent.ollama-code-review)
 [![GitHub Release](https://img.shields.io/github/v/release/glorynguyen/ollama-code-review?style=for-the-badge&logo=github&logoColor=white)](https://github.com/glorynguyen/ollama-code-review/releases)
 [![Build](https://img.shields.io/github/actions/workflow/status/glorynguyen/ollama-code-review/release.yml?style=for-the-badge&label=Build&logo=github-actions&logoColor=white)](https://github.com/glorynguyen/ollama-code-review/actions/workflows/release.yml)
+[![Code Coverage](https://img.shields.io/codecov/c/github/glorynguyen/ollama-code-review?style=for-the-badge&label=Coverage&logo=codecov&logoColor=white)](https://codecov.io/gh/glorynguyen/ollama-code-review)
 [![License: MIT](https://img.shields.io/github/license/glorynguyen/ollama-code-review?style=for-the-badge&color=yellow)](https://github.com/glorynguyen/ollama-code-review/blob/main/LICENSE.md)
 [![GitHub Stars](https://img.shields.io/github/stars/glorynguyen/ollama-code-review?style=for-the-badge&logo=github&logoColor=white)](https://github.com/glorynguyen/ollama-code-review/stargazers)
 [![GitHub Forks](https://img.shields.io/github/forks/glorynguyen/ollama-code-review?style=for-the-badge&logo=github&logoColor=white)](https://github.com/glorynguyen/ollama-code-review/forks)

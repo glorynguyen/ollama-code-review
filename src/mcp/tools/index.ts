@@ -20,5 +20,5 @@ export function registerAllTools(server: McpServer): void {
 	registerBrowserTools(server);      // get_workspace_repos
 	registerImpactTools(server);       // get_impacted_files (Phase 3: Impact Graph Agent)
 	registerFileTools(server);         // write_file, update_file, delete_file
-	registerSembleTools(server);       // index_codebase, search_code, find_related_code, get_code_search_status
+	registerSembleTools(server);       // index_codebase, search_code, find_related_code, list_indexed_codebases, resolve_codebase_repository, get_code_search_status
 }

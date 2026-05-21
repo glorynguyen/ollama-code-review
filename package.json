@@ -1628,7 +1628,7 @@
     "test:unit": "mocha --ui tdd --require ./test-support/vscode-node-mock.js out/test/*.test.js --ignore out/test/aiActionsValidation.test.js --ignore out/test/batchFix.test.js --ignore out/test/copySelectedFilesForLLM.test.js --ignore out/test/extension.test.js --ignore out/test/fileOperations.test.js --ignore out/test/mcpConfigExports.test.js --ignore out/test/mcpSembleService.test.js --ignore out/test/mcpSembleTools.test.js --ignore out/test/release.test.js --ignore out/test/reviewCache.test.js --ignore out/test/reviewCoverage.test.js --ignore out/test/testAction.test.js",
     "test:contract": "mocha --ui tdd --require ./test-support/vscode-node-mock.js out/test/mcpConfigExports.test.js out/test/mcpSembleService.test.js out/test/mcpSembleTools.test.js out/test/release.test.js",
     "test:extension": "vscode-test",
-    "coverage": "c8 yarn run test:unit",
+    "coverage": "c8 --reports-dir=coverage --reporter=text --reporter=lcov --reporter=json-summary yarn run test:unit",
     "test": "yarn run compile && yarn run lint && yarn run test:unit && yarn run test:contract && yarn run test:extension",
     "release": "semantic-release",
     "prepare": "husky"

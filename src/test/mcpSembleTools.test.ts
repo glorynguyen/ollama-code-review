@@ -32,6 +32,7 @@ function readJsonContent(result: any): any {
 suite('MCP Semble Tools Test Suite', () => {
 	let tempRoot: string;
 	let originalGetWorkspaceRoots: typeof mcpBridge.getWorkspaceRoots;
+	let originalGetGlobalStoragePath: typeof mcpBridge.getGlobalStoragePath;
 	let originalLog: typeof mcpBridge.log;
 	let originalIndexRepository: typeof sembleService.indexRepository;
 	let originalSearch: typeof sembleService.search;
@@ -41,6 +42,7 @@ suite('MCP Semble Tools Test Suite', () => {
 	setup(async () => {
 		tempRoot = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'ocr-mcp-semble-tools-')));
 		originalGetWorkspaceRoots = mcpBridge.getWorkspaceRoots;
+		originalGetGlobalStoragePath = mcpBridge.getGlobalStoragePath;
 		originalLog = mcpBridge.log;
 		originalIndexRepository = sembleService.indexRepository;
 		originalSearch = sembleService.search;
@@ -48,11 +50,13 @@ suite('MCP Semble Tools Test Suite', () => {
 		originalGetStatus = sembleService.getStatus;
 
 		(mcpBridge as any).getWorkspaceRoots = () => [tempRoot];
+		(mcpBridge as any).getGlobalStoragePath = () => tempRoot;
 		(mcpBridge as any).log = () => {};
 	});
 
 	teardown(async () => {
 		(mcpBridge as any).getWorkspaceRoots = originalGetWorkspaceRoots;
+		(mcpBridge as any).getGlobalStoragePath = originalGetGlobalStoragePath;
 		(mcpBridge as any).log = originalLog;
 		sembleService.indexRepository = originalIndexRepository;
 		sembleService.search = originalSearch;
@@ -70,6 +74,8 @@ suite('MCP Semble Tools Test Suite', () => {
 			'index_codebase',
 			'search_code',
 			'find_related_code',
+			'list_indexed_codebases',
+			'resolve_codebase_repository',
 			'get_code_search_status',
 		]);
 	});
@@ -100,6 +106,48 @@ suite('MCP Semble Tools Test Suite', () => {
 		});
 	});
 
+	test('search_code can search an explicitly indexed repository outside the open workspace', async () => {
+		const { tools, server } = createServer();
+		const externalRoot = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'ocr-mcp-external-repo-')));
+		const searchResults: SembleCodeSearchResult[] = [{
+			filePath: 'src/external.ts',
+			startLine: 1,
+			endLine: 2,
+			content: 'export const external = true;',
+			score: 0.9,
+		}];
+		let searchedPath = '';
+
+		sembleService.indexRepository = async (repositoryPath) => ({
+			repositoryPath,
+			chunkCount: 7,
+			indexedAt: '2026-05-18T00:00:00Z',
+			durationMs: 10,
+		});
+		sembleService.search = async (repositoryPath) => {
+			searchedPath = repositoryPath;
+			return searchResults;
+		};
+
+		try {
+			registerSembleTools(server);
+			await tools.get('index_codebase')!.handler({
+				repository_path: externalRoot,
+			});
+			const result = await tools.get('search_code')!.handler({
+				query: 'external',
+				repository_path: externalRoot,
+			});
+			const body = readJsonContent(result);
+
+			assert.strictEqual(searchedPath, externalRoot);
+			assert.strictEqual(body.repositoryPath, externalRoot);
+			assert.deepStrictEqual(body.results, searchResults);
+		} finally {
+			await fs.rm(externalRoot, { recursive: true, force: true });
+		}
+	});
+
 	test('search_code clamps top_k and returns structured search results', async () => {
 		const { tools, server } = createServer();
 		let receivedTopK = 0;
@@ -126,6 +174,25 @@ suite('MCP Semble Tools Test Suite', () => {
 		assert.strictEqual(body.repositoryPath, tempRoot);
 		assert.strictEqual(body.query, 'answer constant');
 		assert.deepStrictEqual(body.results, searchResults);
+	});
+
+	test('search_code preserves explicit workspace repository fallback', async () => {
+		const { tools, server } = createServer();
+		let searchedPath = '';
+		sembleService.search = async (repositoryPath) => {
+			searchedPath = repositoryPath;
+			return [];
+		};
+
+		registerSembleTools(server);
+		const result = await tools.get('search_code')!.handler({
+			query: 'workspace',
+			repository_path: tempRoot,
+		});
+		const body = readJsonContent(result);
+
+		assert.strictEqual(searchedPath, tempRoot);
+		assert.strictEqual(body.repositoryPath, tempRoot);
 	});
 
 	test('find_related_code uses a snippet seed and floors top_k', async () => {
@@ -207,20 +274,82 @@ suite('MCP Semble Tools Test Suite', () => {
 		assert.strictEqual(body.available, true);
 		assert.deepStrictEqual(body.indexes, [{
 			repositoryPath: tempRoot,
+			name: path.basename(tempRoot),
 			chunkCount: 5,
 			indexedAt: '2026-05-18T00:00:00Z',
 		}]);
 	});
 
-	test('returns tool errors when paths escape the workspace', async () => {
+	test('list_indexed_codebases returns registered repositories for client selection', async () => {
 		const { tools, server } = createServer();
-
-		registerSembleTools(server);
-		const result = await tools.get('index_codebase')!.handler({
-			repository_path: path.dirname(tempRoot),
+		sembleService.indexRepository = async (repositoryPath) => ({
+			repositoryPath,
+			chunkCount: 3,
+			indexedAt: '2026-05-18T00:00:00Z',
+			durationMs: 9,
+		});
+		sembleService.getStatus = async () => ({
+			available: true,
+			indexes: [],
 		});
 
-		assert.strictEqual(result.isError, true);
-		assert.match(result.content[0].text, /Access denied/);
+		registerSembleTools(server);
+		await tools.get('index_codebase')!.handler({});
+		const result = await tools.get('list_indexed_codebases')!.handler({});
+		const body = readJsonContent(result);
+
+		assert.deepStrictEqual(body.codebases, [{
+			repositoryPath: tempRoot,
+			name: path.basename(tempRoot),
+			chunkCount: 3,
+			indexedAt: '2026-05-18T00:00:00Z',
+			lastUsedAt: body.codebases[0].lastUsedAt,
+		}]);
+		assert.strictEqual(typeof body.codebases[0].lastUsedAt, 'string');
+	});
+
+	test('resolve_codebase_repository auto-selects the longest indexed ancestor', async () => {
+		const { tools, server } = createServer();
+		const nestedRoot = path.join(tempRoot, 'packages', 'web');
+		await fs.mkdir(nestedRoot, { recursive: true });
+		sembleService.indexRepository = async (repositoryPath) => ({
+			repositoryPath,
+			chunkCount: 3,
+			indexedAt: '2026-05-18T00:00:00Z',
+			durationMs: 9,
+		});
+
+		registerSembleTools(server);
+		await tools.get('index_codebase')!.handler({});
+		await tools.get('index_codebase')!.handler({
+			repository_path: nestedRoot,
+		});
+
+		const result = await tools.get('resolve_codebase_repository')!.handler({
+			working_directory: path.join(nestedRoot, 'src'),
+		});
+		const body = readJsonContent(result);
+
+		assert.strictEqual(body.selectedRepositoryPath, nestedRoot);
+		assert.strictEqual(body.reason, 'cwd-inside-indexed-repo');
+		assert.strictEqual(body.needsUserSelection, false);
+	});
+
+	test('search_code rejects explicit repositories that were not indexed first', async () => {
+		const { tools, server } = createServer();
+		const externalRoot = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'ocr-mcp-unindexed-repo-')));
+
+		try {
+			registerSembleTools(server);
+			const result = await tools.get('search_code')!.handler({
+				query: 'unindexed',
+				repository_path: externalRoot,
+			});
+
+			assert.strictEqual(result.isError, true);
+			assert.match(result.content[0].text, /not indexed for code search/);
+		} finally {
+			await fs.rm(externalRoot, { recursive: true, force: true });
+		}
 	});
 });

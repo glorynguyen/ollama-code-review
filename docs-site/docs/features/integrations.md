@@ -43,7 +43,7 @@ The extension integrates with Azure DevOps primarily through the **AI Release Or
 
 The **OCR Browser Review** extension allows you to review GitHub PRs and GitLab MRs directly in your browser.
 
-- **Local Context:** It connects to your VS Code MCP server to fetch repository-specific context.
+- **Local Context:** It connects to your VS Code MCP server to fetch repository-specific context and use registered code-search indexes.
 - **Privacy:** Uses WebLLM + WebGPU to run AI models directly in your browser.
 - **Setup:** Enable the MCP server in VS Code (`ollama-code-review.mcp.enabled`) and install the companion extension in Chrome.
 
@@ -51,5 +51,5 @@ The **OCR Browser Review** extension allows you to review GitHub PRs and GitLab 
 
 The extension includes a built-in **Model Context Protocol (MCP)** server.
 
-- **Use Case:** Allows external tools like Claude Code or the OCR Browser Extension to access your local workspace context (diffs, files, branches).
+- **Use Case:** Allows external tools like Claude Code, Codex, or the OCR Browser Extension to access local workspace context and search registered codebases.
 - **Control:** You can configure the port, allowed origins, and authentication tokens for the server.
