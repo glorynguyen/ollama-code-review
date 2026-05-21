@@ -27,6 +27,14 @@ Analyze a series of commits in your history.
 - **Command:** `Ollama: Review Commit Range`
 - **Workflow:** Select a starting commit from your history, and the extension generates a review for all changes from that point up to `HEAD`.
 
+## Review a Specific Commit
+
+Review one historical commit without leaving your Git workflow.
+
+- **Command:** `Ollama Code Review: Review Commit`
+- **Workflow:** Enter a commit hash manually, pick from recent commits, or invoke the command from a supported Git commit context menu.
+- **GitLens support:** Right-click a commit in GitLens commit views or GitLens Graph and choose **Review Commit**. The extension extracts the selected commit hash and repository path from the GitLens context, so it works in multi-root workspaces too.
+
 ## Review Changes Between Two Branches
 
 Ideal for pre-PR reviews.

@@ -161,6 +161,7 @@ All feedback from Ollama is displayed in a dedicated "Ollama Code Review" output
 ### 9. Review a Specific Commit
 - **Command**: `Ollama Code Review: Review Commit`
 - Review any historical commit. You can enter a hash, select from a list of the 50 most recent commits, or trigger it directly from the **Git Graph** extension context menu.
+- **GitLens support**: Right-click a commit in GitLens commit views or GitLens Graph and choose **Review Commit** to review that exact commit. The extension reads the commit hash and repository path from the GitLens context, including multi-root workspaces.
 
 ### 10. Dynamic Model Selection & Status Bar
 - **Command**: `Ollama Code Review: Select Ollama Model`
