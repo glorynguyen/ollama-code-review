@@ -619,7 +619,19 @@
           "group": "2_review@1"
         }
       ],
+      "webview/context": [
+        {
+          "command": "ollama-code-review.reviewCommit",
+          "when": "webviewItem =~ /gitlens:commit\\b/ && !listMultiSelection && (webview == gitlens.graph || webview == gitlens.views.graph)",
+          "group": "1_gitlens_ai@9"
+        }
+      ],
       "view/item/context": [
+        {
+          "command": "ollama-code-review.reviewCommit",
+          "when": "viewItem =~ /gitlens:commit\\b/ && !listMultiSelection",
+          "group": "1_gitlens_ai@9"
+        },
         {
           "command": "ollama-code-review.fixFinding",
           "when": "view == ai-review.findings-explorer && viewItem == finding",

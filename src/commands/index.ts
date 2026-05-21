@@ -169,6 +169,10 @@ import {
 import { mcpBridge, createMcpServer, type McpServerInstance } from '../mcp';
 import { disposeSembleService } from '../mcp/sembleService';
 import { type CommandContext } from './commandContext';
+import {
+	extractCommitHashFromCommandArgs,
+	extractRepositoryPathFromCommandArgs,
+} from './commitContext';
 import { registerFindingsCommands } from './findingsCommands';
 import { registerReloadCommands } from './reloadCommands';
 import { registerSettingsCommands } from './settingsCommands';
@@ -927,27 +931,27 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
-	const reviewCommitCommand = vscode.commands.registerCommand('ollama-code-review.reviewCommit', async (commitOrUri?: any) => {
+	const reviewCommitCommand = vscode.commands.registerCommand('ollama-code-review.reviewCommit', async (...commandArgs: any[]) => {
 		try {
 			const gitAPI = getGitAPI();
 			if (!gitAPI) { return; }
 
 			let repo: any;
-			let commitHash: string | undefined;
+			let commitHash = extractCommitHashFromCommandArgs(commandArgs);
+			const repoPathFromArgs = extractRepositoryPathFromCommandArgs(commandArgs);
 
 			// Handle different invocation contexts
-			if (commitOrUri) {
-				// Called from Git Graph or SCM context menu with commit info
-				if (commitOrUri.hash) {
-					// Git Graph format
-					commitHash = commitOrUri.hash;
-					repo = gitAPI.repositories.find((r: any) =>
-						commitOrUri.repoRoot && r.rootUri.fsPath === commitOrUri.repoRoot
-					) || await selectRepository(gitAPI);
-				} else if (commitOrUri.rootUri) {
-					// SCM repository context
-					repo = commitOrUri;
-				}
+			if (repoPathFromArgs) {
+				const normalizedRepoPath = path.resolve(repoPathFromArgs);
+				repo = gitAPI.repositories.find((candidate: any) =>
+					candidate.rootUri?.fsPath && path.resolve(candidate.rootUri.fsPath) === normalizedRepoPath
+				);
+			}
+
+			const firstArg = commandArgs[0];
+			if (!repo && firstArg?.rootUri) {
+				// SCM repository context
+				repo = firstArg;
 			}
 
 			if (!repo) {
