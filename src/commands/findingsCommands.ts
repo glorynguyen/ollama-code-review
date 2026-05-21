@@ -212,11 +212,9 @@ async function verifyFix(
 		const endpoint = config.get<string>('endpoint', 'http://localhost:11434/api/generate');
 		const temperature = config.get<number>('temperature', 0);
 
-		let verificationResult: 'resolved' | 'still_present' | 'unknown' = 'unknown';
-
-		await vscode.window.withProgress(
+		const verificationResult = await vscode.window.withProgress(
 			{ location: vscode.ProgressLocation.Notification, title: 'Verifying fix…', cancellable: false },
-			async () => {
+			async (): Promise<'resolved' | 'still_present' | 'unknown'> => {
 				try {
 					const prompt = buildVerificationPrompt(finding, currentCode, languageId);
 					const response = await callAIProvider(prompt, config, model, endpoint, temperature);
@@ -226,16 +224,18 @@ async function verifyFix(
 
 					const trimmed = response.trim().toUpperCase();
 					if (trimmed.startsWith('RESOLVED')) {
-						verificationResult = 'resolved';
+						return 'resolved';
 					} else if (trimmed.startsWith('STILL_PRESENT')) {
-						verificationResult = 'still_present';
+						return 'still_present';
 					} else if (/\b(?:fixed|resolved|no longer|addressed|corrected)\b/i.test(response)) {
-						verificationResult = 'resolved';
+						return 'resolved';
 					} else if (/\b(?:still\s+present|still\s+exists|not\s+fixed|not\s+resolved|persists|remains)\b/i.test(response)) {
-						verificationResult = 'still_present';
+						return 'still_present';
 					}
+					return 'unknown';
 				} catch (aiErr) {
 					outputChannel.appendLine(`[F-044 verifyFix] AI call failed: ${aiErr}`);
+					return 'unknown';
 				}
 			},
 		);
