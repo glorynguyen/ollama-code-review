@@ -1,3 +1,10 @@
+# [4.19.0](https://github.com/glorynguyen/ollama-code-review/compare/v4.18.0...v4.19.0) (2026-05-22)
+
+
+### Features
+
+* **docs-site:** add local search functionality ([86f3fac](https://github.com/glorynguyen/ollama-code-review/commit/86f3fac06660786584946590e150453c0c8d6523))
+
 # [4.18.0](https://github.com/glorynguyen/ollama-code-review/compare/v4.17.0...v4.18.0) (2026-05-21)
 
 
