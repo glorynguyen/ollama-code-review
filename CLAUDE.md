@@ -97,6 +97,10 @@ src/
 │   └── findingsTreeProvider.ts # TreeDataProvider for sidebar findings navigation
 ├── autoReview/           # Auto-Review on Save — background code quality monitor (F-043)
 │   └── index.ts          # AutoReviewManager singleton: save listener, debounce, exclusions, annotations
+├── smartSuggestions/     # Smart Review Suggestions — contextual next-step recommendations (F-049)
+│   ├── index.ts          # Barrel exports
+│   ├── types.ts          # SmartSuggestion, SuggestionInput, SuggestionResult interfaces
+│   └── analyzer.ts       # Suggestion generators: fix, profile, trend, workflow
 └── test/
     └── extension.test.ts # Mocha test suite
 
@@ -180,6 +184,9 @@ out/                      # Compiled JavaScript output
 | `src/reviewFindings/types.ts` | ~15 | IndexedFinding, SeverityCounts interfaces (F-031) |
 | `src/reviewFindings/findingsTreeProvider.ts` | ~310 | TreeDataProvider for sidebar findings navigation with severity icons, filter & export (F-031, F-034) |
 | `src/autoReview/index.ts` | ~250 | AutoReviewManager singleton: save event listener, per-file debounce, glob exclusion, AI review callback, annotation integration, status bar (F-043) |
+| `src/smartSuggestions/index.ts` | ~20 | Barrel exports for smart suggestions module (F-049) |
+| `src/smartSuggestions/types.ts` | ~65 | SmartSuggestion, SuggestionInput, SuggestionResult interfaces (F-049) |
+| `src/smartSuggestions/analyzer.ts` | ~200 | Suggestion generators: fix, profile, trend, workflow (F-049) |
 
 ## Commands
 
@@ -1965,8 +1972,15 @@ See [docs/roadmap/](./docs/roadmap/) for comprehensive planning documents:
 | Quick Fix from Review Findings (one-click AI fix from Findings Explorer inline button and annotation hover tooltips) | F-033 | v11.0 |
 | Auto-Review on Save (background code quality monitor; debounced per-file reviews on every save) | F-043 | v3.34.0 |
 | Findings Severity Filter & Export (filter tree by severity; export as Markdown checklist) | F-034 | v3.41.0 |
+| Smart Review Suggestions (contextual next-step recommendations after each review) | F-049 | v3.42.0 |
 
-### Phase 13: Findings UX (In Progress — v3.41.0)
+### Phase 14: Intelligent Workflow (In Progress — v3.42.0)
+
+| Feature | ID | Priority | Effort | Status | Description |
+|---------|----|----------|--------|--------|-------------|
+| Smart Review Suggestions | F-049 | P2 | Medium (3-5 days) | ✅ Complete | Post-review contextual suggestions: auto-fix recommendations, profile switches, score trend warnings, and workflow actions |
+
+### Phase 13: Findings UX (Complete — v3.41.0)
 
 | Feature | ID | Priority | Effort | Status | Description |
 |---------|----|----------|--------|--------|-------------|

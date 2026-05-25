@@ -177,6 +177,7 @@ import { registerFindingsCommands } from './findingsCommands';
 import { registerReloadCommands } from './reloadCommands';
 import { registerSettingsCommands } from './settingsCommands';
 import { registerReleaseCommands } from './releaseCommands';
+import { generateSmartSuggestions, type SuggestionInput, type SmartSuggestion } from '../smartSuggestions';
 
 export { checkActiveModels, getLastPerformanceMetrics, clearPerformanceMetrics };
 export type { PerformanceMetrics };
@@ -3898,6 +3899,46 @@ async function runReview(
 		}
 
 		progress.report({ message: "Displaying review..." });
+
+		// F-049: Smart Review Suggestions — generate contextual next-step recommendations
+		try {
+			const filesReviewed = extractFilesFromDiff(filteredDiff);
+			const fixableCount = findingsTreeProvider
+				? findingsTreeProvider.getFindings().filter(f => f.file && f.line !== undefined).length
+				: 0;
+			const recentScores = extensionGlobalStoragePath
+				? ReviewScoreStore.getInstance(extensionGlobalStoragePath).getScores(10)
+				: [];
+			const suggestionInput: SuggestionInput = {
+				findingCounts,
+				activeProfile: getActiveProfileName(context) ?? 'general',
+				filesReviewed,
+				diff: filteredDiff,
+				score: scoreResult.score,
+				categories: parseIssueCategories(review),
+				recentScores,
+				fixableCount,
+				totalFindings: findingsTreeProvider?.count ?? 0,
+			};
+			const { suggestions } = generateSmartSuggestions(suggestionInput);
+			if (suggestions.length > 0) {
+				const top = suggestions[0];
+				const actions = suggestions.slice(0, 3).map(s => s.title);
+				vscode.window.showInformationMessage(
+					`💡 ${top.title}`,
+					...actions
+				).then(selected => {
+					if (!selected) { return; }
+					const match = suggestions.find(s => s.title === selected);
+					if (match?.command) {
+						void vscode.commands.executeCommand(match.command, ...(match.commandArgs ?? []));
+					}
+				}, () => { /* ignore dismiss */ });
+			}
+		} catch (err) {
+			outputChannel.appendLine(`[SmartSuggestions] Error: ${err}`);
+		}
+
 		OllamaReviewPanel.createOrShow(review, filteredDiff, context, metrics, structuredReview, reviewResult.reviewPrompt);
 	});
 }

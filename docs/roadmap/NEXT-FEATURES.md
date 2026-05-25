@@ -73,13 +73,19 @@ Ranked by **impact x feasibility**, building on existing infrastructure:
 
 ---
 
-### 5. Smart Review Suggestions (F-049)
+### 5. Smart Review Suggestions (F-049) — **Implemented**
 
 **What:** After a review completes, show a "Suggested Actions" panel with prioritized next steps: "3 findings are auto-fixable", "Run security profile for auth changes detected", "Related PR #42 had similar findings". Uses the existing findings data + diff analysis to surface contextual suggestions.
 
 **Why:** Connects the dots between existing features (findings, profiles, PR integration, knowledge base) into an intelligent workflow assistant.
 
-**Effort:** Medium (3-5 days)
+**Implemented with:**
+- `src/smartSuggestions/types.ts` — Type definitions (SmartSuggestion, SuggestionInput, SuggestionResult)
+- `src/smartSuggestions/analyzer.ts` — Core logic: fix, profile, trend, and workflow suggestion generators
+- `src/smartSuggestions/index.ts` — Barrel exports
+- `src/commands/index.ts` — Integration after review completion (post-notifications, pre-panel display)
+- `src/test/smartSuggestions.test.ts` — 38 unit tests with full coverage
+- `docs-site/docs/features/smart-suggestions.md` — User documentation
 
 ---
 
@@ -88,6 +94,4 @@ Ranked by **impact x feasibility**, building on existing infrastructure:
 **Next pick: #4 (Findings Persistence)** because:
 - It preserves review context across VS Code restarts.
 - It builds directly on the structured findings and review history data already stored locally.
-- It is a quick workflow polish item now that batch fixes, caching, and coverage are in place.
-
-Then follow with **#5 (Smart Review Suggestions)** once the review history and coverage surfaces are stable.
+- It is a quick workflow polish item now that batch fixes, caching, coverage, and smart suggestions are in place.

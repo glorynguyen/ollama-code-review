@@ -15,6 +15,7 @@ const sidebars: SidebarsConfig = {
         'features/advanced-features',
         'features/release-orchestrator',
         'features/continuous-feedback',
+        'features/smart-suggestions',
         'features/mcp',
         'features/rag',
       ],

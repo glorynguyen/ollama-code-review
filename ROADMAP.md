@@ -38,6 +38,9 @@
 | F-032 | Contentstack Schema Validation | v3.26.0 |
 | F-033 | Quick Fix from Review Findings | v3.27.0 |
 | F-042 | AI-powered Secret Scanner (Deterministic regex scan) | v3.31.0 |
+| F-043 | Auto-Review on Save (background code quality monitor) | v3.34.0 |
+| F-034 | Findings Severity Filter & Export | v3.41.0 |
+| F-049 | Smart Review Suggestions (contextual next-step recommendations) | v3.42.0 |
 | —   | Jira ticket prefix in commit messages | v3.31.0 |
 | —   | Copy File with Imports (for LLM context) | v3.29.0 |
 | —   | Structured Review with anchor validation | v3.29.0 |
