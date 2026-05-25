@@ -1,3 +1,10 @@
+# [4.20.0](https://github.com/glorynguyen/ollama-code-review/compare/v4.19.0...v4.20.0) (2026-05-25)
+
+
+### Features
+
+* **suggestions:** add smart review suggestions (F-049) ([a5ebb7f](https://github.com/glorynguyen/ollama-code-review/commit/a5ebb7f587dfac7ce19bd9bb1df833e4cf2b84a0))
+
 # [4.19.0](https://github.com/glorynguyen/ollama-code-review/compare/v4.18.0...v4.19.0) (2026-05-22)
 
 
