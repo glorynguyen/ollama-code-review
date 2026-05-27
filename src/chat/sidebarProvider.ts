@@ -15,12 +15,13 @@ import { AgenticChatOrchestrator } from './agenticOrchestrator';
 import { toModelLimitChatMessage } from './modelErrorUtils';
 import type { ChatMessage, Conversation, WebviewInboundMessage, WebviewOutboundMessage } from './types';
 import type { McpClientManager } from '../mcp/mcpClientManager';
+import { gatherContextForQuestion } from './contextGatherCommand';
 
 interface AIProvider {
 	sendMessage(messages: ChatMessage[], onChunk: (chunk: string) => void): Promise<string>;
 }
 
-const SUPPORTED_CHAT_COMMANDS = ['/help'] as const;
+const SUPPORTED_CHAT_COMMANDS = ['/help', '/gather'] as const;
 
 /** Serialisable form of ContextMentionDef passed to the webview. */
 interface WebviewMentionDef {
@@ -345,6 +346,7 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 				content: [
 					'**Commands:**',
 					'- `/help` — Show this help message.',
+					'- `/gather <question>` — Harvest relevant codebase context for a question and copy it to clipboard, ready to paste into Claude, Gemini, or any LLM.',
 					'',
 					'**@-Context mentions** (type `@` to see suggestions):',
 					'- `@file <path>` — Include a workspace file as context.',
@@ -355,12 +357,79 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 					'- `@knowledge` — Include team knowledge base entries.',
 					'',
 					'*Example:* `@file src/auth.ts explain the token validation logic`',
+					'*Example:* `/gather What is the billboard split screen feature?`',
 				].join('\n'),
 				timestamp: Date.now(),
 				model: activeModel,
 			};
 			this.conversationManager.addMessage(conversation.id, helpMessage);
 			this.sendMessageToWebview({ type: 'messageAdded', message: helpMessage });
+			return;
+		}
+
+		if (trimmedContent.startsWith('/gather')) {
+			const question = trimmedContent.slice('/gather'.length).trim();
+
+			if (!question) {
+				const usageMessage: ChatMessage = {
+					role: 'system',
+					content: [
+						'**Usage:** `/gather <question>`',
+						'',
+						'Gathers relevant files from your workspace for the question and copies a paste-ready prompt to the clipboard.',
+						'',
+						'**Example:** `/gather What is the billboard split screen feature?`',
+					].join('\n'),
+					timestamp: Date.now(),
+					model: activeModel,
+				};
+				this.conversationManager.addMessage(conversation.id, usageMessage);
+				this.sendMessageToWebview({ type: 'messageAdded', message: usageMessage });
+				return;
+			}
+
+			try {
+				const result = await vscode.window.withProgress(
+					{
+						location: vscode.ProgressLocation.Notification,
+						title: 'Gathering codebase context…',
+						cancellable: false,
+					},
+					() => gatherContextForQuestion(question, this.globalStoragePath),
+				);
+
+				await vscode.env.clipboard.writeText(result.formattedPrompt);
+
+				const kChars = Math.round(result.stats.totalChars / 100) / 10;
+				const strategySuffix =
+					result.stats.strategies.length > 0
+						? ` via ${result.stats.strategies.join(' + ')}`
+						: '';
+
+				const doneMessage: ChatMessage = {
+					role: 'system',
+					content: [
+						'✅ **Context copied to clipboard!**',
+						`${result.stats.filesFound} file(s) · ~${kChars}k chars${strategySuffix}`,
+						'',
+						'Paste directly into Claude, Gemini, or any LLM — the question and all relevant file contents are included.',
+					].join('\n'),
+					timestamp: Date.now(),
+					model: activeModel,
+				};
+				this.conversationManager.addMessage(conversation.id, doneMessage);
+				this.sendMessageToWebview({ type: 'messageAdded', message: doneMessage });
+			} catch (err) {
+				const errMsg = err instanceof Error ? err.message : 'Unknown error';
+				const errorMessage: ChatMessage = {
+					role: 'system',
+					content: `❌ Failed to gather context: ${errMsg}`,
+					timestamp: Date.now(),
+					model: activeModel,
+				};
+				this.conversationManager.addMessage(conversation.id, errorMessage);
+				this.sendMessageToWebview({ type: 'messageAdded', message: errorMessage });
+			}
 			return;
 		}
 
