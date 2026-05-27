@@ -1,3 +1,10 @@
+# [4.21.0](https://github.com/glorynguyen/ollama-code-review/compare/v4.20.0...v4.21.0) (2026-05-27)
+
+
+### Features
+
+* **chat:** add /gather command for codebase context harvesting ([c65a6df](https://github.com/glorynguyen/ollama-code-review/commit/c65a6df930f7aca9754c94dfe5a84a57ddf34a14))
+
 # [4.20.0](https://github.com/glorynguyen/ollama-code-review/compare/v4.19.0...v4.20.0) (2026-05-25)
 
 
