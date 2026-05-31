@@ -109,6 +109,29 @@ export function computeScore(counts: FindingCounts): Pick<ReviewScore, 'score' |
 	};
 }
 
+// ─── F-048: Findings persistence ───────────────────────────────────────────────
+
+/** A {@link ReviewScore} that carries the data needed to restore a review. */
+export type RestorableReviewScore = ReviewScore & {
+	findings: ValidatedStructuredReviewResult;
+	diff: string;
+};
+
+/**
+ * F-048: Whether a score entry has the persisted findings + diff needed to
+ * rebuild the Findings Explorer and inline annotations without re-running the AI.
+ *
+ * Validates the structural shape so that outdated or partially-written entries
+ * degrade gracefully instead of throwing during restoration.
+ */
+export function isRestorableReviewScore(score: ReviewScore | undefined): score is RestorableReviewScore {
+	if (!score || typeof score.diff !== 'string' || score.diff.length === 0) {
+		return false;
+	}
+	const f = score.findings;
+	return Boolean(f) && typeof f === 'object' && Array.isArray(f!.findings) && typeof f!.summary === 'string';
+}
+
 // ─── Persistence ─────────────────────────────────────────────────────────────
 
 /**

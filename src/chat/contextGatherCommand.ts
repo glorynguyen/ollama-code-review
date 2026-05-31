@@ -102,7 +102,7 @@ async function strategyRag(
 ): Promise<GatheredChunk[]> {
 	try {
 		const store = new JsonVectorStore(globalStoragePath);
-		if (store.chunkCount === 0) return [];
+		if (store.chunkCount === 0) {return [];}
 
 		const ragConfig = getRagConfig();
 		const cfgSection = vscode.workspace.getConfiguration('ollama-code-review');
@@ -145,7 +145,7 @@ async function strategyFilename(terms: string[]): Promise<GatheredChunk[]> {
 	const uriScores = new Map<string, { uri: vscode.Uri; score: number }>();
 
 	for (const term of terms) {
-		if (term.length < 3) continue;
+		if (term.length < 3) {continue;}
 		const safe = escapeGlob(term);
 		try {
 			const found = await vscode.workspace.findFiles(
@@ -200,7 +200,7 @@ async function strategyContent(
 		.map(t => t.toLowerCase())
 		.filter((t, i, a) => t.length >= 3 && a.indexOf(t) === i);
 
-	if (lowerTerms.length === 0) return [];
+	if (lowerTerms.length === 0) {return [];}
 
 	let allFiles: vscode.Uri[] = [];
 	try {
@@ -217,15 +217,15 @@ async function strategyContent(
 
 	for (const uri of allFiles) {
 		const rel = vscode.workspace.asRelativePath(uri);
-		if (existingPaths.has(rel)) continue;
+		if (existingPaths.has(rel)) {continue;}
 		try {
 			const raw = await vscode.workspace.fs.readFile(uri);
-			if (raw.length > 200_000) continue; // skip files > 200 KB
+			if (raw.length > 200_000) {continue;} // skip files > 200 KB
 			const content = Buffer.from(raw).toString('utf-8');
 			const lower = content.toLowerCase();
 			let matchCount = 0;
 			for (const term of lowerTerms) {
-				if (lower.includes(term)) matchCount++;
+				if (lower.includes(term)) {matchCount++;}
 			}
 			if (matchCount > 0) {
 				scored.push({ uri, score: matchCount / lowerTerms.length, content });
@@ -269,8 +269,8 @@ export function mergeAndBudget(allChunks: GatheredChunk[]): GatheredChunk[] {
 	let totalChars = 0;
 
 	for (const chunk of sorted) {
-		if (result.length >= MAX_FILES) break;
-		if (totalChars >= TOTAL_CHAR_BUDGET) break;
+		if (result.length >= MAX_FILES) {break;}
+		if (totalChars >= TOTAL_CHAR_BUDGET) {break;}
 
 		const remaining = TOTAL_CHAR_BUDGET - totalChars;
 		let content = chunk.content;

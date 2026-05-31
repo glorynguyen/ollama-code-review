@@ -49,6 +49,35 @@ See which workspace files still need attention without manually digging through 
 
 Coverage uses the same local review history as the score and analytics views. It works with staged diff reviews and with file, folder, and selection reviews.
 
+## Findings Persistence Across Sessions
+
+Your review findings and inline annotations survive VS Code restarts — no need to re-run the AI.
+
+- **Automatic:** On startup, the most recent review's findings are restored into the Findings Explorer and inline editor decorations.
+- **Age Indicator:** The Findings Explorer shows a "Reviewed Xh ago" label so you know how fresh the data is.
+- **Opt-out:** Set `ollama-code-review.restoreLastReview: false` to disable auto-restore on startup.
+- **Manual Restore:** You can also restore any past review from the Review History panel — findings, decorations, and the review panel are all rebuilt without calling the AI again.
+
+## Code Health Regression Guard
+
+Track per-file health scores over time and catch regressions before they accumulate into technical debt.
+
+- **Where to find it:** Open the **AI Review** activity bar → **Code Health** view.
+- **Tiers:** Files are grouped into **Critical Health** (score < 60), **Needs Attention** (60–79), and **Healthy** (80+).
+- **Regression Detection:** After each review, the extension compares the new score against the file's previous score. A drop exceeding the threshold triggers a notification.
+- **Block Commits:** Optionally block commits via the pre-commit guard when a regression is detected (`codeHealth.blockOnRegression: true`).
+- **Hotspot Count:** Configure how many worst-scoring files are surfaced with `codeHealth.hotspotCount` (default: 15).
+- **Copy Summary:** Use the toolbar button to copy a Markdown table of hotspots to the clipboard.
+
+### Code Health Settings
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `codeHealth.enabled` | `true` | Enable per-file health tracking and regression detection |
+| `codeHealth.regressionThreshold` | `10` | Score drop (points) that triggers a regression warning |
+| `codeHealth.blockOnRegression` | `false` | Block commits when a file health regression is detected |
+| `codeHealth.hotspotCount` | `15` | Number of worst-scoring files to display in the tree view |
+
 ## Findings Management
 
 Efficiently organize and share the results of your reviews.
@@ -56,3 +85,6 @@ Efficiently organize and share the results of your reviews.
 - **Severity Filter:** Filter the Findings Explorer to focus on specific severities (e.g., only Critical and High).
 - **Markdown Export:** Export your findings as a Markdown checklist, grouped by file, to share with your team or track in an issue tracker.
 - **Findings Explorer:** A dedicated tree view in the sidebar (AI Review icon) that acts as a "Problems Panel" for AI findings.
+- **Fix All Findings (Batch Fix):** Generate AI fixes for all file-backed findings in one go. The extension processes each finding, generates a code fix, filters out overlapping edits, and presents all candidates in a preview panel where you can accept or dismiss each one.
+- **Ignore Finding:** Dismiss a finding you've already addressed or consider a false positive. The finding is removed from the tree view and inline annotations, and the quality score is recalculated immediately.
+- **Restore Review from History:** Re-apply findings, annotations, and the review panel from any past review in the Review History panel — without calling the AI again.

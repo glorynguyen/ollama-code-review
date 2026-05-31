@@ -32,6 +32,7 @@ Quickly prepare code context for external LLMs or understand complex files.
 - **Explain File with Imports:** Get an AI explanation of the current file along with its resolved imports.
 - **Copy File with Imports:** Copy the current file's source code together with its imported modules to your clipboard.
 - **Copy Function with Imports:** Select a function and copy it along with only the imports it uses for a minimal, self-contained snippet. Uses **Smart Context** to BFS-expand the call graph up to `copyFunction.maxDepth` levels, so callee definitions are included automatically.
+- **Copy Selected Files for LLM:** Select one or more files in the Explorer sidebar, right-click, and choose this command to copy all their contents — bundled with file path headers — to the clipboard. Perfect for pasting multi-file context into external LLMs like ChatGPT or Claude.
 
 ## Review Feedback Interactions
 

@@ -29,6 +29,7 @@
     "onView:scm",
     "onView:ai-review.chat-sidebar",
     "onView:ai-review.coverage",
+    "onView:ai-review.code-health",
     "onCommand:ai-review.focusChat"
   ],
   "main": "./dist/extension.js",
@@ -260,6 +261,30 @@
         "icon": "$(history)"
       },
       {
+        "command": "ollama-code-review.showCodeHealth",
+        "title": "Show Code Health Hotspots",
+        "category": "Ollama Code Review",
+        "icon": "$(pulse)"
+      },
+      {
+        "command": "ollama-code-review.refreshCodeHealth",
+        "title": "Refresh Code Health",
+        "category": "Ollama Code Review",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "ollama-code-review.copyCodeHealthSummary",
+        "title": "Copy Code Health Summary",
+        "category": "Ollama Code Review",
+        "icon": "$(clippy)"
+      },
+      {
+        "command": "ollama-code-review.openHealthFile",
+        "title": "Open File",
+        "category": "Ollama Code Review",
+        "icon": "$(file)"
+      },
+      {
         "command": "ollama-code-review.reloadKnowledgeBase",
         "title": "Reload Team Knowledge Base (.ollama-review-knowledge.yaml)",
         "category": "Ollama Code Review",
@@ -486,6 +511,10 @@
         {
           "id": "ai-review.coverage",
           "name": "Coverage"
+        },
+        {
+          "id": "ai-review.code-health",
+          "name": "Code Health"
         }
       ]
     },
@@ -698,6 +727,16 @@
           "command": "ollama-code-review.copyReviewCoverageSummary",
           "when": "view == ai-review.coverage",
           "group": "navigation@1"
+        },
+        {
+          "command": "ollama-code-review.refreshCodeHealth",
+          "when": "view == ai-review.code-health",
+          "group": "navigation@0"
+        },
+        {
+          "command": "ollama-code-review.copyCodeHealthSummary",
+          "when": "view == ai-review.code-health",
+          "group": "navigation@1"
         }
       ]
     },
@@ -735,6 +774,11 @@
             }
           }
         },
+        "ollama-code-review.restoreLastReview": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "**F-048** - Findings Persistence Across Sessions. When enabled, the most recent review's findings and inline annotations are automatically restored when VS Code starts, and a \"Reviewed Xh ago\" age indicator is shown in the Findings Explorer."
+        },
         "ollama-code-review.coverage": {
           "type": "object",
           "default": {},
@@ -763,6 +807,37 @@
               "minimum": 10,
               "maximum": 10000,
               "description": "Maximum number of workspace files to scan for Review Coverage."
+            }
+          }
+        },
+        "ollama-code-review.codeHealth": {
+          "type": "object",
+          "default": {},
+          "markdownDescription": "**F-050** - Code Health Regression Guard. Tracks per-file health scores over time, detects regressions, and surfaces hotspot files that accumulate technical debt.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true,
+              "description": "Enable per-file health tracking and regression detection after each review."
+            },
+            "regressionThreshold": {
+              "type": "number",
+              "default": 10,
+              "minimum": 1,
+              "maximum": 50,
+              "description": "Score drop (points) that triggers a regression warning notification."
+            },
+            "blockOnRegression": {
+              "type": "boolean",
+              "default": false,
+              "description": "Block commits via the pre-commit guard when a file health regression is detected."
+            },
+            "hotspotCount": {
+              "type": "number",
+              "default": 15,
+              "minimum": 1,
+              "maximum": 100,
+              "description": "Number of worst-scoring files to display in the Code Health tree view."
             }
           }
         },

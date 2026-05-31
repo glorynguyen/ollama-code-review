@@ -44,6 +44,11 @@ All settings are prefixed with `ollama-code-review.*`.
 | `copyFunction.maxCharsPerFunction` | Max characters per function body in Copy Function with Imports | `8000` |
 | `copyFunction.characterBudget` | Total character budget for all collected functions | `64000` |
 | `copyWithImports.noLimits` | Remove all Smart Context limits (use carefully on large files) | `false` |
+| `restoreLastReview` | Auto-restore the last review's findings and annotations on startup | `true` |
+| `codeHealth.enabled` | Enable per-file health tracking and regression detection | `true` |
+| `codeHealth.regressionThreshold` | Score drop (points) that triggers a regression warning | `10` |
+| `codeHealth.blockOnRegression` | Block commits when a file health regression is detected | `false` |
+| `codeHealth.hotspotCount` | Number of worst-scoring files to display in the Code Health view | `15` |
 
 ## Exhaustive List
 For the full list of over 50 configuration options, please refer to the VS Code Settings UI by searching for `@ext:VinhNguyen-Vincent.ollama-code-review`.

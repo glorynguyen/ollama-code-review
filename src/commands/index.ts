@@ -72,6 +72,7 @@ import {
 	ReviewScoreStore,
 	ReviewHistoryPanel,
 	updateScoreStatusBar,
+	isRestorableReviewScore,
 	type ReviewScore,
 } from '../reviewScore';
 import { runAgentReview, getAgentModeConfig } from '../agent';
@@ -116,6 +117,7 @@ import {
 } from '../contentstack';
 import { ReviewDecorationsManager, getAnnotationsConfig } from '../reviewDecorations';
 import { ReviewCoverageProvider } from '../reviewCoverage';
+import { CodeHealthTreeProvider, getCodeHealthConfig, detectRegressions, notifyRegressions, shouldBlockCommit } from '../codeHealth';
 import {
 	type PerformanceMetrics,
 	checkActiveModels,
@@ -211,6 +213,7 @@ let extensionGlobalStoragePath: string | undefined;
 // F-031: Findings Explorer tree provider (initialised in activate())
 let findingsTreeProvider: FindingsTreeProvider | undefined;
 let reviewCoverageProvider: ReviewCoverageProvider | undefined;
+let codeHealthTreeProvider: CodeHealthTreeProvider | undefined;
 
 // F-009: RAG vector store (initialised lazily in activate())
 let ragVectorStore: JsonVectorStore | undefined;
@@ -219,6 +222,19 @@ let ragUseOllamaEmbeddings: boolean | undefined;
 
 // MCP Server instance (initialised in activate() if enabled)
 let mcpServerInstance: McpServerInstance | undefined;
+
+/** F-050: Code Health — check for regressions after each scored review. */
+function checkCodeHealthRegression(scoreEntry: ReviewScore, store: ReviewScoreStore): void {
+	try {
+		const healthCfg = getCodeHealthConfig();
+		if (healthCfg.enabled) {
+			const allScores = store.getScores();
+			const result = detectRegressions(scoreEntry, allScores, healthCfg.regressionThreshold);
+			notifyRegressions(result, outputChannel);
+			codeHealthTreeProvider?.refresh();
+		}
+	} catch { /* non-fatal */ }
+}
 
 export interface SelectedFilesClipboardBundle {
 	content: string;
@@ -429,6 +445,82 @@ function restoreScoreStatusBar(globalStoragePath: string | undefined): void {
     } catch (err) {
         console.error('Failed to restore score status bar:', err);
     }
+}
+
+/**
+ * F-048: Rebuild the Findings Explorer and inline annotations from a persisted
+ * review score, without re-running the AI. Reused by both the manual
+ * "restore from history" command (showPanel: true) and the on-activation
+ * auto-restore (showPanel: false).
+ *
+ * @returns true if the review was restored, false if the data was missing/invalid
+ *          or the findings view is unavailable.
+ */
+async function restoreReviewState(
+	score: ReviewScore,
+	context: vscode.ExtensionContext,
+	opts: { showPanel: boolean },
+): Promise<boolean> {
+	if (!isRestorableReviewScore(score) || !findingsTreeProvider) {
+		return false;
+	}
+
+	const reviewText = renderValidatedReviewMarkdown(score.findings);
+	const diff = score.diff;
+	const reviewedAt = Date.parse(score.timestamp);
+
+	// 1. Findings tree — age indicator reflects the original review time.
+	findingsTreeProvider.setFindings(reviewText, diff, Number.isFinite(reviewedAt) ? reviewedAt : Date.now());
+	await vscode.commands.executeCommand('setContext', 'ollama-code-review.hasFindings', findingsTreeProvider.count > 0);
+
+	// 2. Inline editor decorations.
+	try {
+		if (getAnnotationsConfig().enabled) {
+			ReviewDecorationsManager.getInstance().applyFromReview(reviewText, diff);
+		}
+	} catch (err) {
+		outputChannel.appendLine(`[Restore] Decoration error: ${err}`);
+		if (opts.showPanel) {
+			vscode.window.showWarningMessage('Review restored but inline decorations could not be applied.');
+		}
+	}
+
+	// 3. Optionally reopen the review panel (no AI re-trigger).
+	if (opts.showPanel) {
+		const metrics = {
+			model: score.model,
+			provider: undefined,
+			durationMs: score.durationMs ?? 0,
+			totalTokens: 0, // Token counts are not persisted in ReviewScore; zero indicates restored review
+			activeProfile: score.profile,
+		};
+		OllamaReviewPanel.createOrShow(reviewText, diff, context, metrics, score.findings);
+	}
+
+	return true;
+}
+
+/**
+ * F-048: On activation, silently restore the most recent review's findings and
+ * annotations so the user keeps their review context across VS Code restarts.
+ * Opt-out via the `ollama-code-review.restoreLastReview` setting. Non-fatal.
+ */
+async function restoreLastReviewFindings(context: vscode.ExtensionContext): Promise<void> {
+	if (!extensionGlobalStoragePath) { return; }
+	const config = vscode.workspace.getConfiguration('ollama-code-review');
+	if (!config.get<boolean>('restoreLastReview', true)) { return; }
+
+	try {
+		const lastScore = ReviewScoreStore.getInstance(extensionGlobalStoragePath).getLastScore();
+		if (lastScore && isRestorableReviewScore(lastScore)) {
+			const restored = await restoreReviewState(lastScore, context, { showPanel: false });
+			if (restored) {
+				outputChannel.appendLine('[Restore] Restored last review findings on activation.');
+			}
+		}
+	} catch (err) {
+		outputChannel.appendLine(`[Restore] Auto-restore failed: ${err}`);
+	}
 }
 
 /**
@@ -1821,6 +1913,8 @@ export async function activate(context: vscode.ExtensionContext) {
 	// Set global storage path for score persistence
 	extensionGlobalStoragePath = context.globalStorageUri.fsPath;
 	restoreScoreStatusBar(extensionGlobalStoragePath);
+	// F-048: Restore the last review's findings + annotations across restarts.
+	void restoreLastReviewFindings(context);
 
 	// F-016: Show Review History command
 	const showReviewHistoryCommand = vscode.commands.registerCommand(
@@ -1909,6 +2003,67 @@ export async function activate(context: vscode.ExtensionContext) {
 		openCoverageFileCommand,
 		reviewCoverageFileCommand,
 		restoreCoverageReviewCommand,
+	);
+
+	// F-050: Code Health Regression Guard — Tree View & Commands
+	codeHealthTreeProvider = new CodeHealthTreeProvider(() => extensionGlobalStoragePath);
+	const codeHealthTreeView = vscode.window.createTreeView('ai-review.code-health', {
+		treeDataProvider: codeHealthTreeProvider,
+		showCollapseAll: true,
+	});
+	context.subscriptions.push(codeHealthTreeView);
+	codeHealthTreeProvider.refresh();
+
+	const showCodeHealthCommand = vscode.commands.registerCommand(
+		'ollama-code-review.showCodeHealth',
+		() => {
+			codeHealthTreeProvider?.refresh();
+			void vscode.commands.executeCommand('ai-review.code-health.focus');
+		}
+	);
+
+	const refreshCodeHealthCommand = vscode.commands.registerCommand(
+		'ollama-code-review.refreshCodeHealth',
+		() => {
+			codeHealthTreeProvider?.refresh();
+		}
+	);
+
+	const copyCodeHealthSummaryCommand = vscode.commands.registerCommand(
+		'ollama-code-review.copyCodeHealthSummary',
+		async () => {
+			if (!codeHealthTreeProvider) {
+				vscode.window.showWarningMessage('Code Health is not available.');
+				return;
+			}
+			await vscode.env.clipboard.writeText(codeHealthTreeProvider.getSummaryMarkdown());
+			vscode.window.showInformationMessage('Code Health summary copied to clipboard.');
+		}
+	);
+
+	const openHealthFileCommand = vscode.commands.registerCommand(
+		'ollama-code-review.openHealthFile',
+		async (element?: unknown) => {
+			if (!element || typeof element !== 'object') { return; }
+			const summary = (element as { summary?: { filePath?: string } }).summary;
+			if (!summary?.filePath) { return; }
+			const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+			if (!workspaceFolder) { return; }
+			const fileUri = vscode.Uri.joinPath(workspaceFolder.uri, summary.filePath);
+			try {
+				const doc = await vscode.workspace.openTextDocument(fileUri);
+				await vscode.window.showTextDocument(doc, { preview: true });
+			} catch {
+				vscode.window.showWarningMessage(`Could not open file: ${summary.filePath}`);
+			}
+		}
+	);
+
+	context.subscriptions.push(
+		showCodeHealthCommand,
+		refreshCodeHealthCommand,
+		copyCodeHealthSummaryCommand,
+		openHealthFileCommand,
 	);
 
 	// F-043: Auto-Review on Save — Background Code Quality Monitor
@@ -3068,6 +3223,7 @@ ${diff.slice(0, 12000)}
 						};
 						store.addScore(scoreEntry);
 						void reviewCoverageProvider?.refresh();
+						checkCodeHealthRegression(scoreEntry, store);
 					}
 					showScoreStatusBar(scoreResult.score);
 
@@ -3375,6 +3531,7 @@ ${diff.slice(0, 12000)}
 							};
 							store.addScore(scoreEntry);
 							void reviewCoverageProvider?.refresh();
+							checkCodeHealthRegression(scoreEntry, store);
 						}
 						showScoreStatusBar(bestEntry.score);
 					}
@@ -3391,9 +3548,9 @@ ${diff.slice(0, 12000)}
 	// F-048: Restore a past review from history
 	const restoreReviewFromHistoryCommand = vscode.commands.registerCommand(
 		'ollama-code-review.restoreReviewFromHistory',
-		async (score: import('../reviewScore').ReviewScore) => {
-			if (!score.findings || !score.diff) {
-				vscode.window.showWarningMessage('This review entry does not have findings or diff data for restoration.');
+		async (score: ReviewScore) => {
+			if (!isRestorableReviewScore(score)) {
+				vscode.window.showWarningMessage('This review entry does not have valid findings or diff data for restoration.');
 				return;
 			}
 
@@ -3403,39 +3560,7 @@ ${diff.slice(0, 12000)}
 			}
 
 			try {
-				// Validate the persisted findings structure before use
-				const f = score.findings;
-				if (!f || typeof f !== 'object' || !Array.isArray(f.findings) || typeof f.summary !== 'string') {
-					vscode.window.showWarningMessage('This review entry has an outdated or invalid findings format.');
-					return;
-				}
-				const reviewText = renderValidatedReviewMarkdown(score.findings);
-				const diff = score.diff;
-
-				// 1. Update tree view
-				findingsTreeProvider.setFindings(reviewText, diff);
-				await vscode.commands.executeCommand('setContext', 'ollama-code-review.hasFindings', true);
-
-				// 2. Apply editor decorations
-				try {
-					const annotCfg = getAnnotationsConfig();
-					if (annotCfg.enabled) {
-						ReviewDecorationsManager.getInstance().applyFromReview(reviewText, diff);
-					}
-				} catch (err) {
-					outputChannel.appendLine(`[Restore] Decoration error: ${err}`);
-					vscode.window.showWarningMessage('Review restored but inline decorations could not be applied.');
-				}
-
-				// 3. Show review panel (without re-triggering AI)
-				const metrics = {
-					model: score.model,
-					provider: undefined,
-					durationMs: score.durationMs ?? 0,
-					totalTokens: 0, // Token counts are not persisted in ReviewScore; zero indicates restored review
-					activeProfile: score.profile,
-				};
-				OllamaReviewPanel.createOrShow(reviewText, diff, context, metrics, score.findings);
+				await restoreReviewState(score, context, { showPanel: true });
 			} catch (err) {
 				outputChannel.appendLine(`[Restore] Failed to restore review: ${err}`);
 				vscode.window.showErrorMessage('Failed to restore review. The stored data may be corrupted.');
@@ -3737,6 +3862,7 @@ async function runReview(
 				};
 				store.addScore(scoreEntry);
 				void reviewCoverageProvider?.refresh();
+				checkCodeHealthRegression(scoreEntry, store);
 				outputChannel.appendLine(`[Score] Quality score: ${scoreResult.score}/100 (${findingCounts.critical}C ${findingCounts.high}H ${findingCounts.medium}M ${findingCounts.low}L)`);
 			}
 			showScoreStatusBar(scoreResult.score);
@@ -3847,6 +3973,7 @@ async function runReview(
 			};
 			store.addScore(scoreEntry);
 			void reviewCoverageProvider?.refresh();
+			checkCodeHealthRegression(scoreEntry, store);
 			outputChannel.appendLine(`[Score] Quality score: ${scoreResult.score}/100 (${findingCounts.critical}C ${findingCounts.high}H ${findingCounts.medium}M ${findingCounts.low}L)`);
 		}
 
@@ -4019,6 +4146,7 @@ async function runFileReview(
 			};
 			store.addScore(scoreEntry);
 			void reviewCoverageProvider?.refresh();
+			checkCodeHealthRegression(scoreEntry, store);
 		}
 		showScoreStatusBar(scoreResult.score);
 

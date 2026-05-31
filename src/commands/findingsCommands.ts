@@ -22,9 +22,12 @@ import { callAIProvider, generateFix } from './aiActions';
 import { type CommandContext } from './commandContext';
 import { runGitCommand } from './uiHelpers';
 import { getOllamaModel } from '../utils';
+import { formatRelativeTime } from '../utils/time';
 
 interface FindingsCommandsRegistration {
 	provider: FindingsTreeProvider;
+	/** F-048: exposed so callers can surface the "Reviewed Xh ago" age indicator. */
+	treeView: vscode.TreeView<unknown>;
 	disposables: vscode.Disposable[];
 }
 
@@ -298,6 +301,16 @@ export function registerFindingsCommands(
 		treeDataProvider: provider,
 		showCollapseAll: true,
 	});
+
+	// F-048: keep a "Reviewed Xh ago" label on the view, refreshed on data change
+	// and on a low-frequency timer so the relative time stays accurate.
+	const refreshReviewAgeMessage = (): void => {
+		const ts = provider.lastReviewedAt;
+		treeView.message = ts !== undefined ? `Reviewed ${formatRelativeTime(ts)}` : undefined;
+	};
+	const ageDataSubscription = provider.onDidChangeTreeData(() => refreshReviewAgeMessage());
+	const ageTimer = setInterval(refreshReviewAgeMessage, 60_000);
+	const ageTimerDisposable = new vscode.Disposable(() => clearInterval(ageTimer));
 
 	const goToFindingCommand = vscode.commands.registerCommand(
 		'ollama-code-review.goToFinding',
@@ -714,8 +727,11 @@ export function registerFindingsCommands(
 
 	return {
 		provider,
+		treeView,
 		disposables: [
 			treeView,
+			ageDataSubscription,
+			ageTimerDisposable,
 			goToFindingCommand,
 			clearFindingsCommand,
 			filterFindingsCommand,

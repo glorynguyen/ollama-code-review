@@ -65,16 +65,23 @@ export class FindingsTreeProvider implements vscode.TreeDataProvider<TreeElement
 	private findings: IndexedFinding[] = [];
 	private fileNodes: FileNode[] = [];
 
+	// ── F-048: Timestamp of the review currently shown (epoch ms), for the age indicator ──
+	private _lastReviewedAt: number | undefined;
+
 	// ── F-034: Severity filter state ──────────────────────────────────
 	private _activeSeverities: Set<Severity> = new Set(SEVERITY_ORDER);
 	private _isFiltered = false;
 
 	/**
 	 * Update the tree with findings from a completed review.
+	 *
+	 * @param reviewedAt F-048: epoch ms of the review being shown. Defaults to now
+	 *                   for fresh reviews; pass the original timestamp when restoring.
 	 */
-	setFindings(reviewText: string, diff: string): void {
+	setFindings(reviewText: string, diff: string, reviewedAt: number = Date.now()): void {
 		const raw = parseReviewIntoFindings(reviewText, diff);
 		this.findings = raw.map((f, i) => ({ ...f, index: i }));
+		this._lastReviewedAt = reviewedAt;
 		this.buildTree();
 		this._onDidChangeTreeData.fire();
 	}
@@ -83,7 +90,13 @@ export class FindingsTreeProvider implements vscode.TreeDataProvider<TreeElement
 	clear(): void {
 		this.findings = [];
 		this.fileNodes = [];
+		this._lastReviewedAt = undefined;
 		this._onDidChangeTreeData.fire();
+	}
+
+	/** F-048: Epoch ms of the review currently displayed, or undefined when empty. */
+	get lastReviewedAt(): number | undefined {
+		return this._lastReviewedAt;
 	}
 
 	/** Remove a specific finding and refresh the tree. */
