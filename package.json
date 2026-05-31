@@ -1751,7 +1751,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@octokit/rest": "^22.0.1",
-    "axios": "^1.16.1",
+    "axios": "^1.16.0",
     "js-yaml": "^4.1.1",
     "node-fetch": "^3.3.2",
     "v0-sdk": "^0.16.4"
