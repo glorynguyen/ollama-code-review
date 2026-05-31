@@ -1,3 +1,10 @@
+# [4.22.0](https://github.com/glorynguyen/ollama-code-review/compare/v4.21.0...v4.22.0) (2026-05-31)
+
+
+### Features
+
+* **code-health:** add regression guard and findings persistence ([71c0b5e](https://github.com/glorynguyen/ollama-code-review/commit/71c0b5e58d904eea77e576dbaf9452f4eb945289))
+
 # [4.21.0](https://github.com/glorynguyen/ollama-code-review/compare/v4.20.0...v4.21.0) (2026-05-27)
 
 
