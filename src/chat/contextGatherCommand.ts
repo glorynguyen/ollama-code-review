@@ -19,6 +19,10 @@ import {
 	getRagConfig,
 	retrieveRelevantChunks,
 } from '../rag';
+import { extractTerms, type GenerateFn } from './termExtractor';
+
+// Re-export for backward compatibility (used by tests)
+export { heuristicTermExtractor as extractSearchTerms } from './termExtractor';
 
 // ─── budget constants ────────────────────────────────────────────────────────
 
@@ -42,50 +46,6 @@ export interface GatherResult {
 	chunks: GatheredChunk[];
 	formattedPrompt: string;
 	stats: { filesFound: number; totalChars: number; strategies: string[] };
-}
-
-// ─── keyword extraction ───────────────────────────────────────────────────────
-
-const STOPWORDS = new Set([
-	'a', 'an', 'the', 'and', 'or', 'but', 'not', 'so', 'if', 'in', 'on', 'at',
-	'to', 'by', 'of', 'for', 'with', 'from', 'that', 'this', 'these', 'those',
-	'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had',
-	'will', 'would', 'could', 'should', 'may', 'might', 'can', 'do', 'does',
-	'did', 'it', 'its', 'me', 'my', 'we', 'our', 'you', 'your', 'he', 'she',
-	'they', 'their', 'what', 'how', 'why', 'where', 'which', 'who', 'when',
-	'use', 'used', 'tell', 'give', 'show', 'get', 'about', 'as', 'into', 'up',
-	'out', 'also', 'then', 'than', 'there', 'here', 'all', 'any', 'some',
-	'more', 'most', 'such', 'each', 'between', 'through', 'i',
-]);
-
-export function extractSearchTerms(question: string): string[] {
-	const raw = question
-		.toLowerCase()
-		.split(/[\s\-_.,;:!?'"()\[\]{}\/\\+]+/)
-		.map(w => w.replace(/[^a-z0-9]/g, ''))
-		.filter(w => w.length >= 2 && !STOPWORDS.has(w));
-
-	if (raw.length === 0) {
-		// Fallback: just take first 5 words verbatim
-		return question.split(/\s+/).filter(w => w.length >= 2).slice(0, 5);
-	}
-
-	const terms = new Set<string>(raw);
-
-	// PascalCase variant of each word (useful for class/file name matching)
-	for (const w of [...raw]) {
-		terms.add(w.charAt(0).toUpperCase() + w.slice(1));
-	}
-
-	// Compound camelCase from consecutive pairs, e.g. "split screen" → "splitScreen"
-	for (let i = 0; i < raw.length - 1; i++) {
-		const compound = raw[i] + raw[i + 1].charAt(0).toUpperCase() + raw[i + 1].slice(1);
-		terms.add(compound);
-		// also the PascalCase full compound
-		terms.add(compound.charAt(0).toUpperCase() + compound.slice(1));
-	}
-
-	return [...terms];
 }
 
 function escapeGlob(s: string): string {
@@ -350,15 +310,24 @@ export async function gatherContextForQuestion(
 	question: string,
 	ragStoragePath: string,
 	outputChannel?: vscode.OutputChannel,
+	generateFn?: GenerateFn,
+	token?: vscode.CancellationToken,
 ): Promise<GatherResult> {
-	const terms = extractSearchTerms(question);
+	const { terms, source: termSource, failureReason } = await extractTerms(question, generateFn, outputChannel, token);
 	const strategies: string[] = [];
 
+	if (token?.isCancellationRequested) { throw new vscode.CancellationError(); }
+
 	outputChannel?.appendLine(`[Gather] Question: "${question}"`);
+	const termSourceLabel = termSource === 'ai-failed'
+		? `ai-failed (${failureReason ?? 'unknown'})`
+		: termSource;
+	outputChannel?.appendLine(`[Gather] Terms via: ${termSourceLabel} (${terms.length} terms)`);
 	outputChannel?.appendLine(`[Gather] Search terms: ${terms.join(', ')}`);
 
 	// Strategy A: RAG semantic search (requires a pre-built index)
 	const ragChunks = await strategyRag(question, ragStoragePath);
+	if (token?.isCancellationRequested) { throw new vscode.CancellationError(); }
 	if (ragChunks.length > 0) {
 		strategies.push(`semantic (${ragChunks.length} snippet${ragChunks.length > 1 ? 's' : ''})`);
 		outputChannel?.appendLine(`[Gather] RAG: ${ragChunks.length} chunk(s)`);
@@ -366,6 +335,7 @@ export async function gatherContextForQuestion(
 
 	// Strategy B: filename keyword search (always runs)
 	const filenameChunks = await strategyFilename(terms);
+	if (token?.isCancellationRequested) { throw new vscode.CancellationError(); }
 	if (filenameChunks.length > 0) {
 		strategies.push(`filename (${filenameChunks.length} file${filenameChunks.length > 1 ? 's' : ''})`);
 		outputChannel?.appendLine(`[Gather] Filename: ${filenameChunks.length} file(s)`);
@@ -377,6 +347,7 @@ export async function gatherContextForQuestion(
 	let contentChunks: GatheredChunk[] = [];
 	if (allSoFar.length < 5) {
 		contentChunks = await strategyContent(terms, pathsSoFar);
+		if (token?.isCancellationRequested) { throw new vscode.CancellationError(); }
 		if (contentChunks.length > 0) {
 			strategies.push(`content (${contentChunks.length} file${contentChunks.length > 1 ? 's' : ''})`);
 			outputChannel?.appendLine(`[Gather] Content: ${contentChunks.length} file(s)`);

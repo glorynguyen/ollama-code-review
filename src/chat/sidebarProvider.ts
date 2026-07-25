@@ -16,6 +16,7 @@ import { toModelLimitChatMessage } from './modelErrorUtils';
 import type { ChatMessage, Conversation, WebviewInboundMessage, WebviewOutboundMessage } from './types';
 import type { McpClientManager } from '../mcp/mcpClientManager';
 import { gatherContextForQuestion } from './contextGatherCommand';
+import type { GenerateFn } from './termExtractor';
 
 interface AIProvider {
 	sendMessage(messages: ChatMessage[], onChunk: (chunk: string) => void): Promise<string>;
@@ -389,13 +390,19 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 			}
 
 			try {
+				const endpoint = config.get<string>('endpoint', 'http://localhost:11434/api/generate');
+				const temperature = config.get<number>('temperature', 0);
+				const provider = providerRegistry.resolve(activeModel);
+				const requestContext: ProviderRequestContext = { config, model: activeModel, endpoint, temperature };
+				const generateFn: GenerateFn = (prompt, signal) => provider.generate(prompt, { ...requestContext, signal });
+
 				const result = await vscode.window.withProgress(
 					{
 						location: vscode.ProgressLocation.Notification,
 						title: 'Gathering codebase context…',
-						cancellable: false,
+						cancellable: true,
 					},
-					() => gatherContextForQuestion(question, this.ragStoragePath),
+					(_progress, token) => gatherContextForQuestion(question, this.ragStoragePath, undefined, generateFn, token),
 				);
 
 				await vscode.env.clipboard.writeText(result.formattedPrompt);

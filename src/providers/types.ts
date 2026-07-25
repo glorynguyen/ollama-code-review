@@ -29,6 +29,8 @@ export interface ProviderRequestContext {
 	model: string;
 	endpoint: string;
 	temperature: number;
+	/** Optional abort signal so callers can cancel in-flight requests. */
+	signal?: AbortSignal;
 }
 
 export interface ModelProvider {
