@@ -1,3 +1,17 @@
+# [5.0.0](https://github.com/glorynguyen/ollama-code-review/compare/v4.22.0...v5.0.0) (2026-07-25)
+
+
+### Features
+
+* **rag:** scope vector store to workspace storage ([3df9399](https://github.com/glorynguyen/ollama-code-review/commit/3df9399e4f6f9d64c80d9fe37598901b7935fe4c))
+
+
+### BREAKING CHANGES
+
+* **rag:** existing RAG indexes stored in global storage are no
+longer read; users must re-run the Index Codebase command to rebuild the
+index under workspace-scoped storage.
+
 # [4.22.0](https://github.com/glorynguyen/ollama-code-review/compare/v4.21.0...v4.22.0) (2026-05-31)
 
 
