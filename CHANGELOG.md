@@ -1,3 +1,10 @@
+# [5.1.0](https://github.com/glorynguyen/ollama-code-review/compare/v5.0.0...v5.1.0) (2026-07-25)
+
+
+### Features
+
+* **chat:** add AI-powered search term extraction ([748da9a](https://github.com/glorynguyen/ollama-code-review/commit/748da9a9727fe9780b22377fafddfb991e0f3439))
+
 # [5.0.0](https://github.com/glorynguyen/ollama-code-review/compare/v4.22.0...v5.0.0) (2026-07-25)
 
 
