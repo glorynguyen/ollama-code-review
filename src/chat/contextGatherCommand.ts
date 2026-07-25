@@ -98,10 +98,10 @@ const ragEmbeddingCache = new Map<string, boolean>();
 
 async function strategyRag(
 	question: string,
-	globalStoragePath: string,
+	ragStoragePath: string,
 ): Promise<GatheredChunk[]> {
 	try {
-		const store = new JsonVectorStore(globalStoragePath);
+		const store = new JsonVectorStore(ragStoragePath);
 		if (store.chunkCount === 0) {return [];}
 
 		const ragConfig = getRagConfig();
@@ -348,7 +348,7 @@ export function formatGatherPrompt(question: string, chunks: GatheredChunk[]): s
 
 export async function gatherContextForQuestion(
 	question: string,
-	globalStoragePath: string,
+	ragStoragePath: string,
 	outputChannel?: vscode.OutputChannel,
 ): Promise<GatherResult> {
 	const terms = extractSearchTerms(question);
@@ -358,7 +358,7 @@ export async function gatherContextForQuestion(
 	outputChannel?.appendLine(`[Gather] Search terms: ${terms.join(', ')}`);
 
 	// Strategy A: RAG semantic search (requires a pre-built index)
-	const ragChunks = await strategyRag(question, globalStoragePath);
+	const ragChunks = await strategyRag(question, ragStoragePath);
 	if (ragChunks.length > 0) {
 		strategies.push(`semantic (${ragChunks.length} snippet${ragChunks.length > 1 ? 's' : ''})`);
 		outputChannel?.appendLine(`[Gather] RAG: ${ragChunks.length} chunk(s)`);

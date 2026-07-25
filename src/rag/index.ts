@@ -13,4 +13,4 @@ export {
   isEmbeddingModelAvailable,
 } from './embeddings';
 export { getRagContext, retrieveRelevantChunks, buildRagContextSection } from './retriever';
-export { getRagConfig } from './config';
+export { getRagConfig, resolveRagStoragePath } from './config';

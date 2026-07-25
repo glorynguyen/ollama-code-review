@@ -41,7 +41,7 @@ export const CONTEXT_MENTION_DEFS: ContextMentionDef[] = [
 ];
 
 export interface MentionResolutionOptions {
-	ragGlobalStoragePath?: string;
+	ragStoragePath?: string;
 	config?: vscode.WorkspaceConfiguration;
 }
 
@@ -110,12 +110,12 @@ async function resolveCodebase(
 	options?: MentionResolutionOptions,
 ): Promise<ResolvedContext | null> {
 	const trimmedQuery = query.trim();
-	if (!trimmedQuery || !options?.ragGlobalStoragePath) {
+	if (!trimmedQuery || !options?.ragStoragePath) {
 		return null;
 	}
 
 	try {
-		const store = new JsonVectorStore(options.ragGlobalStoragePath);
+		const store = new JsonVectorStore(options.ragStoragePath);
 		if (store.chunkCount === 0) {
 			return null;
 		}

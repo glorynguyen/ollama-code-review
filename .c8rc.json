@@ -14,7 +14,9 @@
         "out/contentstack/validator.js",
         "out/providers/promptFormats.js",
         "out/reviewFindings/structuredReview.js",
-        "out/reviewFindings/types.js"
+        "out/reviewFindings/types.js",
+        "out/rag/vectorStore.js",
+        "out/rag/config.js"
     ],
     "exclude": [
         "out/test/**",

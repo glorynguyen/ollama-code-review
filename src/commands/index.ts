@@ -101,6 +101,7 @@ import { getBitbucketAuth } from '../bitbucket/auth';
 import {
 	JsonVectorStore,
 	getRagConfig,
+	resolveRagStoragePath,
 	indexWorkspace,
 	getRagContext,
 	buildRagContextSection,
@@ -1793,9 +1794,10 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
-	// F-009: RAG-Enhanced Reviews — initialise vector store
-	ragVectorStore = new JsonVectorStore(context.globalStorageUri.fsPath);
-	outputChannel.appendLine(`[RAG] Vector store loaded: ${ragVectorStore.chunkCount} chunks`);
+	// F-009: RAG-Enhanced Reviews — initialise vector store (workspace-scoped)
+	const ragStoragePath = resolveRagStoragePath(context);
+	ragVectorStore = new JsonVectorStore(ragStoragePath);
+	outputChannel.appendLine(`[RAG] Vector store loaded: ${ragVectorStore.chunkCount} chunks (storage: ${ragStoragePath})`);
 
 	// F-009: Index Codebase command
 	const indexCodebaseCommand = vscode.commands.registerCommand(
@@ -1811,7 +1813,7 @@ export async function activate(context: vscode.ExtensionContext) {
 				await vscode.workspace.getConfiguration('ollama-code-review').update('rag.enabled', true, vscode.ConfigurationTarget.Global);
 			}
 			if (!ragVectorStore) {
-				ragVectorStore = new JsonVectorStore(context.globalStorageUri.fsPath);
+				ragVectorStore = new JsonVectorStore(resolveRagStoragePath(context));
 			}
 			const config = getRagConfig();
 			const vscodeConfig = vscode.workspace.getConfiguration('ollama-code-review');

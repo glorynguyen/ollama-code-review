@@ -8,6 +8,7 @@ export default defineConfig({
 		'out/test/fileOperations.test.js',
 		'out/test/reviewCache.test.js',
 		'out/test/reviewCoverage.test.js',
+		'out/test/ragStorage.integration.test.js',
 		'out/test/testAction.test.js',
 	],
 	launchArgs: [process.cwd()],

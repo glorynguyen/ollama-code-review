@@ -42,7 +42,7 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 	constructor(
 		private readonly extensionUri: vscode.Uri,
 		private readonly conversationManager: ConversationManager,
-		private readonly globalStoragePath: string,
+		private readonly ragStoragePath: string,
 		private readonly mcpManager: McpClientManager,
 	) {
 		ChatSidebarProvider.instance = this;
@@ -395,7 +395,7 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 						title: 'Gathering codebase context…',
 						cancellable: false,
 					},
-					() => gatherContextForQuestion(question, this.globalStoragePath),
+					() => gatherContextForQuestion(question, this.ragStoragePath),
 				);
 
 				await vscode.env.clipboard.writeText(result.formattedPrompt);
@@ -438,7 +438,7 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 			trimmedContent,
 			this.lastReviewText,
 			{
-				ragGlobalStoragePath: this.globalStoragePath,
+				ragStoragePath: this.ragStoragePath,
 				config,
 			},
 		);

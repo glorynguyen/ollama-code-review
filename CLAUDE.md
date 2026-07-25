@@ -165,7 +165,7 @@ out/                      # Compiled JavaScript output
 | `src/analytics/dashboard.ts` | ~320 | Rich analytics dashboard webview with Chart.js (F-011) |
 | `src/rag/index.ts` | ~20 | Barrel exports for RAG module (F-009) |
 | `src/rag/types.ts` | ~80 | RagConfig, CodeChunk, VectorStore, RetrievalResult interfaces (F-009) |
-| `src/rag/config.ts` | ~20 | `getRagConfig()` VS Code settings reader (F-009) |
+| `src/rag/config.ts` | ~35 | `getRagConfig()` VS Code settings reader, `resolveRagStoragePath()` workspace-scoped storage resolver (F-009) |
 | `src/rag/embeddings.ts` | ~90 | Ollama embedding generation, TF-IDF fallback, cosine similarity (F-009) |
 | `src/rag/vectorStore.ts` | ~110 | `JsonVectorStore` — JSON-based persistence, no native deps (F-009) |
 | `src/rag/indexer.ts` | ~120 | `indexWorkspace()`, `indexFile()`, `chunkText()` (F-009) |
@@ -226,7 +226,7 @@ out/                      # Compiled JavaScript output
 | `ollama-code-review.reviewBitbucketPR` | Review a Bitbucket Pull Request by URL or number (F-015) |
 | `ollama-code-review.postReviewToBitbucketPR` | Post AI review as a comment to a Bitbucket PR (F-015) |
 | `ollama-code-review.indexCodebase` | Index workspace files into the RAG vector store for semantic retrieval (F-009) |
-| `ollama-code-review.clearRagIndex` | Clear the RAG codebase index from global storage (F-009) |
+| `ollama-code-review.clearRagIndex` | Clear the RAG codebase index from workspace storage (F-009) |
 | `ollama-code-review.suggestVersionBump` | Analyze staged diff with AI and recommend MAJOR/MINOR/PATCH semver bump; optionally apply to package.json (F-028) |
 | `ollama-code-review.toggleAnnotations` | Toggle inline review annotations in the editor on/off (F-029) |
 | `ollama-code-review.clearAnnotations` | Clear all inline review annotations from editors (F-029) |

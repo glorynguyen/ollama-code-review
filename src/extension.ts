@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { ConversationManager } from './chat/conversationManager';
 import { ChatSidebarProvider } from './chat/sidebarProvider';
+import { resolveRagStoragePath } from './rag/config';
 import { McpClientManager } from './mcp/mcpClientManager';
 import type { PerformanceMetrics } from './commands';
 
@@ -40,10 +41,11 @@ export async function activate(context: vscode.ExtensionContext) {
 	);
 
 	const conversationManager = new ConversationManager(context.globalState);
+	const ragStoragePath = resolveRagStoragePath(context);
 	const chatSidebarProvider = new ChatSidebarProvider(
 		context.extensionUri,
 		conversationManager,
-		context.globalStorageUri.fsPath,
+		ragStoragePath,
 		mcpClientManager,
 	);
 	context.subscriptions.push(conversationManager);
@@ -63,7 +65,12 @@ export async function activate(context: vscode.ExtensionContext) {
 		}),
 	);
 
-	return loadCommands().activate(context);
+	const commandExports = await loadCommands().activate(context);
+	// Exposed for integration tests to verify RAG storage is workspace-scoped.
+	return {
+		...(typeof commandExports === 'object' ? commandExports : {}),
+		ragStoragePath,
+	};
 }
 
 export function deactivate() {

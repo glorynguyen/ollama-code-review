@@ -18,7 +18,7 @@ The extension scans your workspace and builds a local searchable index:
 - **File Discovery:** Finds files matching your `includeGlob` patterns while respecting `excludeGlob` (e.g., ignoring `node_modules`).
 - **Chunking:** Splits source files into overlapping segments (default: 1,500 characters with 150-character overlap) to preserve context.
 - **Embeddings:** Converts each code chunk into a high-dimensional vector using an embedding model (e.g., `nomic-embed-text` via Ollama).
-- **Storage:** Persists the vectors and metadata in a flat JSON store (`rag-index.json`) within the VS Code global storage directory. This approach ensures compatibility with VS Code's sandbox and avoids complex native database dependencies.
+- **Storage:** Persists the vectors and metadata in a flat JSON store (`rag-index.json`) within the VS Code **workspace storage** directory (each workspace gets its own index, preventing cross-project contamination). Falls back to global storage when no workspace is open. This approach ensures compatibility with VS Code's sandbox and avoids complex native database dependencies.
 
 ### 2. Retrieval (The Search)
 
