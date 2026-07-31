@@ -46,11 +46,19 @@ Instantly determine the right semantic version bump for your next release.
 - **Logic:** The AI analyzes your changes for breaking changes (MAJOR), new features (MINOR), or bug fixes (PATCH).
 - **Auto-Update:** If a `package.json` is found, you can apply the version change directly.
 
-## Contentstack Schema Validation
+## CMS Schema Validation
+
+Catch field-name typos against your CMS's real schema instead of at runtime.
+
+### Contentstack
 
 Validate Contentstack CMS field names used in your source code against actual Content Type schemas.
 - **How it works:** The extension fetches schemas from the Contentstack API or a local JSON export and flags mismatched field names.
 - **Suggestions:** Provides Levenshtein-distance-based spelling suggestions for mismatched fields.
+
+### Sitecore
+
+Validate JSS field accesses against schemas extracted from a live Sitecore Experience Edge Layout Service response, with an interactive Schema Explorer and TypeScript interface generation. See [Sitecore Schema Validation](/docs/features/sitecore) for the full guide.
 
 ## Scan for Secrets
 

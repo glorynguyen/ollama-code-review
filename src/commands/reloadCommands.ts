@@ -3,6 +3,7 @@ import { clearProjectConfigCache } from '../config/promptLoader';
 import { clearKnowledgeCache } from '../knowledge';
 import { clearRulesCache } from '../rules/loader';
 import { clearSchemaCache } from '../contentstack';
+import { clearSitecoreSchemaCache, SitecoreExplorerPanel } from '../sitecore';
 import { type CommandContext } from './commandContext';
 
 function registerCacheWatcher(
@@ -110,6 +111,37 @@ export function registerReloadCommands(commandContext: CommandContext): vscode.D
 		},
 	);
 
+	// F-050: Sitecore Schema Explorer + Reload
+	const exploreSitecoreSchemaCommand = vscode.commands.registerCommand(
+		'ollama-code-review.exploreSitecoreSchema',
+		() => {
+			SitecoreExplorerPanel.createOrShow(
+				commandContext.extensionContext.extensionUri,
+				outputChannel,
+			);
+		},
+	);
+
+	const reloadSitecoreSchemaCommand = vscode.commands.registerCommand(
+		'ollama-code-review.reloadSitecoreSchema',
+		() => {
+			clearSitecoreSchemaCache();
+			vscode.window.showInformationMessage('Ollama Code Review: Sitecore schema cache cleared.');
+			outputChannel.appendLine('[Ollama Code Review] Sitecore schema cache cleared. Will re-fetch on next review.');
+		},
+	);
+
+	const scSchemaWatcher = registerCacheWatcher(
+		'**/.sitecore/schema-cache.json',
+		clearSitecoreSchemaCache,
+		outputChannel,
+		{
+			changed: '[Ollama Code Review] Sitecore schema-cache.json changed — schema cache invalidated.',
+			created: '[Ollama Code Review] Sitecore schema-cache.json created — schema cache invalidated.',
+			deleted: '[Ollama Code Review] Sitecore schema-cache.json deleted — schema cache invalidated.',
+		},
+	);
+
 	return [
 		reloadProjectConfigCommand,
 		yamlConfigWatcher,
@@ -119,5 +151,8 @@ export function registerReloadCommands(commandContext: CommandContext): vscode.D
 		csSchemaWatcher,
 		reloadRulesCommand,
 		rulesWatcher,
+		exploreSitecoreSchemaCommand,
+		reloadSitecoreSchemaCommand,
+		scSchemaWatcher,
 	];
 }

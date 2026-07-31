@@ -297,6 +297,18 @@
         "icon": "$(database)"
       },
       {
+        "command": "ollama-code-review.exploreSitecoreSchema",
+        "title": "Explore Sitecore Schema",
+        "category": "Ollama Code Review",
+        "icon": "$(globe)"
+      },
+      {
+        "command": "ollama-code-review.reloadSitecoreSchema",
+        "title": "Reload Sitecore Schema Cache",
+        "category": "Ollama Code Review",
+        "icon": "$(database)"
+      },
+      {
         "command": "ollama-code-review.reloadRules",
         "title": "Reload Rules Directory (.ollama-review/rules/)",
         "category": "Ollama Code Review",
@@ -1360,6 +1372,73 @@
               "minimum": 1,
               "maximum": 20,
               "description": "Maximum number of content type schemas to include in the review prompt"
+            }
+          }
+        },
+        "ollama-code-review.sitecore": {
+          "type": "object",
+          "description": "F-050 — Sitecore Layout Service Schema Validation. When enabled, the extension validates JSS component field names against schemas extracted from the Sitecore Layout Service.",
+          "default": {},
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false,
+              "description": "Enable Sitecore schema validation during reviews"
+            },
+            "schemaSource": {
+              "type": "string",
+              "enum": ["auto", "graphql", "local"],
+              "default": "auto",
+              "description": "Where to load schemas: 'auto' (detect .env.local → GraphQL), 'graphql' (explicit endpoint), or 'local' (cached JSON file)"
+            },
+            "envFile": {
+              "type": "string",
+              "default": ".env.local",
+              "description": "Path to the .env file for auto-detecting Sitecore credentials"
+            },
+            "graphqlEndpoint": {
+              "type": "string",
+              "default": "",
+              "description": "Sitecore Experience Edge GraphQL endpoint URL (overrides .env detection)"
+            },
+            "apiKey": {
+              "type": "string",
+              "default": "",
+              "description": "Sitecore API key for Experience Edge (overrides .env detection)"
+            },
+            "siteName": {
+              "type": "string",
+              "default": "",
+              "description": "Sitecore site name (overrides .env detection)"
+            },
+            "localSchemaPath": {
+              "type": "string",
+              "default": ".sitecore/schema-cache.json",
+              "description": "Path to local schema cache file, relative to workspace root"
+            },
+            "cacheTtlMinutes": {
+              "type": "number",
+              "default": 60,
+              "minimum": 5,
+              "maximum": 1440,
+              "description": "Cache TTL in minutes before re-fetching schema"
+            },
+            "validateFieldTypes": {
+              "type": "boolean",
+              "default": true,
+              "description": "Validate that JSS helper components match field types (e.g. <Image> for Image fields)"
+            },
+            "validatePlaceholders": {
+              "type": "boolean",
+              "default": true,
+              "description": "Validate placeholder names in <Placeholder> components"
+            },
+            "maxComponents": {
+              "type": "number",
+              "default": 10,
+              "minimum": 1,
+              "maximum": 30,
+              "description": "Maximum number of component schemas to include in the review prompt"
             }
           }
         },

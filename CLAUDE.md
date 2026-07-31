@@ -101,6 +101,18 @@ src/
 │   ├── index.ts          # Barrel exports
 │   ├── types.ts          # SmartSuggestion, SuggestionInput, SuggestionResult interfaces
 │   └── analyzer.ts       # Suggestion generators: fix, profile, trend, workflow
+├── sitecore/             # Sitecore Layout Service schema validation (F-050)
+│   ├── index.ts          # Barrel exports
+│   ├── types.ts          # Field/component/cache/config/validation interfaces
+│   ├── envDetector.ts    # .env.local → API key / GraphQL endpoint / site name detection
+│   ├── graphqlClient.ts  # Experience Edge GraphQL transport + Layout Service query
+│   ├── routeDiscovery.ts # Paginated route enumeration for the route picker (F-051)
+│   ├── responseParser.ts # Layout Service response → component schemas & field types
+│   ├── schemaFetcher.ts  # Source routing (auto/graphql/local), TTL cache, persistence
+│   ├── codeParser.ts     # JSS field-access extraction from source & diffs
+│   ├── validator.ts      # Field-existence checks + Levenshtein suggestions
+│   ├── promptBuilder.ts  # Review prompt section + TypeScript interface generator
+│   └── explorerPanel.ts  # Schema Explorer webview (fetch route, browse, save, copy)
 └── test/
     └── extension.test.ts # Mocha test suite
 
@@ -187,6 +199,17 @@ out/                      # Compiled JavaScript output
 | `src/smartSuggestions/index.ts` | ~20 | Barrel exports for smart suggestions module (F-049) |
 | `src/smartSuggestions/types.ts` | ~65 | SmartSuggestion, SuggestionInput, SuggestionResult interfaces (F-049) |
 | `src/smartSuggestions/analyzer.ts` | ~200 | Suggestion generators: fix, profile, trend, workflow (F-049) |
+| `src/sitecore/index.ts` | ~60 | Barrel exports for the Sitecore schema validation module (F-050) |
+| `src/sitecore/types.ts` | ~270 | Field, component, cache, config, and validation interfaces (F-050) |
+| `src/sitecore/envDetector.ts` | ~165 | `.env.local`/`.env` parser for Sitecore credentials with key aliases (F-050) |
+| `src/sitecore/graphqlClient.ts` | ~125 | Shared `postGraphQL()` transport + Layout Service query (F-050) |
+| `src/sitecore/routeDiscovery.ts` | ~230 | Paginated Experience Edge route search, seed extraction, site-root derivation (F-051) |
+| `src/sitecore/responseParser.ts` | ~470 | Layout Service response → component schemas, field-type inference, cache merge (F-050) |
+| `src/sitecore/schemaFetcher.ts` | ~300 | Schema source routing, TTL cache, `.sitecore/schema-cache.json` persistence (F-050) |
+| `src/sitecore/codeParser.ts` | ~380 | JSS field-access extraction (6 patterns) from source files and diff hunks (F-050) |
+| `src/sitecore/validator.ts` | ~170 | Field-existence validation with case and Levenshtein suggestions (F-050) |
+| `src/sitecore/promptBuilder.ts` | ~290 | Review prompt section builder + JSS TypeScript interface generator (F-050) |
+| `src/sitecore/explorerPanel.ts` | ~640 | Schema Explorer webview: fetch route, browse components, save, copy (F-050) |
 
 ## Commands
 
@@ -238,6 +261,8 @@ out/                      # Compiled JavaScript output
 | `ollama-code-review.showAllFindings` | Clear severity filter and show all findings (F-034) |
 | `ollama-code-review.exportFindings` | Export findings as Markdown checklist (clipboard or file) (F-034) |
 | `ollama-code-review.toggleAutoReview` | Toggle Auto-Review on Save (background code quality monitor) on/off (F-043) |
+| `ollama-code-review.exploreSitecoreSchema` | Open the Sitecore Schema Explorer to fetch, browse, and save component schemas (F-050) |
+| `ollama-code-review.reloadSitecoreSchema` | Clear the Sitecore schema cache so the next review re-fetches (F-050) |
 
 ## Configuration Settings
 
@@ -289,6 +314,7 @@ out/                      # Compiled JavaScript output
 | `ollama-code-review.rag` | `{}` | RAG-Enhanced Reviews configuration (F-009) |
 | `ollama-code-review.annotations` | `{}` | Review Annotations configuration — inline editor decorations for findings (F-029) |
 | `ollama-code-review.autoReview` | `{}` | Auto-Review on Save configuration — background code quality monitor (F-043) |
+| `ollama-code-review.sitecore` | `{}` | Sitecore Layout Service schema validation configuration (F-050) |
 
 ### Annotations Settings (F-029)
 
@@ -329,6 +355,24 @@ The `rag` setting is an object with these properties:
 | `excludeGlob` | `**/node_modules/**,...` | Comma-separated patterns to exclude from indexing |
 | `chunkSize` | `1500` | Max characters per code chunk (200–8000) |
 | `chunkOverlap` | `150` | Character overlap between chunks (0–1000) |
+
+### Sitecore Settings (F-050)
+
+The `sitecore` setting is an object with these properties:
+
+| Property | Default | Description |
+|----------|---------|-------------|
+| `enabled` | `false` | Enable Sitecore schema validation during reviews |
+| `schemaSource` | `"auto"` | `auto` (detect `.env.local` → GraphQL, fall back to local), `graphql`, or `local` |
+| `envFile` | `".env.local"` | Path to the `.env` file used for credential auto-detection |
+| `graphqlEndpoint` | `""` | Experience Edge GraphQL endpoint (overrides `.env` detection) |
+| `apiKey` | `""` | Sitecore API key (overrides `.env` detection) |
+| `siteName` | `""` | Sitecore site name (overrides `.env` detection; defaults to `website`) |
+| `localSchemaPath` | `".sitecore/schema-cache.json"` | Local schema cache file, relative to workspace root |
+| `cacheTtlMinutes` | `60` | Cache TTL before re-fetching the schema (5–1440) |
+| `validateFieldTypes` | `true` | Ask the model to check JSS helpers against field types (`<Image>` for Image fields) |
+| `validatePlaceholders` | `true` | Ask the model to check `<Placeholder name="…">` values |
+| `maxComponents` | `10` | Max component schemas to include in the review prompt (1–30) |
 
 ### Diff Filter Settings
 
@@ -1345,6 +1389,87 @@ The manager is created in `activate()` with:
 
 ---
 
+## Sitecore Layout Service Schema Validation (F-050)
+
+The `src/sitecore/` module validates Sitecore JSS field usage against schemas extracted from a live Sitecore Experience Edge Layout Service response. Because the Layout Service returns *rendered* data rather than a template definition, schemas are **inferred from the observed response shape** — this makes the feature zero-config but also inherently sample-based.
+
+### How It Works
+
+1. `resolveEnvConfig()` reads settings first, then auto-detects credentials from `.env.local` → `.env.development.local` → `.env` → `.env.development` (`SITECORE_API_KEY`, `GRAPH_QL_ENDPOINT`, `SITECORE_SITE_NAME`, plus common aliases)
+2. `fetchLayoutServiceData()` posts a parameterized `layout(site, routePath, language)` GraphQL query to Experience Edge and unwraps `data.layout.item.rendered`
+3. `parseLayoutResponse()` walks all placeholders recursively, recording for each field both an inferred type (`{ src, alt }` → Image, `{ href, linktype }` → General Link, HTML-looking strings → Rich Text, …) and a **shape skeleton** via `buildValueShape()` — real keys with value types and no content, e.g. `{value:{src:str,alt:str,width:str,height:str}}`. Child-template fields are derived from array-valued Multilist/Treelist fields. Raw values are returned separately in `ParsedLayoutResult.rawSamples`
+4. `loadSitecoreSchema()` caches the result for `cacheTtlMinutes`, keyed to the workspace root, falling back to `.sitecore/schema-cache.json` in `auto` mode
+5. During `buildReviewPrompt()`, the diff is split per file so each chunk is parsed with its real path; `parseSitecoreFieldAccesses()` extracts field accesses and infers the component name from the filename
+6. `validateSitecoreFieldAccesses()` checks each access against the component's `fields` (or `childFields` for `item.fields.X` accesses), suggesting the closest name within Levenshtein distance 3
+7. `shouldEmitSitecoreSection()` decides whether the prompt needs a section at all; if so `buildSitecorePromptSection()` appends the schema context, pre-validation findings (as `file.tsx:42`), and conditional review rules
+
+### Shape vs Inferred Type
+
+Both are kept because they answer different questions. `type` drives TypeScript generation and helper matching. `shape` is what makes *sub-property* access checkable: the label `Image` cannot express that the key is `src` rather than `url`, that `width` arrives as a string, or that a link's label key is `text`. A shape costs the same as the old `Type | Notes` table columns (~98 vs ~97 tokens for 10 fields) and carries strictly more information — and when type inference yields `unknown`, the shape is the only remaining signal.
+
+Shapes contain no field content, so they are persisted in `.sitecore/schema-cache.json`. **Raw values are not** — they can include unpublished copy, customer names, and signed media URLs. `SitecoreRawSamples` is held by the Schema Explorer for its session only, string values truncated by `truncateRawValue()`, and never reaches disk or the schema cache. `_mergeFields()` prefers the longest shape seen for a field, since an unpopulated instance yields a thin `{value:null}`.
+
+### Prompt Cost Control
+
+Every access is validated deterministically *before* the prompt is built, so the section exists only to cover what the extension cannot decide alone:
+
+- `shouldEmitSitecoreSection()` returns false — and the whole section is skipped — when there are no invalid fields, no unresolved components, no JSS helper, and no `<Placeholder>` in the diff. A clean review costs zero tokens.
+- `_buildComponentSchemasSection()` emits a full entry only for fields the diff touches plus suggested near-matches; the remainder become a bare name list (~1/6 the cost) so the model can still suggest a name outside the Levenshtein cut-off.
+- Components are ranked by suspicion (invalid accesses weighted 100×) before `maxComponents` truncation, so mismatches never get cut in favour of clean components.
+- `_buildInstructionsSection()` emits only applicable rules; `_formatLocations()` collapses repeats into `` `a.tsx:3, 4, 5` ``.
+
+Measured on a realistic 14-field component: a clean review went from ~736 tokens to 0, and a review with a mismatch from ~821 to ~530.
+
+### Field Access Patterns Recognized (`codeParser.ts`)
+
+| Pattern | Example |
+|---------|---------|
+| JSS helper | `<Text field={fields.Headline} />` |
+| Dot access | `fields.Headline`, `fields?.Headline`, `props.fields.Headline` |
+| Bracket access | `fields['Headline']` |
+| Destructuring | `const { Headline, Body } = fields` |
+| Child access | `box.fields.Image` (validated against `childFields`) |
+| Registration | `register('BentoGrid', …)` (component-name discovery) |
+
+When parsing a diff, `@@` headers re-seed a line counter that advances for every added and context line — including blank ones — so reported line numbers match the real file. Removed (`-`) lines and diff plumbing never advance it. Dot and bracket patterns are anchored with a `(?<![.\w$])` lookbehind so `box.fields.Image` yields exactly one *child* access rather than also matching as a top-level one.
+
+### Fail-Open Validation
+
+Validation never guesses. An access is reported as valid (unvalidatable) when:
+- the component name could not be inferred from the filename
+- the component is not present in the schema (it lands in `unresolvedComponents` instead)
+- the relevant field list is empty — the Layout Service only reports what the sampled route's datasource actually carried
+
+This matters because the prompt instructs the model to flag unknown fields as **HIGH severity**; a wrong "field does not exist" claim is worse than a missed one.
+
+### Route Discovery & Search (F-051)
+
+`routeDiscovery.ts` enumerates a site's routes so the Explorer can offer a searchable picker instead of requiring exact paths. It needs no extra configuration: `extractRouteSeed()` reads `sitecore.context.itemPath` and `sitecore.route.templateId` out of a Layout Service response the Explorer already fetches. `_siteRootFrom()` walks the item path back to the **site node** (`/sitecore/content/MySite`) rather than the fetched item, so discovery returns the whole site rather than one page's descendants.
+
+`buildRouteSearchQuery()` emits a paginated Experience Edge `search` scoped by `_path` and `_language`. The `_templates` clause **and** its `$templateId` parameter declaration are both omitted when no seed template is known — a site with several page templates would otherwise lose every route not sharing the home page's template. Pagination walks `pageInfo.hasNext` up to `MAX_PAGES` (20 × 100 = 2,000 routes); hitting that cap sets `truncated`, which the panel surfaces rather than presenting a partial list as complete. Routes are deduplicated by normalized path, since Edge can return the same route under several language or version rows.
+
+Search itself runs **in the webview**: the index is fetched once per session and filtered locally, because a query per keystroke would be rate-limited by Experience Edge. `scoreRoute()` ranks path-prefix (1) → segment boundary (2) → path substring (3) → name (4–5) → template (6), tie-broken by shorter path. Enter with no highlighted option fetches the literal input, keeping unpublished and undiscovered routes reachable.
+
+Discovery is fail-soft in the same style as the rest of the module: an endpoint whose schema lacks `search` produces a `route-discovery-failed` status line, not an error box, and free-text entry continues to work. The route index is session-only and never written to `.sitecore/schema-cache.json` — with a preview-scoped API key it can contain unpublished page names, the same reasoning that keeps `SitecoreRawSamples` off disk.
+
+### Schema Explorer (`explorerPanel.ts`)
+
+`ollama-code-review.exploreSitecoreSchema` opens a webview where developers enter a route, fetch its layout, browse discovered placeholders and components (filterable by placeholder and searchable by name), inspect a component's field table, and then either **Save Schema** (all components) or **Use Selected for Validation** (a filtered subset) to `.sitecore/schema-cache.json`. Fetches accumulate across routes into one in-memory cache — both schema and raw samples — so scanning several routes builds a broader schema than the root route alone.
+
+The field table shows `Field Name | Type | Shape`, and **clicking a row expands the raw Layout Service JSON** for that field. Three clipboard actions: **Copy as TypeScript** emits interfaces typed against the real `@sitecore-jss/*` exports (`Field<string>`, `ImageField`, `LinkField`, `FileField`, `RichTextField`, `Item[]`) with the matching `import type` line; **Copy derived schema** copies the parsed `SitecoreComponentSchema`; **Copy raw JSON** copies the retained Layout Service values.
+
+The webview uses a nonce CSP (`default-src 'none'`) and HTML-escapes every interpolated value. API keys are never sent to the webview and are never written to the schema cache file.
+
+### Cache Invalidation
+
+`ollama-code-review.reloadSitecoreSchema` clears the cache manually, and a file watcher on `**/.sitecore/schema-cache.json` invalidates it on create, change, and delete — the same pattern used by F-006, F-012, and F-026. Failed loads are deliberately **not** cached, so a transient network error does not suppress schema loading for the full TTL.
+
+### Integration
+
+Injection happens in `buildReviewPrompt()` in `src/reviewPromptBuilder.ts`, after the Contentstack section, using the local `_splitDiffByFile()` helper. Every failure path is non-fatal: if the endpoint is unreachable, credentials are missing, or the schema is empty, the review proceeds without the Sitecore section and the reason is logged to the output channel.
+
+---
+
 ## Review Quality Scoring & Trends (F-016)
 
 Each review produces a 0–100 quality score derived from finding severity counts. Scores are persisted in a local JSON file and surfaced in a status bar item and a history panel.
@@ -1973,6 +2098,16 @@ See [docs/roadmap/](./docs/roadmap/) for comprehensive planning documents:
 | Auto-Review on Save (background code quality monitor; debounced per-file reviews on every save) | F-043 | v3.34.0 |
 | Findings Severity Filter & Export (filter tree by severity; export as Markdown checklist) | F-034 | v3.41.0 |
 | Smart Review Suggestions (contextual next-step recommendations after each review) | F-049 | v3.42.0 |
+| Sitecore Layout Service Schema Validation (Experience Edge schema extraction, JSS field validation, Schema Explorer) | F-050 | v3.43.0 |
+| Sitecore Route Discovery & Search (searchable route picker in the Schema Explorer) | F-051 | v3.44.0 |
+
+### Phase 15: CMS Schema Awareness (In Progress — v3.44.0)
+
+| Feature | ID | Priority | Effort | Status | Description |
+|---------|----|----------|--------|--------|-------------|
+| Sitecore Layout Service Schema Validation | F-050 | P2 | High (5-7 days) | ✅ Complete | Extract component schemas from Sitecore Experience Edge, validate JSS field accesses in reviews, interactive Schema Explorer with TypeScript interface generation |
+| Sitecore Route Discovery & Search | F-051 | P2 | Low (1-2 days) | ✅ Complete | Searchable route picker in the Schema Explorer — paginated Experience Edge route enumeration, local ranked filtering by path/name/template, fail-soft to free-text entry |
+| Sitecore Multi-Route Crawl | F-052 | P2 | Low (1 day) | 🔜 Next | Batch-fetch every filtered route to broaden schema coverage; reuses F-051 discovery + existing `mergeIntoCache` |
 
 ### Phase 14: Intelligent Workflow (In Progress — v3.42.0)
 

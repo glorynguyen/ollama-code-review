@@ -18,6 +18,7 @@ const sidebars: SidebarsConfig = {
         'features/smart-suggestions',
         'features/mcp',
         'features/rag',
+        'features/sitecore',
       ],
     },
     {

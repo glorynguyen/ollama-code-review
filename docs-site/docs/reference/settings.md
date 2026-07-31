@@ -39,6 +39,12 @@ All settings are prefixed with `ollama-code-review.*`.
 | `coverage.maxFiles` | Maximum workspace files to scan for Coverage | `1000` |
 | `contentstack.enabled` | Enable Contentstack schema validation | `false` |
 | `contentstack.schemaSource` | Source for schemas (local or api) | `local` |
+| `sitecore.enabled` | Enable Sitecore Layout Service schema validation | `false` |
+| `sitecore.schemaSource` | Source for schemas (`auto`, `graphql`, or `local`) | `auto` |
+| `sitecore.envFile` | Env file used to auto-detect Sitecore credentials | `.env.local` |
+| `sitecore.localSchemaPath` | Local Sitecore schema cache file | `.sitecore/schema-cache.json` |
+| `sitecore.cacheTtlMinutes` | Minutes before the Sitecore schema is re-fetched | `60` |
+| `sitecore.maxComponents` | Max Sitecore component schemas injected into the review prompt | `10` |
 | `copyFunction.maxDepth` | BFS depth for call-graph expansion in Copy Function with Imports | `3` |
 | `copyFunction.maxFunctions` | Max functions to collect in Copy Function with Imports | `15` |
 | `copyFunction.maxCharsPerFunction` | Max characters per function body in Copy Function with Imports | `8000` |

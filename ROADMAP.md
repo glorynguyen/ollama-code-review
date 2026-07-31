@@ -41,6 +41,8 @@
 | F-043 | Auto-Review on Save (background code quality monitor) | v3.34.0 |
 | F-034 | Findings Severity Filter & Export | v3.41.0 |
 | F-049 | Smart Review Suggestions (contextual next-step recommendations) | v3.42.0 |
+| F-050 | Sitecore Layout Service Schema Validation (Experience Edge, Schema Explorer) | v3.43.0 |
+| F-051 | Sitecore Route Discovery & Search (searchable route picker) | v3.44.0 |
 | —   | Jira ticket prefix in commit messages | v3.31.0 |
 | —   | Copy File with Imports (for LLM context) | v3.29.0 |
 | —   | Structured Review with anchor validation | v3.29.0 |
