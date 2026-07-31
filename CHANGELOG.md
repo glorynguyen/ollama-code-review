@@ -1,3 +1,10 @@
+# [5.2.0](https://github.com/glorynguyen/ollama-code-review/compare/v5.1.0...v5.2.0) (2026-07-31)
+
+
+### Features
+
+* **sitecore:** add Layout Service schema validation ([2fac0c0](https://github.com/glorynguyen/ollama-code-review/commit/2fac0c0677c6ad177844b763db7c45acd95921b5))
+
 # [5.1.0](https://github.com/glorynguyen/ollama-code-review/compare/v5.0.0...v5.1.0) (2026-07-25)
 
 
