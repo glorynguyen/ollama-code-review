@@ -1,3 +1,10 @@
+# [5.3.0](https://github.com/glorynguyen/ollama-code-review/compare/v5.2.0...v5.3.0) (2026-08-05)
+
+
+### Features
+
+* **release:** add multi-select commits with batch move to ticket ([d73a369](https://github.com/glorynguyen/ollama-code-review/commit/d73a369ca70e5fc9207e940c3877f8f1b78e8cc4))
+
 # [5.2.0](https://github.com/glorynguyen/ollama-code-review/compare/v5.1.0...v5.2.0) (2026-07-31)
 
 
