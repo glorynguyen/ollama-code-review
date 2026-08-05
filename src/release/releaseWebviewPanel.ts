@@ -716,7 +716,7 @@ export class ReleaseWebviewPanel {
         .ticket-bucket { background: var(--vscode-editor-background); border-radius: 8px; border: 1px solid var(--border); overflow: hidden; display: flex; flex-direction: column; }
         .tb-header { padding: 10px 15px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
         .tb-title { font-weight: 600; display: flex; align-items: center; gap: 10px; }
-        .tb-content { min-height: 60px; padding: 10px; background: var(--vscode-editor-background); }
+        .tb-content { min-height: 60px; max-height: 320px; overflow-y: auto; padding: 10px; background: var(--vscode-editor-background); }
         .tb-content.drag-over { background: var(--vscode-editor-selectionBackground); }
         .empty-bucket { text-align: center; color: var(--muted); font-size: 0.9rem; padding: 18px; border: 1px dashed color-mix(in srgb, var(--border) 82%, transparent); border-radius: 6px; background: var(--surface-soft); line-height: 1.45; }
         .empty-bucket strong { color: var(--text); display: block; margin-bottom: 4px; }
@@ -736,6 +736,17 @@ export class ReleaseWebviewPanel {
         .commit-card.user-excluded { opacity: 0.5; background: var(--vscode-editor-inactiveSelectionBackground); border-style: dashed; }
         .commit-card.user-excluded .c-msg { text-decoration: line-through; }
         .excluded-badge { font-size: 0.65rem; background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); padding: 1px 4px; border-radius: 3px; margin-left: 5px; }
+
+        .commit-card .c-checkbox { position: absolute; top: 9px; right: 9px; width: 16px; height: 16px; accent-color: var(--primary); cursor: pointer; z-index: 2; }
+        .commit-card.multi-selected { border-color: var(--primary); background: var(--vscode-editor-selectionBackground); }
+        .batch-bar { display: none; gap: 6px; padding: 8px 18px; background: var(--vscode-editor-selectionBackground); border-bottom: 1px solid var(--border); align-items: center; font-size: 0.8rem; }
+        .batch-bar.visible { display: flex; }
+        .batch-bar .batch-count { font-weight: 600; margin-right: auto; }
+        .batch-bar .batch-btn { padding: 5px 10px; font-size: 0.78rem; }
+        .move-picker { position: absolute; top: 100%; left: 0; z-index: 30; min-width: 220px; max-height: 200px; overflow-y: auto; border: 1px solid var(--border); background: var(--vscode-menu-background); color: var(--vscode-menu-foreground); box-shadow: 0 4px 12px rgba(0,0,0,0.2); border-radius: 4px; display: none; }
+        .move-picker.visible { display: block; }
+        .move-picker-item { padding: 7px 10px; cursor: pointer; font-size: 0.82rem; border-bottom: 1px solid var(--border); }
+        .move-picker-item:hover { background: var(--vscode-menu-selectionBackground); color: var(--vscode-menu-selectionForeground); }
 
         .c-link { color: var(--vscode-textLink-foreground); text-decoration: none; font-weight: bold; margin-left: 8px; }
         .c-link:hover { text-decoration: underline; }
@@ -989,6 +1000,14 @@ export class ReleaseWebviewPanel {
                 <button class="filter-btn active" id="filter-all">Show All</button>
                 <button class="filter-btn" id="filter-pickable">Pickable Only</button>
             </div>
+            <div id="batch-bar" class="batch-bar">
+                <span class="batch-count" id="batch-count">0 selected</span>
+                <button class="btn btn-sec batch-btn" id="batch-clear-btn">Clear</button>
+                <span style="position:relative;">
+                    <button class="btn batch-btn" id="batch-move-btn">Move to Ticket ▾</button>
+                    <div id="move-picker" class="move-picker"></div>
+                </span>
+            </div>
             <div id="commit-pool" class="commit-pool"></div>
         </div>
         <div class="col-right">
@@ -1134,6 +1153,8 @@ export class ReleaseWebviewPanel {
         let filterMode = 'all';
         let currentContextMenuHash = null;
         let currentReleaseName = null;
+        let multiSelected = new Set();
+        let lastClickedHash = null;
         let adoStatus = null;
         let activeConflictState = null;
         let selectedConflictFile = null;
@@ -1323,6 +1344,9 @@ export class ReleaseWebviewPanel {
         }
 
         function init() {
+            multiSelected.clear();
+            lastClickedHash = null;
+            updateBatchBar();
             const pool = document.getElementById('commit-pool');
             pool.innerHTML = '';
             const board = document.getElementById('plan-board');
@@ -1770,7 +1794,7 @@ export class ReleaseWebviewPanel {
             const isOverridden = !!c.isOverridden;
             const isPickable = !isExcluded && !isOverridden && hasDiff;
             
-            el.className = 'commit-card' + (isPickable ? '' : ' non-pickable') + (hasDiff ? '' : ' disabled') + (isExcluded ? ' user-excluded' : '');
+            el.className = 'commit-card' + (isPickable ? '' : ' non-pickable') + (hasDiff ? '' : ' disabled') + (isExcluded ? ' user-excluded' : '') + (multiSelected.has(c.hash) ? ' multi-selected' : '');
             
             // Consistent dimming for all non-pickable states
             if (!isPickable) {
@@ -1781,7 +1805,13 @@ export class ReleaseWebviewPanel {
             el.id = 'c-' + c.hash;
             el.dataset.hash = c.hash;
             el.addEventListener('dragstart', (ev) => { ev.dataTransfer.setData("text", ev.target.id); });
-            el.addEventListener('click', () => {
+            el.addEventListener('click', (e) => {
+                if (e.target.classList && e.target.classList.contains('c-checkbox')) return;
+                if (e.shiftKey || e.ctrlKey || e.metaKey) {
+                    e.preventDefault();
+                    handleMultiSelect(c.hash, e);
+                    return;
+                }
                 if (hasDiff) showDiff(c);
             });
             
@@ -1804,6 +1834,7 @@ export class ReleaseWebviewPanel {
             }
 
             el.innerHTML = \`
+                <input type="checkbox" class="c-checkbox" \${multiSelected.has(c.hash) ? 'checked' : ''}>
                 <div class="c-msg"></div>
                 <div class="c-meta">
                     <div>
@@ -1815,6 +1846,10 @@ export class ReleaseWebviewPanel {
                     <span class="c-author"></span>
                 </div>
             \`;
+            el.querySelector('.c-checkbox').addEventListener('change', (e) => {
+                e.stopPropagation();
+                handleMultiSelect(c.hash, e);
+            });
             el.querySelector('.c-msg').innerText = c.message;
             el.querySelector('.c-tag').innerText = c.hash.substring(0,7);
             el.querySelector('.c-author').innerText = c.author;
@@ -2127,6 +2162,112 @@ export class ReleaseWebviewPanel {
             });
         }
 
+        function handleMultiSelect(hash, e) {
+            if (e.shiftKey && lastClickedHash) {
+                const poolEls = Array.from(document.querySelectorAll('#commit-pool .commit-card'));
+                const hashes = poolEls.map(el => el.dataset.hash);
+                const startIdx = hashes.indexOf(lastClickedHash);
+                const endIdx = hashes.indexOf(hash);
+                if (startIdx !== -1 && endIdx !== -1) {
+                    const [from, to] = startIdx < endIdx ? [startIdx, endIdx] : [endIdx, startIdx];
+                    for (let i = from; i <= to; i++) {
+                        multiSelected.add(hashes[i]);
+                        const card = poolEls[i];
+                        card.classList.add('multi-selected');
+                        const cb = card.querySelector('.c-checkbox');
+                        if (cb) cb.checked = true;
+                    }
+                }
+            } else {
+                if (multiSelected.has(hash)) {
+                    multiSelected.delete(hash);
+                    const card = document.getElementById('c-' + hash);
+                    if (card) {
+                        card.classList.remove('multi-selected');
+                        const cb = card.querySelector('.c-checkbox');
+                        if (cb) cb.checked = false;
+                    }
+                } else {
+                    multiSelected.add(hash);
+                    const card = document.getElementById('c-' + hash);
+                    if (card) {
+                        card.classList.add('multi-selected');
+                        const cb = card.querySelector('.c-checkbox');
+                        if (cb) cb.checked = true;
+                    }
+                }
+            }
+            lastClickedHash = hash;
+            updateBatchBar();
+        }
+
+        function updateBatchBar() {
+            const bar = document.getElementById('batch-bar');
+            const count = multiSelected.size;
+            bar.classList.toggle('visible', count > 0);
+            document.getElementById('batch-count').innerText = count + ' selected';
+        }
+
+        function clearMultiSelect() {
+            multiSelected.forEach(hash => {
+                const card = document.getElementById('c-' + hash);
+                if (card) {
+                    card.classList.remove('multi-selected');
+                    const cb = card.querySelector('.c-checkbox');
+                    if (cb) cb.checked = false;
+                }
+            });
+            multiSelected.clear();
+            lastClickedHash = null;
+            updateBatchBar();
+        }
+
+        function showMovePicker() {
+            const picker = document.getElementById('move-picker');
+            picker.innerHTML = '';
+            const buckets = document.querySelectorAll('.ticket-bucket');
+            if (buckets.length === 0) {
+                picker.innerHTML = '<div class="move-picker-item" style="color:var(--muted);">No tickets added yet</div>';
+                picker.classList.add('visible');
+                return;
+            }
+            buckets.forEach(bucket => {
+                const id = bucket.id.replace('ticket-', '');
+                const title = bucket.querySelector('.tb-title').innerText;
+                const item = document.createElement('div');
+                item.className = 'move-picker-item';
+                item.innerText = title;
+                item.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    moveSelectedToTicket(id);
+                    picker.classList.remove('visible');
+                });
+                picker.appendChild(item);
+            });
+            picker.classList.add('visible');
+        }
+
+        function moveSelectedToTicket(ticketId) {
+            const container = document.getElementById('content-' + ticketId);
+            if (!container) return;
+            const empty = container.querySelector('.empty-bucket');
+            if (empty) empty.remove();
+            multiSelected.forEach(hash => {
+                const el = document.getElementById('c-' + hash);
+                if (el && el.closest('#commit-pool')) {
+                    el.classList.remove('multi-selected');
+                    const cb = el.querySelector('.c-checkbox');
+                    if (cb) cb.checked = false;
+                    container.appendChild(el);
+                }
+            });
+            multiSelected.clear();
+            lastClickedHash = null;
+            updateBatchBar();
+            updateCounts();
+            saveState();
+        }
+
         function setFilterMode(mode) {
             filterMode = mode;
             document.querySelectorAll('.filter-btn').forEach(btn => {
@@ -2220,6 +2361,10 @@ export class ReleaseWebviewPanel {
 
             document.getElementById('filter-all').addEventListener('click', () => setFilterMode('all'));
             document.getElementById('filter-pickable').addEventListener('click', () => setFilterMode('pickable'));
+
+            document.getElementById('batch-clear-btn').addEventListener('click', clearMultiSelect);
+            document.getElementById('batch-move-btn').addEventListener('click', (e) => { e.stopPropagation(); showMovePicker(); });
+            document.addEventListener('click', () => document.getElementById('move-picker').classList.remove('visible'));
 
             document.getElementById('ctx-copy-body').addEventListener('click', copyCommitBody);
             document.getElementById('ctx-copy-diff').addEventListener('click', copyChanges);

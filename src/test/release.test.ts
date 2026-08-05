@@ -25,11 +25,14 @@ let readFileMatchers: Array<{ test: (p: string) => boolean; content?: string; er
 
 let httpsRequestOverride: ((options: any, callback?: (res: any) => void) => any) | null = null;
 
+let writeFileCalls: Array<{ path: string; content: string }> = [];
+
 function clearMocks(): void {
     spawnMatchers = [];
     requestMatchers = [];
     readFileMatchers = [];
     httpsRequestOverride = null;
+    writeFileCalls = [];
 }
 
 function addSpawn(test: (args: string[]) => boolean, behavior: SpawnBehavior): void {
@@ -149,6 +152,11 @@ NodeModule._load = function (request: string, parent: any, isMain: boolean) {
         const promisesProxy = new Proxy(real.promises, {
             get(target, prop, receiver) {
                 if (prop === 'readFile') {return mockReadFile;}
+                if (prop === 'writeFile') {
+                    return async (filePath: string, content: string) => {
+                        writeFileCalls.push({ path: filePath, content });
+                    };
+                }
                 return Reflect.get(target, prop, receiver);
             }
         });
@@ -1195,6 +1203,48 @@ suite('Release Module Test Suite', () => {
             assert.ok(html.includes('PAT is stored securely in VS Code Secrets'));
         });
 
+        test('renders multi-select batch bar and move picker in the webview', () => {
+            const harness = createPanelHarness();
+            const html = (harness.instance as any)._getHtmlForWebview(
+                harness.panel.webview,
+                'style-uri',
+                'core-uri',
+                'script-uri'
+            );
+
+            assert.ok(html.includes('id="batch-bar"'));
+            assert.ok(html.includes('id="batch-count"'));
+            assert.ok(html.includes('id="batch-clear-btn"'));
+            assert.ok(html.includes('id="batch-move-btn"'));
+            assert.ok(html.includes('id="move-picker"'));
+            assert.ok(html.includes('class="c-checkbox"'));
+            assert.ok(html.includes('multiSelected'));
+            assert.ok(html.includes('handleMultiSelect'));
+            assert.ok(html.includes('moveSelectedToTicket'));
+            assert.ok(html.includes('showMovePicker'));
+            assert.ok(html.includes('clearMultiSelect'));
+            assert.ok(html.includes('updateBatchBar'));
+            assert.ok(html.includes('lastClickedHash'));
+        });
+
+        test('multi-select CSS classes are defined in webview HTML', () => {
+            const harness = createPanelHarness();
+            const html = (harness.instance as any)._getHtmlForWebview(
+                harness.panel.webview,
+                'style-uri',
+                'core-uri',
+                'script-uri'
+            );
+
+            assert.ok(html.includes('.commit-card .c-checkbox'));
+            assert.ok(html.includes('.commit-card.multi-selected'));
+            assert.ok(html.includes('.batch-bar'));
+            assert.ok(html.includes('.batch-bar.visible'));
+            assert.ok(html.includes('.move-picker'));
+            assert.ok(html.includes('.move-picker.visible'));
+            assert.ok(html.includes('.move-picker-item'));
+        });
+
         test('saveAdoToken stores a trimmed PAT and posts refreshed status', async () => {
             const harness = createPanelHarness();
 
@@ -1238,6 +1288,267 @@ suite('Release Module Test Suite', () => {
                 && message.level === 'error'
                 && message.message.includes('Stopped before API request')
             )));
+        });
+
+        test('saveMapping stores mapping data in workspaceState', async () => {
+            const harness = createPanelHarness();
+            const stored: Record<string, any> = {};
+            (harness as any).instance._extensionContext.workspaceState.update = async (key: string, value: any) => { stored[key] = value; };
+
+            await harness.handlers[0]({ command: 'saveMapping', data: { '123': { id: '123', title: 'Bug', commits: ['abc'] } } });
+
+            assert.deepStrictEqual(stored['releaseMapping'], { '123': { id: '123', title: 'Bug', commits: ['abc'] } });
+        });
+
+        test('saveAvailability stores branch-scoped availability', async () => {
+            const harness = createPanelHarness();
+            const stored: Record<string, any> = {};
+            (harness as any).instance._extensionContext.workspaceState.update = async (key: string, value: any) => { stored[key] = value; };
+
+            await harness.handlers[0]({ command: 'saveAvailability', data: { 'abc': 'unavailable' }, targetBranch: 'main' });
+
+            assert.deepStrictEqual(stored['commitAvailability'], { main: { 'abc': 'unavailable' } });
+        });
+
+        test('saveAvailability stores flat availability when no targetBranch', async () => {
+            const harness = createPanelHarness();
+            const stored: Record<string, any> = {};
+            (harness as any).instance._extensionContext.workspaceState.update = async (key: string, value: any) => { stored[key] = value; };
+
+            await harness.handlers[0]({ command: 'saveAvailability', data: { 'abc': 'unavailable' } });
+
+            assert.deepStrictEqual(stored['commitAvailability'], { 'abc': 'unavailable' });
+        });
+
+        test('getCommitBody posts commit body back to webview', async () => {
+            const harness = createPanelHarness();
+            const hash = 'aabbccdd11223344556677889900aabbccdd1122';
+            addSpawn(args => args[0] === 'show' && args.includes('--format=%B'), { stdout: 'Detailed body' });
+
+            await harness.handlers[0]({ command: 'getCommitBody', hash });
+
+            assert.ok(harness.postedMessages.some(m => m.command === 'commitBody' && m.data === 'Detailed body' && m.hash === hash));
+        });
+
+        test('getCommitBody ignores non-string hash', async () => {
+            const harness = createPanelHarness();
+
+            await harness.handlers[0]({ command: 'getCommitBody', hash: 123 });
+
+            assert.ok(!harness.postedMessages.some(m => m.command === 'commitBody'));
+        });
+
+        test('deleteRelease removes entry and posts releaseDeleted', async () => {
+            const harness = createPanelHarness();
+            const stored: Record<string, any> = {};
+            const history = { 'release/1.0': { created: '2024-01-01', base: 'main', commits: ['abc'], notes: '' } };
+            (harness as any).instance._extensionContext.workspaceState.get = (key: string, fallback: any) => key === 'releaseHistory' ? { ...history } : fallback;
+            (harness as any).instance._extensionContext.workspaceState.update = async (key: string, value: any) => { stored[key] = value; };
+
+            await harness.handlers[0]({ command: 'deleteRelease', branchName: 'release/1.0' });
+
+            assert.ok(!stored['releaseHistory']?.['release/1.0']);
+            assert.ok(harness.postedMessages.some(m => m.command === 'releaseDeleted' && m.success === true));
+        });
+
+        test('saveReleaseNotes updates notes in history', async () => {
+            const harness = createPanelHarness();
+            const stored: Record<string, any> = {};
+            const history = { 'release/1.0': { created: '2024-01-01', base: 'main', commits: ['abc'], notes: '' } };
+            (harness as any).instance._extensionContext.workspaceState.get = (key: string, fallback: any) => key === 'releaseHistory' ? { ...history } : fallback;
+            (harness as any).instance._extensionContext.workspaceState.update = async (key: string, value: any) => { stored[key] = value; };
+
+            await harness.handlers[0]({ command: 'saveReleaseNotes', branchName: 'release/1.0', notes: '## v1.0 Notes' });
+
+            assert.strictEqual(stored['releaseHistory']?.['release/1.0']?.notes, '## v1.0 Notes');
+            assert.ok(harness.postedMessages.some(m => m.command === 'notesSaved' && m.success === true));
+        });
+
+        test('createRelease posts error for empty hashes', async () => {
+            const harness = createPanelHarness();
+
+            await harness.handlers[0]({ command: 'createRelease', branchName: 'release/1.0', hashes: [], baseBranch: 'main' });
+
+            assert.ok(harness.postedMessages.some(m => m.command === 'error' && m.message.includes('No commits selected')));
+        });
+
+        test('createRelease posts error for invalid branch name', async () => {
+            const harness = createPanelHarness();
+
+            await harness.handlers[0]({ command: 'createRelease', branchName: '   ', hashes: ['abc1234'], baseBranch: 'main' });
+
+            assert.ok(harness.postedMessages.some(m => m.command === 'error' && m.message.includes('Invalid release branch name')));
+        });
+
+        test('appendRelease posts error for invalid message format', async () => {
+            const harness = createPanelHarness();
+
+            await harness.handlers[0]({ command: 'appendRelease', branchName: 123, hashes: 'not-array', baseBranch: 'main' });
+
+            assert.ok(harness.postedMessages.some(m => m.command === 'error' && m.message.includes('Invalid appendRelease')));
+        });
+
+        test('lookupTicket posts error for empty ID', async () => {
+            const harness = createPanelHarness();
+
+            await harness.handlers[0]({ command: 'lookupTicket', id: '   ' });
+
+            assert.ok(harness.postedMessages.some(m => m.command === 'error' && m.message.includes('Invalid ticket ID')));
+        });
+
+        test('lookupTicket ignores non-string ID', async () => {
+            const harness = createPanelHarness();
+
+            await harness.handlers[0]({ command: 'lookupTicket', id: 123 });
+
+            assert.ok(harness.postedMessages.some(m => m.command === 'error' && m.message.includes('Invalid ticket ID')));
+        });
+
+        test('getPRDiff ignores non-string source/target', async () => {
+            const harness = createPanelHarness();
+
+            await harness.handlers[0]({ command: 'getPRDiff', source: 123, target: 'main' });
+
+            assert.ok(!harness.postedMessages.some(m => m.command === 'prDiff'));
+            assert.ok(!harness.postedMessages.some(m => m.command === 'error'));
+        });
+
+        test('getTicketDetailsBulk ignores empty or non-array ids', async () => {
+            const harness = createPanelHarness();
+
+            await harness.handlers[0]({ command: 'getTicketDetailsBulk', ids: [] });
+            await harness.handlers[0]({ command: 'getTicketDetailsBulk', ids: 'not-array' });
+
+            assert.ok(!harness.postedMessages.some(m => m.command === 'ticketDetailsBulk'));
+        });
+    });
+
+    // -------------------------------------------------------------------------
+    // ReleaseService - resolveConflictFile & abortCherryPick
+    // -------------------------------------------------------------------------
+    suite('ReleaseService - Conflict Resolution', () => {
+        const workspaceRoot = '/tmp/fake-workspace';
+
+        setup(() => { clearMocks(); });
+        teardown(() => { clearMocks(); });
+
+        test('resolveConflictFile returns error for invalid state', async () => {
+            const service = new ReleaseService(workspaceRoot);
+            const result = await service.resolveConflictFile(null as any, 'file.ts', 'content');
+            assert.strictEqual(result.success, false);
+            assert.ok(result.message.includes('No active'));
+        });
+
+        test('resolveConflictFile returns error for wrong state value', async () => {
+            const service = new ReleaseService(workspaceRoot);
+            const badState = { state: 'IDLE' } as any;
+            const result = await service.resolveConflictFile(badState, 'file.ts', 'content');
+            assert.strictEqual(result.success, false);
+            assert.ok(result.message.includes('No active'));
+        });
+
+        test('resolveConflictFile rejects path traversal in filename', async () => {
+            const service = new ReleaseService(workspaceRoot);
+            const state: ConflictState = {
+                state: 'CHERRY_PICK_CONFLICT',
+                branchName: 'release/1.0',
+                baseBranch: 'main',
+                totalCommits: 2,
+                completedCommits: 0,
+                remainingCommits: 1,
+                currentCommit: 'aabbccdd11223344556677889900aabbccdd1122',
+                currentCommitIndex: 1,
+                selectedHashes: ['aabbccdd11223344556677889900aabbccdd1122', 'bbaaccddeeff00112233445566778899aabbccdd'],
+                conflictingFiles: ['../../etc/passwd'],
+                fileContents: {},
+                isAppending: false,
+                timestamp: new Date().toISOString()
+            };
+
+            const result = await service.resolveConflictFile(state, '../../etc/passwd', 'hacked');
+            assert.strictEqual(result.success, false);
+            assert.ok(result.message.includes('Invalid'));
+        });
+
+        test('resolveConflictFile completes when no remaining conflicts or hashes', async () => {
+            const service = new ReleaseService(workspaceRoot);
+            const hash = 'aabbccdd11223344556677889900aabbccdd1122';
+            const state: ConflictState = {
+                state: 'CHERRY_PICK_CONFLICT',
+                branchName: 'release/1.0',
+                baseBranch: 'main',
+                totalCommits: 1,
+                completedCommits: 0,
+                remainingCommits: 0,
+                currentCommit: hash,
+                currentCommitIndex: 1,
+                selectedHashes: [hash],
+                conflictingFiles: ['src/f.ts'],
+                fileContents: { 'src/f.ts': '<<<<<<< HEAD\nA\n=======\nB\n>>>>>>>' },
+                isAppending: false,
+                timestamp: new Date().toISOString()
+            };
+
+            // writeFile mock (fs.promises.writeFile is not intercepted, so we mock via spawn side effects)
+            // git add
+            addSpawn(args => args[0] === 'add', { stdout: '' });
+            // git diff --name-only --diff-filter=U (no remaining conflicts)
+            addSpawn(args => args[0] === 'diff' && args.includes('--diff-filter=U'), { stdout: '' });
+            // git cherry-pick --continue
+            addSpawn(args => args[0] === 'cherry-pick' && args.includes('--continue'), { stdout: '' });
+
+            const result = await service.resolveConflictFile(state, 'src/f.ts', 'resolved content');
+            assert.strictEqual(result.success, true);
+            assert.ok(result.message.includes('1 commits'));
+        });
+
+        test('resolveConflictFile returns conflict state when more files remain', async () => {
+            const service = new ReleaseService(workspaceRoot);
+            const hash = 'aabbccdd11223344556677889900aabbccdd1122';
+            const state: ConflictState = {
+                state: 'CHERRY_PICK_CONFLICT',
+                branchName: 'release/1.0',
+                baseBranch: 'main',
+                totalCommits: 1,
+                completedCommits: 0,
+                remainingCommits: 0,
+                currentCommit: hash,
+                currentCommitIndex: 1,
+                selectedHashes: [hash],
+                conflictingFiles: ['src/a.ts', 'src/b.ts'],
+                fileContents: { 'src/a.ts': 'conflict', 'src/b.ts': 'conflict' },
+                isAppending: false,
+                timestamp: new Date().toISOString()
+            };
+
+            addSpawn(args => args[0] === 'add', { stdout: '' });
+            // Still has remaining conflict
+            addSpawn(args => args[0] === 'diff' && args.includes('--diff-filter=U'), { stdout: 'src/b.ts' });
+            addReadFile(p => p.includes('src/b.ts'), '<<<<<<< HEAD\nX\n=======\nY\n>>>>>>>');
+
+            const result = await service.resolveConflictFile(state, 'src/a.ts', 'resolved a');
+            assert.strictEqual(result.success, false);
+            assert.strictEqual(result.requiresConflictResolution, true);
+            assert.deepStrictEqual(result.conflictState!.conflictingFiles, ['src/b.ts']);
+            assert.ok(result.conflictState!.fileContents['src/b.ts'].includes('<<<<<<<'));
+        });
+
+        test('abortCherryPick succeeds', async () => {
+            const service = new ReleaseService(workspaceRoot);
+            addSpawn(args => args[0] === 'cherry-pick' && args.includes('--abort'), { stdout: '' });
+
+            const result = await service.abortCherryPick();
+            assert.strictEqual(result.success, true);
+            assert.ok(result.message.includes('aborted'));
+        });
+
+        test('abortCherryPick returns error when no cherry-pick in progress', async () => {
+            const service = new ReleaseService(workspaceRoot);
+            addSpawn(args => args[0] === 'cherry-pick' && args.includes('--abort'), { code: 128, stderr: 'error: no cherry-pick in progress' });
+
+            const result = await service.abortCherryPick();
+            assert.strictEqual(result.success, false);
+            assert.ok(result.message.includes('no cherry-pick'));
         });
     });
 });
