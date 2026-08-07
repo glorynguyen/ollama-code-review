@@ -1,3 +1,10 @@
+## [5.3.1](https://github.com/glorynguyen/ollama-code-review/compare/v5.3.0...v5.3.1) (2026-08-07)
+
+
+### Bug Fixes
+
+* **diff:** use three-dot syntax for branch comparisons ([58caca1](https://github.com/glorynguyen/ollama-code-review/commit/58caca1c7057cb743010fcab62a35639bd674492))
+
 # [5.3.0](https://github.com/glorynguyen/ollama-code-review/compare/v5.2.0...v5.3.0) (2026-08-05)
 
 
