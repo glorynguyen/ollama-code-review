@@ -1257,10 +1257,10 @@ export async function activate(context: vscode.ExtensionContext) {
 			}, async (progress, token) => {
 				progress.report({ message: `Generating diff between ${fromRef} and ${toRef}...` });
 
-				const diffResult = await runGitCommand(repoPath, ['diff', fromRef, toRef]);
+				const diffResult = await runGitCommand(repoPath, ['diff', `${fromRef}...${toRef}`]);
 				if (token.isCancellationRequested) { return; }
 
-				const filesList = await runGitCommand(repoPath, ['diff', '--name-only', fromRef, toRef]);
+				const filesList = await runGitCommand(repoPath, ['diff', '--name-only', `${fromRef}...${toRef}`]);
 				const filesArray = filesList.trim().split('\n').filter(Boolean);
 				const mcpEnabled = vscode.workspace.getConfiguration('ollama-code-review').get<boolean>('mcp.enabled', false);
 

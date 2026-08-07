@@ -144,12 +144,12 @@ export function registerReviewTools(server: McpServer): void {
 			const repoPath = repository_path || mcpBridge.getRepoPath();
 			mcpBridge.log(`get_branch_diff: base=${base_ref}, target=${target_ref}, repo=${repoPath}`);
 
-			const rawDiff = await mcpBridge.runGit(repoPath, ['diff', base_ref, target_ref]);
+			const rawDiff = await mcpBridge.runGit(repoPath, ['diff', `${base_ref}...${target_ref}`]);
 			if (!rawDiff.trim()) {
 				return { content: [{ type: 'text' as const, text: `No differences found between ${base_ref} and ${target_ref}.` }] };
 			}
 
-			const filesList = await mcpBridge.runGit(repoPath, ['diff', '--name-only', base_ref, target_ref]);
+			const filesList = await mcpBridge.runGit(repoPath, ['diff', '--name-only', `${base_ref}...${target_ref}`]);
 			const filesArray = filesList.trim().split('\n').filter(Boolean);
 
 			const filterConfig = getDiffFilterConfig();

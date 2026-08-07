@@ -241,7 +241,7 @@ export function registerContextTools(server: McpServer): void {
 			const repoPath = repository_path || mcpBridge.getRepoPath();
 			mcpBridge.log(`get_branch_review_bundle: base=${base_ref}, target=${target_ref}, repo=${repoPath}`);
 
-			const rawDiff = await mcpBridge.runGit(repoPath, ['diff', base_ref, target_ref]);
+			const rawDiff = await mcpBridge.runGit(repoPath, ['diff', `${base_ref}...${target_ref}`]);
 			if (!rawDiff.trim()) {
 				return {
 					content: [{ type: 'text' as const, text: `No differences found between ${base_ref} and ${target_ref}.` }],
