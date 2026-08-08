@@ -264,8 +264,17 @@ export interface LayoutServiceResponse {
 // Explorer panel types
 // ---------------------------------------------------------------------------
 
-/** Summary of a component for the explorer panel. */
+/** Summary of a component for the explorer panel (deduplicated by name). */
 export interface ComponentSummary {
+	componentName: string;
+	placeholder: string;
+	fieldCount: number;
+	hasChildren: boolean;
+}
+
+/** A single rendering instance in a placeholder (not deduplicated). */
+export interface ComponentRendering {
+	index: number;
 	componentName: string;
 	placeholder: string;
 	fieldCount: number;
@@ -286,7 +295,7 @@ export type ExplorerPanelMessage =
 /** Messages from the extension to the explorer webview. */
 export type ExplorerExtensionMessage =
 	| { type: 'config'; endpoint: string; siteName: string; source: 'env' | 'settings' | 'none' }
-	| { type: 'layout-result'; placeholders: string[]; components: ComponentSummary[]; routePath: string }
+	| { type: 'layout-result'; placeholders: string[]; components: ComponentRendering[]; routePath: string }
 	| {
 		type: 'component-detail';
 		component: SitecoreComponentSchema;

@@ -16,7 +16,7 @@ import type {
 	SitecoreRawSamples,
 } from './types';
 import { resolveEnvConfig, saveSchemaCache, getSitecoreConfig } from './schemaFetcher';
-import { createEmptyCache, mergeIntoCache, parseLayoutResponse, toComponentSummaries } from './responseParser';
+import { createEmptyCache, mergeIntoCache, parseLayoutResponse } from './responseParser';
 import { fetchLayoutServiceData } from './graphqlClient';
 import { generateTypescriptInterface } from './promptBuilder';
 
@@ -170,10 +170,14 @@ export class SitecoreExplorerPanel {
 				return;
 			}
 
+			// Fresh fetch — reset cache so we never show stale data
+			this._schemaCache = createEmptyCache();
+			this._rawSamples = {};
+
 			const parsed = parseLayoutResponse(response, route);
 			mergeIntoCache(this._schemaCache, parsed, route, `graphql:${envConfig.graphqlEndpoint}`);
 
-			// Accumulate raw values across routes, first populated sample winning
+			// Accumulate raw values
 			for (const [componentName, fields] of Object.entries(parsed.rawSamples)) {
 				const bucket = this._rawSamples[componentName] ?? (this._rawSamples[componentName] = {});
 				for (const [fieldName, value] of Object.entries(fields)) {
@@ -181,12 +185,10 @@ export class SitecoreExplorerPanel {
 				}
 			}
 
-			const summaries = toComponentSummaries(this._schemaCache);
-
 			this._postMessage({
 				type: 'layout-result',
 				placeholders: this._schemaCache.placeholders,
-				components: summaries,
+				components: parsed.renderings,
 				routePath: route,
 			});
 		} catch (err: unknown) {
@@ -590,17 +592,17 @@ export class SitecoreExplorerPanel {
 
 				case 'layout-result':
 					errorBox.className = 'error';
+					selectedComponents.clear();
+					validateBtn.disabled = true;
+					activeFilter = null;
+					detailSection.className = 'section detail-section';
 					renderPlaceholders(msg.placeholders);
 					allComponents = msg.components;
 					renderComponentList();
 					placeholdersSection.className = 'section detail-section visible';
 					componentsSection.className = 'section detail-section visible';
 					saveBtn.disabled = false;
-					// Track scanned routes
-					const existing = routesList.textContent;
-					const routes = existing ? existing.replace('Routes scanned: ', '').split(', ') : [];
-					if (!routes.includes(msg.routePath)) routes.push(msg.routePath);
-					routesList.textContent = 'Routes scanned: ' + routes.join(', ');
+					routesList.textContent = 'Route: ' + msg.routePath;
 					break;
 
 
@@ -650,10 +652,10 @@ export class SitecoreExplorerPanel {
 			document.getElementById('component-count').textContent = '(' + filtered.length + ')';
 			componentList.innerHTML = filtered.map(c => {
 				const checked = selectedComponents.has(c.componentName) ? 'checked' : '';
-				return '<li class="component-item" data-name="' + esc(c.componentName) + '">'
+				return '<li class="component-item" data-name="' + esc(c.componentName) + '" data-index="' + c.index + '">'
 					+ '<input type="checkbox" ' + checked + ' data-check="' + esc(c.componentName) + '" />'
 					+ '<span class="component-name">' + esc(c.componentName) + '</span>'
-					+ '<span class="component-meta">(' + esc(c.placeholder) + ') ' + esc(c.fieldCount) + ' fields' + (c.hasChildren ? ' + children' : '') + '</span>'
+					+ '<span class="component-meta">(' + esc(c.placeholder) + ') ' + esc(String(c.fieldCount)) + ' fields' + (c.hasChildren ? ' + children' : '') + '</span>'
 					+ '</li>';
 			}).join('');
 

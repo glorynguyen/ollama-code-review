@@ -15,6 +15,7 @@ import type {
 	SitecoreSchemaCache,
 	SitecoreRawSamples,
 	ComponentSummary,
+	ComponentRendering,
 } from './types';
 
 /** Max characters kept per string when retaining a raw sample. */
@@ -41,6 +42,7 @@ export function parseLayoutResponse(
 	const components = new Map<string, SitecoreComponentSchema>();
 	const placeholders = new Set<string>();
 	const rawSamples: SitecoreRawSamples = {};
+	const renderings: ComponentRendering[] = [];
 
 	// Extract route-level page template
 	const pageTemplate: SitecorePageSchema = {
@@ -50,13 +52,14 @@ export function parseLayoutResponse(
 	};
 
 	// Walk all placeholders recursively
-	_walkPlaceholders(route.placeholders, components, placeholders, routePath, rawSamples);
+	_walkPlaceholders(route.placeholders, components, placeholders, routePath, rawSamples, renderings);
 
 	return {
 		pageTemplate,
 		components: Array.from(components.values()),
 		placeholders: Array.from(placeholders),
 		rawSamples,
+		renderings,
 	};
 }
 
@@ -227,6 +230,8 @@ export interface ParsedLayoutResult {
 	 * of {@link SitecoreSchemaCache} — see {@link SitecoreRawSamples}.
 	 */
 	rawSamples: SitecoreRawSamples;
+	/** Every rendering instance in placeholder order (not deduplicated). */
+	renderings: ComponentRendering[];
 }
 
 // ---------------------------------------------------------------------------
@@ -242,14 +247,15 @@ function _walkPlaceholders(
 	placeholderNames: Set<string>,
 	routePath: string,
 	rawSamples: SitecoreRawSamples,
+	renderings: ComponentRendering[],
 ): void {
 	if (!placeholders) { return; }
 
-	for (const [placeholderName, renderings] of Object.entries(placeholders)) {
+	for (const [placeholderName, renderingList] of Object.entries(placeholders)) {
 		placeholderNames.add(placeholderName);
 
-		for (const rendering of renderings) {
-			_processComponent(rendering, placeholderName, components, placeholderNames, routePath, rawSamples);
+		for (const rendering of renderingList) {
+			_processComponent(rendering, placeholderName, components, placeholderNames, routePath, rawSamples, renderings);
 		}
 	}
 }
@@ -264,12 +270,22 @@ function _processComponent(
 	placeholderNames: Set<string>,
 	routePath: string,
 	rawSamples: SitecoreRawSamples,
+	renderings: ComponentRendering[],
 ): void {
 	const name = rendering.componentName;
 	if (!name) { return; }
 
 	const fields = _extractFields(rendering.fields);
 	const childResult = _extractChildFields(rendering.fields);
+
+	// Record this rendering instance (preserves duplicates)
+	renderings.push({
+		index: renderings.length,
+		componentName: name,
+		placeholder: placeholderName,
+		fieldCount: fields.length,
+		hasChildren: !!childResult,
+	});
 
 	// Retain raw values so the Schema Explorer can show ground truth. The first
 	// rendering to carry a given field wins, so an empty instance later on the
@@ -313,7 +329,7 @@ function _processComponent(
 
 	// Recurse into nested placeholders
 	if (rendering.placeholders) {
-		_walkPlaceholders(rendering.placeholders, components, placeholderNames, routePath, rawSamples);
+		_walkPlaceholders(rendering.placeholders, components, placeholderNames, routePath, rawSamples, renderings);
 	}
 }
 
