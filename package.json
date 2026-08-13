@@ -2,7 +2,7 @@
   "name": "ollama-code-review",
   "displayName": "Ollama Code Review",
   "description": "Get AI code reviews and generate commit messages from a local Ollama instance before you commit.",
-  "version": "5.3.1",
+  "version": "6.0.0",
   "sponsor": {
     "url": "https://ko-fi.com/nguyenbavinh"
   },
@@ -1112,8 +1112,16 @@
             },
             "charBudget": {
               "oneOf": [
-                { "type": "string", "enum": ["auto"] },
-                { "type": "number", "minimum": 32000 }
+                {
+                  "type": "string",
+                  "enum": [
+                    "auto"
+                  ]
+                },
+                {
+                  "type": "number",
+                  "minimum": 32000
+                }
               ],
               "default": "auto",
               "description": "Total character budget for gathered context. 'auto' (default) scales based on the active model's context window. Set a number for an explicit limit (e.g. 128000 for ~32K tokens)."

@@ -1,3 +1,19 @@
+# [6.0.0](https://github.com/glorynguyen/ollama-code-review/compare/v5.3.1...v6.0.0) (2026-08-13)
+
+
+### Features
+
+* **context:** scale context budget to model window ([35dbfa2](https://github.com/glorynguyen/ollama-code-review/commit/35dbfa28c0c176758ee7f3121d0158cdbb23358a))
+* **sitecore:** show individual rendering instances in explorer ([168cbe4](https://github.com/glorynguyen/ollama-code-review/commit/168cbe47031aa915acb1fac9aff34c2b0ed1f80f))
+
+
+### BREAKING CHANGES
+
+* **sitecore:** the `layout-result` extension message now carries
+`components: ComponentRendering[]` instead of `ComponentSummary[]`.
+Consumers relying on deduplicated summaries must read from the new
+rendering instances (using `index` as the identifier).
+
 ## [5.3.1](https://github.com/glorynguyen/ollama-code-review/compare/v5.3.0...v5.3.1) (2026-08-07)
 
 
