@@ -6,6 +6,7 @@ import type { ChatMessage } from '../chat/types';
 
 export class V0Provider implements ModelProvider {
 	public readonly name = 'v0';
+	public readonly contextWindowTokens = 200_000;
 
 	public isMatch(model: string): boolean {
 		return isV0Model(model);

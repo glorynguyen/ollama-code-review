@@ -10,6 +10,7 @@ import type { ChatMessage } from '../chat/types';
 
 export class OllamaProvider implements ModelProvider {
 	public readonly name = 'ollama';
+	public readonly contextWindowTokens = 8_000;
 
 	public isMatch(_model: string): boolean {
 		// ProviderRegistry treats Ollama as explicit fallback and excludes it from primary matching.

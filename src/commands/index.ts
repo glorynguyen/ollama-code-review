@@ -2976,7 +2976,8 @@ ${diff.slice(0, 12000)}
 					if (rcCtxConfig.enabled) {
 						progress.report({ message: 'Gathering related file context…' });
 						try {
-							rcContextBundle = await gatherContext(diffResult, rcCtxConfig, outputChannel);
+							const rcModel = getOllamaModel(vscode.workspace.getConfiguration('ollama-code-review'));
+							rcContextBundle = await gatherContext(diffResult, rcCtxConfig, outputChannel, providerRegistry.getContextWindowTokens(rcModel));
 						} catch {
 							// Non-fatal — continue without context
 						}
@@ -3770,7 +3771,7 @@ async function runReview(
 	const ctxConfig = getContextGatheringConfig();
 	if (ctxConfig.enabled) {
 		try {
-			contextBundle = await gatherContext(filteredDiff, ctxConfig, outputChannel);
+			contextBundle = await gatherContext(filteredDiff, ctxConfig, outputChannel, providerRegistry.getContextWindowTokens(activeModel));
 		} catch (err) {
 			outputChannel.appendLine(`[Context Gathering] Error: ${err}`);
 		}

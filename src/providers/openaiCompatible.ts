@@ -10,6 +10,7 @@ import type { ChatMessage } from '../chat/types';
 
 export class OpenAICompatibleProvider implements ModelProvider {
 	public readonly name = 'openai-compatible';
+	public readonly contextWindowTokens = 128_000;
 
 	public isMatch(model: string): boolean {
 		return isOpenAICompatibleModel(model);

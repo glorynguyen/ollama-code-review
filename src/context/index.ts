@@ -15,6 +15,7 @@ export {
 	gatherContext,
 	formatContextForPrompt,
 	getContextGatheringConfig,
+	getEffectiveContextBudget,
 	DEFAULT_CONTEXT_CONFIG,
 } from './contextGatherer';
 

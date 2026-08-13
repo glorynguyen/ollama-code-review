@@ -26,6 +26,12 @@ export interface ContextGatheringConfig {
 	 * relative paths, e.g. `["src/generated/**", "**\/*.pb.ts"]`.
 	 */
 	ignoreContextPaths: string[];
+	/**
+	 * Total character budget for gathered context.
+	 * - `"auto"` (default): scales based on the active model's context window.
+	 * - A number: explicit char limit (e.g. 128000).
+	 */
+	charBudget?: number | 'auto';
 }
 
 // ---------------------------------------------------------------------------

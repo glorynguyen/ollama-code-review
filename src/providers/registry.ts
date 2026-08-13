@@ -55,6 +55,10 @@ export class ProviderRegistry {
 		return this.providers.find(provider => provider !== fallback && provider.isMatch(model)) ?? fallback;
 	}
 
+	public getContextWindowTokens(model: string): number {
+		return this.resolve(model).contextWindowTokens;
+	}
+
 	public async listAvailable(): Promise<ModelProvider[]> {
 		const results = await Promise.all(
 			this.providers.map(async provider => ({ provider, available: await provider.isAvailable() })),

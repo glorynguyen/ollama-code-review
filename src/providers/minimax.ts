@@ -4,6 +4,7 @@ import type { GenerateOptions, ModelProvider, ProviderRequestContext, StreamOpti
 
 export class MiniMaxProvider implements ModelProvider {
 	public readonly name = 'minimax';
+	public readonly contextWindowTokens = 128_000;
 
 	public isMatch(model: string): boolean {
 		return isMiniMaxModel(model);

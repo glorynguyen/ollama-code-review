@@ -4,6 +4,7 @@ import type { GenerateOptions, ModelProvider, ProviderRequestContext, StreamOpti
 
 export class GlmProvider implements ModelProvider {
 	public readonly name = 'glm';
+	public readonly contextWindowTokens = 128_000;
 
 	public isMatch(model: string): boolean {
 		return isGlmModel(model);

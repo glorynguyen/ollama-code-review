@@ -4,6 +4,7 @@ import type { GenerateOptions, ModelProvider, ProviderRequestContext, StreamOpti
 
 export class GeminiProvider implements ModelProvider {
 	public readonly name = 'gemini';
+	public readonly contextWindowTokens = 1_000_000;
 
 	public isMatch(model: string): boolean {
 		return isGeminiModel(model);

@@ -4,6 +4,7 @@ import type { GenerateOptions, ModelProvider, ProviderRequestContext, StreamOpti
 
 export class HuggingFaceProvider implements ModelProvider {
 	public readonly name = 'huggingface';
+	public readonly contextWindowTokens = 32_000;
 
 	public isMatch(model: string): boolean {
 		return isHuggingFaceModel(model);

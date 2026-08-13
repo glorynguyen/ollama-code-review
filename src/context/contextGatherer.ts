@@ -38,19 +38,24 @@ export const DEFAULT_CONTEXT_CONFIG: ContextGatheringConfig = {
 	includeTests: true,
 	includeTypeDefinitions: true,
 	ignoreContextPaths: [],
+	charBudget: 'auto',
 };
 
-/**
- * Character budget per file (≈ 2 000 tokens at ~4 chars/token).
- * Keeps total context from blowing up the prompt.
- */
-const PER_FILE_CHAR_LIMIT = 8_000;
+/** Minimum total budget (current legacy default). */
+const MIN_TOTAL_CHAR_BUDGET = 32_000;
+/** Maximum total budget to avoid focus dilution even on 1M-token models. */
+const MAX_TOTAL_CHAR_BUDGET = 256_000;
+/** Maximum per-file budget. */
+const MAX_PER_FILE_CHAR_LIMIT = 32_000;
+/** Minimum per-file budget. */
+const MIN_PER_FILE_CHAR_LIMIT = 8_000;
 
 /**
- * Overall character budget for all context files combined
- * (≈ 8 000 tokens at ~4 chars/token).
+ * Fraction of the model's context window (in chars) allocated to gathered context.
+ * 15% leaves room for the diff, prompt template, skills, knowledge, schemas, etc.
  */
-const TOTAL_CHAR_BUDGET = 32_000;
+const CONTEXT_WINDOW_FRACTION = 0.15;
+const CHARS_PER_TOKEN = 4;
 
 // ---------------------------------------------------------------------------
 // Configuration reader
@@ -67,7 +72,42 @@ export function getContextGatheringConfig(): ContextGatheringConfig {
 		includeTests: section.includeTests ?? DEFAULT_CONTEXT_CONFIG.includeTests,
 		includeTypeDefinitions: section.includeTypeDefinitions ?? DEFAULT_CONTEXT_CONFIG.includeTypeDefinitions,
 		ignoreContextPaths: section.ignoreContextPaths ?? DEFAULT_CONTEXT_CONFIG.ignoreContextPaths,
+		charBudget: section.charBudget ?? DEFAULT_CONTEXT_CONFIG.charBudget,
 	};
+}
+
+export interface EffectiveContextBudget {
+	totalBudget: number;
+	perFileBudget: number;
+}
+
+/**
+ * Compute the effective context budget based on the active model's context
+ * window and the user's `charBudget` setting.
+ */
+export function getEffectiveContextBudget(
+	config: ContextGatheringConfig,
+	modelContextWindowTokens?: number,
+): EffectiveContextBudget {
+	const { charBudget } = config;
+
+	let totalBudget: number;
+
+	if (typeof charBudget === 'number') {
+		totalBudget = charBudget;
+	} else {
+		// "auto" mode: scale from model's context window
+		const ctxTokens = modelContextWindowTokens ?? 8_000;
+		const derived = Math.floor(ctxTokens * CHARS_PER_TOKEN * CONTEXT_WINDOW_FRACTION);
+		totalBudget = Math.min(Math.max(derived, MIN_TOTAL_CHAR_BUDGET), MAX_TOTAL_CHAR_BUDGET);
+	}
+
+	const perFileBudget = Math.min(
+		Math.max(Math.floor(totalBudget / 4), MIN_PER_FILE_CHAR_LIMIT),
+		MAX_PER_FILE_CHAR_LIMIT,
+	);
+
+	return { totalBudget, perFileBudget };
 }
 
 // ---------------------------------------------------------------------------
@@ -114,6 +154,7 @@ export async function gatherContext(
 	diff: string,
 	config: ContextGatheringConfig,
 	outputChannel?: vscode.OutputChannel,
+	modelContextWindowTokens?: number,
 ): Promise<ContextBundle> {
 	const stats: ContextGatheringStats = {
 		changedFiles: 0,
@@ -151,6 +192,11 @@ export async function gatherContext(
 
 	outputChannel?.appendLine(`\n--- Context Gathering (F-008) ---`);
 	outputChannel?.appendLine(`Changed files: ${changedPaths.join(', ')}`);
+
+	// Compute model-aware budget
+	const { totalBudget: TOTAL_CHAR_BUDGET, perFileBudget: PER_FILE_CHAR_LIMIT } =
+		getEffectiveContextBudget(config, modelContextWindowTokens);
+	outputChannel?.appendLine(`Context budget: ${(TOTAL_CHAR_BUDGET / 1024).toFixed(0)}KB total, ${(PER_FILE_CHAR_LIMIT / 1024).toFixed(0)}KB/file (model ctx: ${modelContextWindowTokens ?? 'default'})`);
 
 	// Track included files to avoid duplicates
 	const includedPaths = new Set<string>(changedPaths); // changed files themselves shouldn't be included

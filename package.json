@@ -1109,6 +1109,14 @@
               },
               "default": [],
               "description": "Glob patterns for files that must never be added to the review context (imports, tests, type-defs, and self-context). Examples: [\"src/generated/**\", \"**/*.pb.ts\"]"
+            },
+            "charBudget": {
+              "oneOf": [
+                { "type": "string", "enum": ["auto"] },
+                { "type": "number", "minimum": 32000 }
+              ],
+              "default": "auto",
+              "description": "Total character budget for gathered context. 'auto' (default) scales based on the active model's context window. Set a number for an explicit limit (e.g. 128000 for ~32K tokens)."
             }
           }
         },

@@ -4,6 +4,7 @@ import type { GenerateOptions, ModelProvider, ProviderRequestContext, StreamOpti
 
 export class MistralProvider implements ModelProvider {
 	public readonly name = 'mistral';
+	public readonly contextWindowTokens = 128_000;
 
 	public isMatch(model: string): boolean {
 		return isMistralModel(model);

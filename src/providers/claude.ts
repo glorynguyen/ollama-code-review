@@ -5,6 +5,7 @@ import type { ChatMessage } from '../chat/types';
 
 export class ClaudeProvider implements ModelProvider {
 	public readonly name = 'claude';
+	public readonly contextWindowTokens = 200_000;
 
 	public isMatch(model: string): boolean {
 		return isClaudeModel(model);

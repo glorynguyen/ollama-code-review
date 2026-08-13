@@ -35,6 +35,8 @@ export interface ProviderRequestContext {
 
 export interface ModelProvider {
 	readonly name: string;
+	/** Known context window size in tokens. Used to scale context-gathering budgets. */
+	readonly contextWindowTokens: number;
 	isMatch(model: string): boolean;
 	isAvailable(): Promise<boolean>;
 	supportsStreaming(): boolean;
