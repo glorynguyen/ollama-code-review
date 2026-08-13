@@ -4,6 +4,50 @@ import * as path from 'path';
 import { getOllamaModel } from '../utils';
 import { getActiveProfile } from '../profiles';
 
+export async function pickBranch(repo: any, options: { placeHolder: string; currentBranch?: string }): Promise<string | undefined> {
+	const [localBranches, remoteBranches] = await Promise.all([
+		repo.getBranches({ remote: false }),
+		repo.getBranches({ remote: true }),
+	]);
+	const seen = new Set<string>();
+	const locals: string[] = [];
+	const remoteOnly: string[] = [];
+	for (const b of localBranches) {
+		if (b.name && !seen.has(b.name)) {
+			seen.add(b.name);
+			locals.push(b.name);
+		}
+	}
+	for (const b of remoteBranches) {
+		if (b.name && !seen.has(b.name)) {
+			seen.add(b.name);
+			remoteOnly.push(b.name);
+		}
+	}
+	locals.sort();
+	remoteOnly.sort();
+
+	const items: vscode.QuickPickItem[] = [];
+	const current = options.currentBranch;
+	if (current && seen.has(current)) {
+		items.push({ label: `$(git-branch) ${current}`, description: 'current branch' });
+	}
+	for (const name of locals) {
+		if (name !== current) {
+			items.push({ label: `$(git-branch) ${name}`, description: 'local' });
+		}
+	}
+	for (const name of remoteOnly) {
+		items.push({ label: `$(git-branch) ${name}`, description: 'remote' });
+	}
+
+	const selected = await vscode.window.showQuickPick(items, {
+		placeHolder: options.placeHolder,
+		matchOnDescription: true,
+	});
+	return selected ? selected.label.replace(/^\$\(git-branch\)\s*/, '') : undefined;
+}
+
 export async function selectRepository(gitAPI: any): Promise<any | undefined> {
 	const repositories = gitAPI.repositories;
 

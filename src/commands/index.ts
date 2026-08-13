@@ -129,6 +129,7 @@ import {
 import { type ProviderRequestContext, providerRegistry } from '../providers';
 import {
 	selectRepository,
+	pickBranch,
 	parseSuggestion,
 	runGitCommand,
 	SuggestionContentProvider,
@@ -1236,17 +1237,16 @@ export async function activate(context: vscode.ExtensionContext) {
 			const repoPath = repo.rootUri.fsPath;
 			const repoConfig = vscode.workspace.getConfiguration('ollama-code-review', repo.rootUri);
 			const defaultBaseBranch = repoConfig.get<string>('defaultBaseBranch', '').trim();
+			const currentBranch = repo.state?.HEAD?.name;
 
-			const fromRef = defaultBaseBranch || await vscode.window.showInputBox({
-				prompt: 'Enter the base branch/ref to compare from (e.g., main)',
-				placeHolder: 'main',
-				value: 'main'
+			const fromRef = defaultBaseBranch || await pickBranch(repo, {
+				placeHolder: 'Select the base branch to compare from',
 			});
 			if (!fromRef) { return; }
 
-			const toRef = await vscode.window.showInputBox({
-				prompt: 'Enter the target branch/ref to compare to (e.g., feature-branch)',
-				placeHolder: 'feature-branch',
+			const toRef = await pickBranch(repo, {
+				placeHolder: 'Select the target branch to compare to',
+				currentBranch,
 			});
 			if (!toRef) { return; }
 
