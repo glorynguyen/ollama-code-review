@@ -102,9 +102,21 @@ const vscodeMock = {
         Collapsed: 1,
         Expanded: 2,
     },
+    OverviewRulerLane: { Left: 1, Center: 2, Right: 4, Full: 7 },
     CodeAction,
     CodeActionKind: {
         QuickFix: 'quickfix',
+        Refactor: 'refactor',
+        RefactorExtract: 'refactor.extract',
+        RefactorRewrite: 'refactor.rewrite',
+    },
+    SymbolKind: {
+        File: 0, Module: 1, Namespace: 2, Package: 3, Class: 4,
+        Method: 5, Property: 6, Field: 7, Constructor: 8, Enum: 9,
+        Interface: 10, Function: 11, Variable: 12, Constant: 13,
+        String: 14, Number: 15, Boolean: 16, Array: 17, Object: 18,
+        Key: 19, Null: 20, EnumMember: 21, Struct: 22, Event: 23,
+        Operator: 24, TypeParameter: 25,
     },
     Range,
     Position,
@@ -118,6 +130,8 @@ const vscodeMock = {
         getConfiguration() {
             return createConfiguration();
         },
+        openTextDocument: async () => ({ getText: () => '', uri: Uri.file(''), languageId: 'plaintext', lineCount: 0, lineAt: () => ({ text: '' }) }),
+        asRelativePath: (p) => (typeof p === 'string' ? p : (p && p.fsPath) || ''),
         fs: {
             readFile: async uri => fs.readFile(uri.fsPath || String(uri)),
         },
@@ -134,6 +148,7 @@ const vscodeMock = {
             hide: () => undefined,
             dispose: () => undefined,
         }),
+        createTextEditorDecorationType: () => ({ key: 'mock', dispose: () => undefined }),
     },
     commands: {
         registerCommand: () => ({ dispose: () => undefined }),
