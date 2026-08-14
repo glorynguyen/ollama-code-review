@@ -82,6 +82,12 @@
         "category": "Ollama Code Review"
       },
       {
+        "command": "ollama-code-review.copyBranchDiffForLLM",
+        "title": "Copy Branch Diff for LLM",
+        "category": "Ollama Code Review",
+        "icon": "$(clippy)"
+      },
+      {
         "command": "ollama-code-review.generateCommitMessage",
         "title": "Generate Commit Message",
         "category": "Ollama Code Review",

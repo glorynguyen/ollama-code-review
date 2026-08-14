@@ -57,6 +57,7 @@ import type { SeverityAssessment } from '../preCommitGuard';
 import {
 	gatherContext,
 	getContextGatheringConfig,
+	formatContextForPrompt,
 	ContextBundle,
 	parseImports,
 	resolveImport,
@@ -241,6 +242,32 @@ function checkCodeHealthRegression(scoreEntry: ReviewScore, store: ReviewScoreSt
 export interface SelectedFilesClipboardBundle {
 	content: string;
 	fileCount: number;
+}
+
+export function buildBranchDiffClipboardContent(
+	fromRef: string,
+	toRef: string,
+	filesArray: string[],
+	filteredDiff: string,
+	contextSection?: string,
+): string {
+	const sections: string[] = [
+		`## Code changes between \`${fromRef}\` and \`${toRef}\``,
+		'',
+		`**Changed files (${filesArray.length}):**`,
+		...filesArray.map(f => `- ${f}`),
+		'',
+		'### Diff',
+		'```diff',
+		filteredDiff,
+		'```',
+	];
+
+	if (contextSection) {
+		sections.push(contextSection);
+	}
+
+	return sections.join('\n');
 }
 
 export async function buildSelectedFilesClipboardBundle(
@@ -1272,6 +1299,88 @@ export async function activate(context: vscode.ExtensionContext) {
 			});
 		} catch (error) {
 			handleError(error, 'Failed to review changes between branches.');
+		}
+	});
+
+	const copyBranchDiffForLLMCommand = vscode.commands.registerCommand('ollama-code-review.copyBranchDiffForLLM', async () => {
+		try {
+			const gitAPI = getGitAPI();
+			if (!gitAPI) { return; }
+			const repo = await selectRepository(gitAPI);
+			if (!repo) {
+				vscode.window.showInformationMessage('No Git repository found.');
+				return;
+			}
+			const repoPath = repo.rootUri.fsPath;
+			const repoConfig = vscode.workspace.getConfiguration('ollama-code-review', repo.rootUri);
+			const defaultBaseBranch = repoConfig.get<string>('defaultBaseBranch', '').trim();
+			const currentBranch = repo.state?.HEAD?.name;
+
+			const fromRef = defaultBaseBranch || await pickBranch(repo, {
+				placeHolder: 'Select the base branch to compare from',
+			});
+			if (!fromRef) { return; }
+
+			const toRef = await pickBranch(repo, {
+				placeHolder: 'Select the target branch to compare to',
+				currentBranch,
+			});
+			if (!toRef) { return; }
+
+			await vscode.window.withProgress({
+				location: vscode.ProgressLocation.Notification,
+				title: 'Ollama Code Review',
+				cancellable: true
+			}, async (progress, token) => {
+				progress.report({ message: `Generating diff between ${fromRef} and ${toRef}...` });
+
+				const diffResult = await runGitCommand(repoPath, ['diff', `${fromRef}...${toRef}`]);
+				if (token.isCancellationRequested) { return; }
+
+				if (!diffResult || !diffResult.trim()) {
+					vscode.window.showInformationMessage('No differences found between the selected branches.');
+					return;
+				}
+
+				const filterConfig = await getDiffFilterConfigWithYaml(outputChannel);
+				const filterResult = filterDiff(diffResult, filterConfig);
+				const filteredDiff = filterResult.filteredDiff;
+
+				if (!filteredDiff || !filteredDiff.trim()) {
+					vscode.window.showInformationMessage('All changes were filtered out (lock files, build outputs, etc.).');
+					return;
+				}
+
+				const filesList = await runGitCommand(repoPath, ['diff', '--name-only', `${fromRef}...${toRef}`]);
+				const filesArray = filesList.trim().split('\n').filter(Boolean);
+
+				progress.report({ message: 'Gathering context files...' });
+
+				let contextSection = '';
+				const ctxConfig = getContextGatheringConfig();
+				if (ctxConfig.enabled) {
+					try {
+						const bundle = await gatherContext(filteredDiff, ctxConfig, outputChannel);
+						if (bundle && bundle.files.length > 0) {
+							contextSection = '\n' + formatContextForPrompt(bundle);
+						}
+					} catch (err) {
+						outputChannel.appendLine(`[Copy Branch Diff] Context gathering error: ${err}`);
+					}
+				}
+
+				if (token.isCancellationRequested) { return; }
+
+				const clipboardContent = buildBranchDiffClipboardContent(fromRef, toRef, filesArray, filteredDiff, contextSection || undefined);
+
+				await vscode.env.clipboard.writeText(clipboardContent);
+				vscode.window.showInformationMessage(
+					`Copied diff (${filesArray.length} file${filesArray.length === 1 ? '' : 's'}) between ${fromRef} and ${toRef} to clipboard.`
+				);
+				vscode.window.setStatusBarMessage('$(clippy) Branch diff copied to clipboard — paste into any LLM chat', 5000);
+			});
+		} catch (error) {
+			handleError(error, 'Failed to copy branch diff.');
 		}
 	});
 
@@ -3576,6 +3685,7 @@ ${diff.slice(0, 12000)}
 		scanSecretsCommand,
 		reviewCommitRangeCommand,
 		reviewChangesBetweenTwoBranchesCommand,
+		copyBranchDiffForLLMCommand,
 		generateCommitMessageCommand,
 		suggestRefactoringCommand,
 		reviewCommitCommand,
