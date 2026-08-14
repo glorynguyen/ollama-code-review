@@ -1,3 +1,11 @@
+# [6.1.0](https://github.com/glorynguyen/ollama-code-review/compare/v6.0.0...v6.1.0) (2026-08-14)
+
+
+### Features
+
+* **commands:** add Copy Branch Diff for LLM command ([5b63d21](https://github.com/glorynguyen/ollama-code-review/commit/5b63d219b5b20b6dbb36fd30308658c5f94e7d33))
+* **commands:** replace branch input with quick pick selector ([8c8543a](https://github.com/glorynguyen/ollama-code-review/commit/8c8543a79491bf66667f121b5758126ac6da5445))
+
 # [6.0.0](https://github.com/glorynguyen/ollama-code-review/compare/v5.3.1...v6.0.0) (2026-08-13)
 
 
