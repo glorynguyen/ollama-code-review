@@ -1,3 +1,10 @@
+# [6.2.0](https://github.com/glorynguyen/ollama-code-review/compare/v6.1.0...v6.2.0) (2026-08-19)
+
+
+### Features
+
+* **release:** add cherry-pick simulation and file classification ([88d062a](https://github.com/glorynguyen/ollama-code-review/commit/88d062ab3f79ac77986438592cb96f4b1b74e4ed))
+
 # [6.1.0](https://github.com/glorynguyen/ollama-code-review/compare/v6.0.0...v6.1.0) (2026-08-14)
 
 
