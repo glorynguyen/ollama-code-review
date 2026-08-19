@@ -1,6 +1,7 @@
 import { spawn } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as os from 'os';
 
 export interface Commit {
     hash: string;
@@ -10,7 +11,11 @@ export interface Commit {
     date: string;
     diff?: string;
     isOverridden?: boolean;
+    isObsolete?: boolean;
     workItemNumber?: string | null;
+    /** Files where target diverged from both parent and commit state — may conflict */
+    divergedFiles?: string[];
+    obsoleteFiles?: string[];
 }
 
 export interface DependencyRisk {
@@ -45,6 +50,21 @@ export interface CherryPickResult {
     conflictState?: ConflictState;
     requiresConfirmation?: boolean;
     risks?: DependencyRisk[];
+}
+
+export interface SimulationConflictFile {
+    file: string;
+    conflictType: string;
+    content?: string;
+}
+
+export interface CherryPickSimulationResult {
+    success: boolean;
+    message: string;
+    conflictAtCommit?: string;
+    conflictAtIndex?: number;
+    conflictingFiles?: SimulationConflictFile[];
+    totalSimulated: number;
 }
 
 export interface ReleaseState {
@@ -94,6 +114,39 @@ export class ReleaseService {
             git.on('error', (err) => {
                 reject(new Error(`Failed to start git process: ${err.message}`));
             });
+        });
+    }
+
+    private async execGitWithOptions(args: string[], options?: { env?: Record<string, string>; stdinData?: string; acceptExitCodes?: number[] }): Promise<string> {
+        return new Promise((resolve, reject) => {
+            const git = spawn('git', args, {
+                cwd: this.workspaceRoot,
+                env: options?.env ? { ...process.env, ...options.env } : process.env
+            });
+
+            let stdout = '';
+            let stderr = '';
+
+            git.stdout.on('data', (data) => { stdout += data.toString(); });
+            git.stderr.on('data', (data) => { stderr += data.toString(); });
+
+            const accepted = options?.acceptExitCodes ?? [0];
+            git.on('close', (code) => {
+                if (accepted.includes(code ?? -1)) {
+                    resolve(stdout);
+                } else {
+                    reject(new Error(`Git error (exit code ${code}): ${stderr || stdout}`));
+                }
+            });
+
+            git.on('error', (err) => {
+                reject(new Error(`Failed to start git process: ${err.message}`));
+            });
+
+            if (options?.stdinData) {
+                git.stdin.write(options.stdinData);
+                git.stdin.end();
+            }
         });
     }
 
@@ -254,7 +307,6 @@ export class ReleaseService {
     public async processUniqueCommits(commits: Commit[], targetBranch: string): Promise<Commit[]> {
         console.log(`[ReleaseService] Processing ${commits.length} commits for webview...`);
         const sortedCommits = [...commits].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-        const seenFiles = new Set<string>();
         const processed: Commit[] = [];
 
         for (const commit of sortedCommits) {
@@ -265,27 +317,170 @@ export class ReleaseService {
             try {
                 const commitBody = await this.execGit(['show', '-s', '--format=%B', commit.hash]);
                 const workItemMatch = commitBody.match(/#(\d+)/);
-
                 const touchedFiles = await this.getCommitFiles(commit.hash);
-                const effectiveFiles = touchedFiles.filter(file => !seenFiles.has(file));
-                touchedFiles.forEach(file => seenFiles.add(file));
-                
-                // Diff relative to target branch for the effective files
-                let diff = effectiveFiles.length > 0 ? await this.getSpecificFilesDiff(commit.hash, targetBranch, effectiveFiles) : '';
-                
+
+                // Bulk three-way classification: 2 git calls instead of 2×N
+                const { pendingFiles, divergedFiles, obsoleteFiles } = await this.classifyFilesForCherryPick(commit.hash, targetBranch, touchedFiles);
+
+                // Net diff: simulate cherry-pick via merge-tree, show only lines not yet on target
+                let diff = pendingFiles.length > 0 ? await this.getNetCommitDiff(commit.hash, targetBranch, pendingFiles) : '';
+
+                const allDeduped = touchedFiles.length > 0 && pendingFiles.length === 0 && obsoleteFiles.length === 0;
+                const allObsoleteOrDeduped = touchedFiles.length > 0 && pendingFiles.length === 0 && obsoleteFiles.length > 0;
+
                 processed.push({
                     ...commit,
                     diff: diff,
-                    isOverridden: effectiveFiles.length === 0 && touchedFiles.length > 0,
-                    workItemNumber: workItemMatch ? workItemMatch[1] : null
+                    isOverridden: allDeduped,
+                    isObsolete: allObsoleteOrDeduped,
+                    workItemNumber: workItemMatch ? workItemMatch[1] : null,
+                    divergedFiles: divergedFiles.length > 0 ? divergedFiles : undefined,
+                    obsoleteFiles: obsoleteFiles.length > 0 ? obsoleteFiles : undefined,
                 });
             } catch (e) {
                 console.error(`[ReleaseService] Error processing commit ${commit.hash}:`, e);
-                processed.push(commit); // Push raw commit if processing fails
+                processed.push(commit);
             }
         }
         console.log(`[ReleaseService] Finished processing ${processed.length} commits`);
         return processed;
+    }
+
+    /**
+     * Bulk three-way file classification using --name-only to avoid N+1 process spawning.
+     * Only 2 git diff calls regardless of the number of files touched.
+     */
+    private async classifyFilesForCherryPick(hash: string, targetBranch: string, files: string[]): Promise<{ pendingFiles: string[]; divergedFiles: string[]; obsoleteFiles: string[] }> {
+        if (files.length === 0) {
+            return { pendingFiles: [], divergedFiles: [], obsoleteFiles: [] };
+        }
+
+        let tmpIndexPath: string | undefined;
+
+        try {
+            const diffVsCommitOutput = await this.execGit(['diff', '--name-only', targetBranch, hash]);
+            const allDiffsVsCommit = new Set(diffVsCommitOutput.trim().split('\n').filter(Boolean));
+            const differsFromCommit = new Set(files.filter(f => allDiffsVsCommit.has(f)));
+
+            const notDeduped = files.filter(f => differsFromCommit.has(f));
+            if (notDeduped.length === 0) {
+                return { pendingFiles: [], divergedFiles: [], obsoleteFiles: [] };
+            }
+
+            const diffVsParentOutput = await this.execGit(['diff', '--name-only', targetBranch, `${hash}^`]);
+            const allDiffsVsParent = new Set(diffVsParentOutput.trim().split('\n').filter(Boolean));
+            const differsFromParent = new Set(notDeduped.filter(f => allDiffsVsParent.has(f)));
+
+            const pendingFiles: string[] = [];
+            const divergedFiles: string[] = [];
+            const obsoleteFiles: string[] = [];
+
+            // Build temp index once for all diverged files
+            const hasDiverged = notDeduped.some(f => differsFromParent.has(f));
+            if (hasDiverged) {
+                tmpIndexPath = path.join(os.tmpdir(), `vscode-release-index-${hash.substring(0, 8)}-${Date.now()}`);
+                await this.execGitWithOptions(['read-tree', targetBranch], { env: { GIT_INDEX_FILE: tmpIndexPath } });
+            }
+
+            for (const file of notDeduped) {
+                if (differsFromParent.has(file) && tmpIndexPath) {
+                    const obsolete = await this.checkHunkObsolescence(hash, tmpIndexPath, file);
+                    if (obsolete) {
+                        obsoleteFiles.push(file);
+                        console.log(`[ReleaseService] File ${file} is obsolete: commit's changes already on target`);
+                    } else {
+                        pendingFiles.push(file);
+                        divergedFiles.push(file);
+                    }
+                } else {
+                    pendingFiles.push(file);
+                }
+            }
+            return { pendingFiles, divergedFiles, obsoleteFiles };
+        } catch {
+            return { pendingFiles: [...files], divergedFiles: [], obsoleteFiles: [] };
+        } finally {
+            if (tmpIndexPath) {
+                try { fs.unlinkSync(tmpIndexPath); } catch { /* cleanup best-effort */ }
+            }
+        }
+    }
+
+    /** Check if a diverged file's changes are already present on target using git's own patch machinery. */
+    private async checkHunkObsolescence(hash: string, tmpIndexPath: string, file: string): Promise<boolean> {
+        try {
+            const patch = await this.execGit(['show', hash, '--format=', '--patch', '--', file]);
+            if (!patch.trim()) {
+                return true;
+            }
+
+            // Reverse-apply: if un-applying succeeds against target, the forward changes are already present
+            await this.execGitWithOptions(
+                ['apply', '--check', '--cached', '--reverse'],
+                { env: { GIT_INDEX_FILE: tmpIndexPath }, stdinData: patch }
+            );
+            return true;
+        } catch {
+            // Non-zero exit is the normal path for genuinely-needed commits
+            return false;
+        }
+    }
+
+    /** Get the commit's own introduced changes (what cherry-pick applies) */
+    public async getCommitOwnDiff(hash: string, fileList?: string[]): Promise<string> {
+        if (!this.isValidCommitHash(hash)) {
+            return '';
+        }
+        try {
+            const args = ['show', hash, '--format=', '--patch'];
+            if (fileList && fileList.length > 0) {
+                const validFilePattern = /^[\w\-\/\.]+$/;
+                const validFiles = fileList.filter(f => validFilePattern.test(f) && !f.includes('..'));
+                if (validFiles.length > 0) {
+                    args.push('--', ...validFiles);
+                }
+            }
+            return await this.execGit(args);
+        } catch {
+            return '';
+        }
+    }
+
+    /** Simulate cherry-pick via merge-tree; return only net-new changes vs target branch. */
+    public async getNetCommitDiff(hash: string, targetBranch: string, fileList?: string[]): Promise<string> {
+        if (!this.isValidCommitHash(hash) || !this.isValidBranchName(targetBranch)) {
+            return '';
+        }
+
+        const validFiles = fileList ? fileList.filter(f => !f.includes('..')) : [];
+
+        try {
+            // Virtual merge: simulate cherry-pick entirely in memory (requires Git 2.38+)
+            const treeOutput = await this.execGitWithOptions(
+                ['merge-tree', '--write-tree', `--merge-base=${hash}^`, targetBranch, hash],
+                { acceptExitCodes: [0, 1] }
+            );
+
+            const simulatedTreeId = treeOutput.split('\n')[0].trim();
+            if (!simulatedTreeId) {
+                throw new Error('merge-tree returned empty tree OID');
+            }
+
+            // Subtraction: diff target against simulated result — already-applied code cancels out
+            const diffArgs = ['diff', targetBranch, simulatedTreeId, '--'];
+            if (validFiles.length > 0) {
+                diffArgs.push(...validFiles);
+            }
+            return await this.execGit(diffArgs);
+        } catch (error) {
+            // Fallback for Git < 2.38 or unexpected errors
+            console.warn(`[ReleaseService] Net diff fallback for ${hash.substring(0, 7)}:`, error);
+            const fallbackArgs = ['show', hash, '--format=', '--patch'];
+            if (validFiles.length > 0) {
+                fallbackArgs.push('--', ...validFiles);
+            }
+            return await this.execGit(fallbackArgs).catch(() => '');
+        }
     }
 
     public async executeCherryPick(newBranchName: string, selectedHashes: string[], baseBranch: string): Promise<CherryPickResult> {
@@ -507,6 +702,84 @@ export class ReleaseService {
         } catch (error) {
             return `Error fetching diff: ${error}`;
         }
+    }
+
+    public async simulateCherryPicks(hashes: string[], targetBranch: string): Promise<CherryPickSimulationResult> {
+        if (!hashes.every(h => this.isValidCommitHash(h)) || !this.isValidBranchName(targetBranch)) {
+            return { success: false, message: 'Invalid commit hash or branch name format', totalSimulated: 0 };
+        }
+        if (hashes.length === 0) {
+            return { success: false, message: 'No commits to simulate', totalSimulated: 0 };
+        }
+
+        let currentBase = targetBranch.startsWith('origin/') ? targetBranch : `origin/${targetBranch}`;
+
+        for (let i = 0; i < hashes.length; i++) {
+            const hash = hashes[i];
+            try {
+                const output = await this.execGitWithOptions(
+                    ['merge-tree', '--write-tree', '--merge-base', `${hash}^`, currentBase, hash],
+                    { acceptExitCodes: [0, 1] }
+                );
+
+                const lines = output.trim().split('\n');
+                const treeOid = lines[0].trim();
+                const conflictLines = lines.filter(l => l.startsWith('CONFLICT'));
+
+                if (conflictLines.length > 0) {
+                    const conflictingFiles = this.parseSimulationConflicts(conflictLines);
+                    // Try to extract conflict content from the merged tree
+                    for (const cf of conflictingFiles) {
+                        try {
+                            cf.content = await this.execGit(['show', `${treeOid}:${cf.file}`]);
+                        } catch { /* file might not exist in tree */ }
+                    }
+                    return {
+                        success: false,
+                        message: `Conflict at commit ${hash.substring(0, 7)} (${i + 1} of ${hashes.length}). ${conflictingFiles.length} file(s) conflict.`,
+                        conflictAtCommit: hash,
+                        conflictAtIndex: i + 1,
+                        conflictingFiles,
+                        totalSimulated: i
+                    };
+                }
+
+                if (!treeOid) {
+                    return { success: false, message: `merge-tree returned empty tree for ${hash.substring(0, 7)}`, totalSimulated: i };
+                }
+
+                // Create a temporary commit object for chaining the next simulation
+                const commitOid = (await this.execGit(['commit-tree', treeOid, '-m', 'sim', '-p', currentBase])).trim();
+                currentBase = commitOid;
+            } catch (error) {
+                return {
+                    success: false,
+                    message: `Simulation failed at commit ${hash.substring(0, 7)}: ${error instanceof Error ? error.message : String(error)}`,
+                    totalSimulated: i
+                };
+            }
+        }
+
+        return {
+            success: true,
+            message: `All ${hashes.length} commit(s) can be cherry-picked cleanly.`,
+            totalSimulated: hashes.length
+        };
+    }
+
+    private parseSimulationConflicts(lines: string[]): SimulationConflictFile[] {
+        const results: SimulationConflictFile[] = [];
+        for (const line of lines) {
+            const typeMatch = line.match(/^CONFLICT \(([^)]+)\)/);
+            const fileMatch = line.match(/(?:Merge conflict in |deleted in .+ and modified in .+ )(.+)$/) ||
+                              line.match(/CONFLICT \([^)]+\): (.+?) deleted in/);
+            const conflictType = typeMatch ? typeMatch[1] : 'unknown';
+            const file = fileMatch ? fileMatch[1].trim() : undefined;
+            if (file) {
+                results.push({ file, conflictType });
+            }
+        }
+        return results;
     }
 
     private async getConflictingFiles(): Promise<string[]> {

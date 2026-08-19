@@ -222,6 +222,24 @@ export class ReleaseWebviewPanel {
                             this._panel.webview.postMessage({ command: 'releaseResult', data: result });
                         }
                         return;
+                    case 'simulateCherryPick':
+                        {
+                            if (!Array.isArray(message.hashes) || message.hashes.length === 0) {
+                                this._panel.webview.postMessage({ command: 'simulationResult', data: { success: false, message: 'No commits selected', totalSimulated: 0 } });
+                                return;
+                            }
+                            if (typeof message.baseBranch !== 'string' || !message.baseBranch.trim()) {
+                                this._panel.webview.postMessage({ command: 'simulationResult', data: { success: false, message: 'No target branch specified', totalSimulated: 0 } });
+                                return;
+                            }
+                            try {
+                                const result = await this._releaseService.simulateCherryPicks(message.hashes, message.baseBranch);
+                                this._panel.webview.postMessage({ command: 'simulationResult', data: result });
+                            } catch (e) {
+                                this._panel.webview.postMessage({ command: 'simulationResult', data: { success: false, message: `Simulation error: ${e instanceof Error ? e.message : String(e)}`, totalSimulated: 0 } });
+                            }
+                        }
+                        return;
                     case 'getBranches':
                         try {
                             const gitAPI = vscode.extensions.getExtension('vscode.git')?.exports?.getAPI(1) as GitAPI;
@@ -1003,6 +1021,7 @@ export class ReleaseWebviewPanel {
             <div id="batch-bar" class="batch-bar">
                 <span class="batch-count" id="batch-count">0 selected</span>
                 <button class="btn btn-sec batch-btn" id="batch-clear-btn">Clear</button>
+                <button class="btn batch-btn" id="batch-test-pick-btn" title="Simulate cherry-pick to check for conflicts">🧪 Test Pick</button>
                 <span style="position:relative;">
                     <button class="btn batch-btn" id="batch-move-btn">Move to Ticket ▾</button>
                     <div id="move-picker" class="move-picker"></div>
@@ -1127,6 +1146,18 @@ export class ReleaseWebviewPanel {
             <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:10px;">
                 <button class="btn" id="resolve-conflict-btn">Mark File Resolved</button>
             </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="simulation-modal">
+        <div class="modal" style="width: 650px; max-height: 85vh; overflow-y: auto;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <h3 id="sim-title" style="margin:0;">Cherry-pick Simulation</h3>
+                <button class="btn-del" id="close-simulation-btn">×</button>
+            </div>
+            <div id="sim-result" style="margin-top:14px;"></div>
+            <div id="sim-conflict-files" class="conflict-file-list" style="margin-top:10px;"></div>
+            <textarea id="sim-conflict-editor" class="conflict-editor" readonly style="display:none;"></textarea>
         </div>
     </div>
 
@@ -1295,6 +1326,9 @@ export class ReleaseWebviewPanel {
                     } else {
                         alert('ERROR: ' + data.message);
                     }
+                    break;
+                case 'simulationResult':
+                    showSimulationResult(message.data);
                     break;
             }
         });
@@ -1792,7 +1826,8 @@ export class ReleaseWebviewPanel {
             const isExcluded = availabilityMap[c.hash] === 'unavailable';
             const hasDiff = c.diff && c.diff.length > 0;
             const isOverridden = !!c.isOverridden;
-            const isPickable = !isExcluded && !isOverridden && hasDiff;
+            const isObsolete = !!c.isObsolete;
+            const isPickable = !isExcluded && !isOverridden && !isObsolete && hasDiff;
             
             el.className = 'commit-card' + (isPickable ? '' : ' non-pickable') + (hasDiff ? '' : ' disabled') + (isExcluded ? ' user-excluded' : '') + (multiSelected.has(c.hash) ? ' multi-selected' : '');
             
@@ -1841,7 +1876,9 @@ export class ReleaseWebviewPanel {
                         <span class="c-tag"></span>
                         \${adolink}
                     </div>
-                    \${c.isOverridden ? '<span class="c-tag" style="background:#666; color:white;">Overridden</span>' : ''}
+                    \${c.isOverridden ? '<span class="c-tag" style="background:#666; color:white;">Already on target</span>' : ''}
+                    \${c.isObsolete ? '<span class="c-tag" style="background:#8b5cf6; color:white;" title="Obsolete: ' + (c.obsoleteFiles || []).join(', ') + '">Obsolete</span>' : ''}
+                    \${c.divergedFiles && c.divergedFiles.length > 0 ? '<span class="c-tag" style="background:#d29922; color:#000;" title="Diverged: ' + c.divergedFiles.join(', ') + '">⚠ Review needed</span>' : ''}
                     \${isExcluded ? '<span class="excluded-badge">Unavailable</span>' : ''}
                     <span class="c-author"></span>
                 </div>
@@ -1852,7 +1889,7 @@ export class ReleaseWebviewPanel {
             });
             el.querySelector('.c-msg').innerText = c.message;
             el.querySelector('.c-tag').innerText = c.hash.substring(0,7);
-            el.querySelector('.c-author').innerText = c.author;
+            el.querySelector('.c-author').innerText = c.author + ' · ' + (c.date ? c.date.substring(0, 10) : '');
             return el;
         }
 
@@ -2222,6 +2259,76 @@ export class ReleaseWebviewPanel {
             updateBatchBar();
         }
 
+        function testCherryPick() {
+            if (multiSelected.size === 0) return;
+            const hashes = [];
+            const sorted = allCommits.filter(c => multiSelected.has(c.hash))
+                .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+            sorted.forEach(c => hashes.push(c.hash));
+            const btn = document.getElementById('batch-test-pick-btn');
+            btn.disabled = true;
+            btn.innerText = '⏳ Testing...';
+            vscode.postMessage({ command: 'simulateCherryPick', hashes: hashes, baseBranch: targetBranch });
+        }
+
+        function showSimulationResult(data) {
+            const btn = document.getElementById('batch-test-pick-btn');
+            btn.disabled = false;
+            btn.innerText = '🧪 Test Pick';
+
+            const resultDiv = document.getElementById('sim-result');
+            const filesDiv = document.getElementById('sim-conflict-files');
+            const editor = document.getElementById('sim-conflict-editor');
+            filesDiv.innerHTML = '';
+            editor.style.display = 'none';
+            editor.value = '';
+
+            if (data.success) {
+                resultDiv.innerHTML = '<div style="padding:12px; background:rgba(0,135,90,0.15); border-radius:6px; border:1px solid #00875a;">' +
+                    '<strong style="color:#00875a;">✅ No conflicts</strong><br>' +
+                    '<span style="color:var(--vscode-foreground);">' + data.message + '</span></div>';
+            } else {
+                let html = '<div style="padding:12px; background:rgba(229,20,0,0.1); border-radius:6px; border:1px solid #e51400;">' +
+                    '<strong style="color:#e51400;">❌ Conflict detected</strong><br>' +
+                    '<span style="color:var(--vscode-foreground);">' + escapeHtml(data.message) + '</span>';
+                if (data.conflictAtCommit) {
+                    const c = commitMap[data.conflictAtCommit];
+                    if (c) {
+                        html += '<br><span style="font-size:0.85rem; color:var(--muted);">' + escapeHtml(c.message) + '</span>';
+                    }
+                }
+                html += '</div>';
+                resultDiv.innerHTML = html;
+
+                if (data.conflictingFiles && data.conflictingFiles.length > 0) {
+                    data.conflictingFiles.forEach(cf => {
+                        const btn = document.createElement('button');
+                        btn.className = 'conflict-file-btn';
+                        btn.innerText = cf.file + ' (' + cf.conflictType + ')';
+                        btn.addEventListener('click', () => {
+                            document.querySelectorAll('#sim-conflict-files .conflict-file-btn').forEach(b => b.classList.remove('active'));
+                            btn.classList.add('active');
+                            if (cf.content) {
+                                editor.value = cf.content;
+                                editor.style.display = 'block';
+                            } else {
+                                editor.style.display = 'none';
+                            }
+                        });
+                        filesDiv.appendChild(btn);
+                    });
+                    // Auto-select first file
+                    const first = data.conflictingFiles[0];
+                    filesDiv.querySelector('.conflict-file-btn').classList.add('active');
+                    if (first.content) {
+                        editor.value = first.content;
+                        editor.style.display = 'block';
+                    }
+                }
+            }
+            document.getElementById('simulation-modal').style.display = 'flex';
+        }
+
         function showMovePicker() {
             const picker = document.getElementById('move-picker');
             picker.innerHTML = '';
@@ -2286,13 +2393,14 @@ export class ReleaseWebviewPanel {
                 const isUserExcluded = availabilityMap[hash] === 'unavailable';
                 const hasDiff = commitData && commitData.diff && commitData.diff.length > 0;
                 const isOverridden = commitData && !!commitData.isOverridden;
+                const isObsolete = commitData && !!commitData.isObsolete;
                 
                 const matchesSearch = txt.includes(val);
                 let matchesMode = true;
                 
                 if (filterMode === 'pickable') {
                     // Unified logic: anything dimmed in 'Show All' is hidden in 'Pickable Only'
-                    const isPickable = !isUserExcluded && !isOverridden && hasDiff;
+                    const isPickable = !isUserExcluded && !isOverridden && !isObsolete && hasDiff;
                     if (!isPickable) {
                         matchesMode = false;
                     }
@@ -2341,6 +2449,7 @@ export class ReleaseWebviewPanel {
 
         function showReleaseModal() { document.getElementById('release-modal').style.display = 'flex'; }
         function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+        function escapeHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
         function updateCounts() {
             document.getElementById('pool-count').innerText = document.getElementById('commit-pool').querySelectorAll('.commit-card').length;
             updateDraftSummary();
@@ -2363,6 +2472,7 @@ export class ReleaseWebviewPanel {
             document.getElementById('filter-pickable').addEventListener('click', () => setFilterMode('pickable'));
 
             document.getElementById('batch-clear-btn').addEventListener('click', clearMultiSelect);
+            document.getElementById('batch-test-pick-btn').addEventListener('click', testCherryPick);
             document.getElementById('batch-move-btn').addEventListener('click', (e) => { e.stopPropagation(); showMovePicker(); });
             document.addEventListener('click', () => document.getElementById('move-picker').classList.remove('visible'));
 
@@ -2422,6 +2532,7 @@ export class ReleaseWebviewPanel {
                     vscode.postMessage({ command: 'abortCherryPick' });
                 }
             });
+            document.getElementById('close-simulation-btn').addEventListener('click', () => closeModal('simulation-modal'));
 
             document.getElementById('source-branch').addEventListener('click', () => {
                 vscode.postMessage({ command: 'selectBranch', type: 'source' });

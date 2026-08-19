@@ -174,7 +174,7 @@ NodeModule._load = function (request: string, parent: any, isMain: boolean) {
 // IMPORT MODULES UNDER TEST (must come AFTER the Module._load hook above)
 // =============================================================================
 
-import { ReleaseService, Commit, DependencyRisk, CherryPickResult, ConflictState } from '../release/releaseService';
+import { ReleaseService, Commit, DependencyRisk, CherryPickResult, ConflictState, CherryPickSimulationResult } from '../release/releaseService';
 import { ADOProvider, Ticket, PR } from '../release/adoProvider';
 import { ReleaseWebviewPanel } from '../release/releaseWebviewPanel';
 
@@ -1549,6 +1549,95 @@ suite('Release Module Test Suite', () => {
             const result = await service.abortCherryPick();
             assert.strictEqual(result.success, false);
             assert.ok(result.message.includes('no cherry-pick'));
+        });
+
+        // ---------------------------------------------------------------------
+        // simulateCherryPicks
+        // ---------------------------------------------------------------------
+        test('simulateCherryPicks success path — all commits clean', async () => {
+            const service = new ReleaseService(workspaceRoot);
+            const h1 = 'aabbccdd11223344556677889900aabbccdd1122';
+            const h2 = 'bbaaccddeeff00112233445566778899aabbccdd';
+            const fakeTree1 = 'aaaa000000000000000000000000000000000001';
+            const fakeCommit1 = 'bbbb000000000000000000000000000000000001';
+            const fakeTree2 = 'aaaa000000000000000000000000000000000002';
+            const fakeCommit2 = 'bbbb000000000000000000000000000000000002';
+
+            addSpawn(args => args[0] === 'merge-tree' && args.includes(h1), { stdout: fakeTree1 + '\n' });
+            addSpawn(args => args[0] === 'commit-tree' && args.includes(fakeTree1), { stdout: fakeCommit1 + '\n' });
+            addSpawn(args => args[0] === 'merge-tree' && args.includes(h2), { stdout: fakeTree2 + '\n' });
+            addSpawn(args => args[0] === 'commit-tree' && args.includes(fakeTree2), { stdout: fakeCommit2 + '\n' });
+
+            const result = await service.simulateCherryPicks([h1, h2], 'main');
+            assert.strictEqual(result.success, true);
+            assert.strictEqual(result.totalSimulated, 2);
+            assert.ok(result.message.includes('2 commit(s)'));
+        });
+
+        test('simulateCherryPicks detects conflict at first commit', async () => {
+            const service = new ReleaseService(workspaceRoot);
+            const h1 = 'aabbccdd11223344556677889900aabbccdd1122';
+            const conflictTree = 'cccc000000000000000000000000000000000001';
+
+            addSpawn(args => args[0] === 'merge-tree' && args.includes(h1), {
+                code: 1,
+                stdout: conflictTree + '\nCONFLICT (content): Merge conflict in src/app.ts\n'
+            });
+            addSpawn(args => args[0] === 'show' && args.includes(conflictTree + ':src/app.ts'), {
+                stdout: '<<<<<<< \nours\n=======\ntheirs\n>>>>>>>\n'
+            });
+
+            const result = await service.simulateCherryPicks([h1], 'main');
+            assert.strictEqual(result.success, false);
+            assert.strictEqual(result.conflictAtCommit, h1);
+            assert.strictEqual(result.conflictAtIndex, 1);
+            assert.strictEqual(result.totalSimulated, 0);
+            assert.ok(result.conflictingFiles);
+            assert.strictEqual(result.conflictingFiles!.length, 1);
+            assert.strictEqual(result.conflictingFiles![0].file, 'src/app.ts');
+            assert.strictEqual(result.conflictingFiles![0].conflictType, 'content');
+            assert.ok(result.conflictingFiles![0].content!.includes('<<<<<<<'));
+        });
+
+        test('simulateCherryPicks conflict at second commit (first succeeds)', async () => {
+            const service = new ReleaseService(workspaceRoot);
+            const h1 = 'aabbccdd11223344556677889900aabbccdd1122';
+            const h2 = 'bbaaccddeeff00112233445566778899aabbccdd';
+            const fakeTree1 = 'aaaa000000000000000000000000000000000001';
+            const fakeCommit1 = 'bbbb000000000000000000000000000000000001';
+            const conflictTree = 'cccc000000000000000000000000000000000002';
+
+            addSpawn(args => args[0] === 'merge-tree' && args.includes(h1), { stdout: fakeTree1 + '\n' });
+            addSpawn(args => args[0] === 'commit-tree' && args.includes(fakeTree1), { stdout: fakeCommit1 + '\n' });
+            addSpawn(args => args[0] === 'merge-tree' && args.includes(h2), {
+                code: 1,
+                stdout: conflictTree + '\nCONFLICT (modify/delete): utils.ts deleted in HEAD and modified in ' + h2.substring(0, 7) + '\n'
+            });
+            addSpawn(args => args[0] === 'show' && args.includes(conflictTree + ':utils.ts'), { code: 128, stderr: 'fatal: not found' });
+
+            const result = await service.simulateCherryPicks([h1, h2], 'main');
+            assert.strictEqual(result.success, false);
+            assert.strictEqual(result.conflictAtCommit, h2);
+            assert.strictEqual(result.conflictAtIndex, 2);
+            assert.strictEqual(result.totalSimulated, 1);
+            assert.ok(result.conflictingFiles);
+            assert.strictEqual(result.conflictingFiles![0].file, 'utils.ts');
+            assert.strictEqual(result.conflictingFiles![0].conflictType, 'modify/delete');
+        });
+
+        test('simulateCherryPicks with invalid inputs fails fast', async () => {
+            const service = new ReleaseService(workspaceRoot);
+            const result = await service.simulateCherryPicks(['badhash'], 'main');
+            assert.strictEqual(result.success, false);
+            assert.ok(result.message.includes('Invalid'));
+            assert.strictEqual(result.totalSimulated, 0);
+        });
+
+        test('simulateCherryPicks with empty array fails fast', async () => {
+            const service = new ReleaseService(workspaceRoot);
+            const result = await service.simulateCherryPicks([], 'main');
+            assert.strictEqual(result.success, false);
+            assert.strictEqual(result.totalSimulated, 0);
         });
     });
 });
