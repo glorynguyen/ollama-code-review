@@ -33,7 +33,7 @@ suite('MCP Config Export Test Suite', () => {
 
 		const values = new Map<string, unknown>([
 			['model', 'custom'],
-			['customModel', 'kimi-k3:cloud'],
+			['customModel', 'gemma4:31b-cloud'],
 			['endpoint', 'http://localhost:11434/api/generate'],
 			['temperature', 0],
 			['frameworks', ['TypeScript']],

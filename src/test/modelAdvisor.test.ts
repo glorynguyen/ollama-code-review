@@ -401,8 +401,8 @@ diff --git a/config.py b/config.py
 				}, createConfig({ endpoint: 'http://localhost:11434' }));
 
 				assert.deepStrictEqual(result.recommended, {
-					modelId: 'kimi-k3:cloud',
-					providerName: 'kimi',
+					modelId: 'gemma4:31b-cloud',
+					providerName: 'gemma',
 					tier: 'balanced',
 					score: 0.5,
 					reason: 'Default recommendation',

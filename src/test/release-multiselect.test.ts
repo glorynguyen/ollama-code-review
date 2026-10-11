@@ -11,7 +11,7 @@ function makeElement(id?: string, className?: string): any {
             add(c: string) { this._classes.add(c); el.className = Array.from(this._classes).join(' '); },
             remove(c: string) { this._classes.delete(c); el.className = Array.from(this._classes).join(' '); },
             toggle(c: string, force?: boolean) {
-                if (force === undefined) force = !this._classes.has(c);
+                if (force === undefined) {force = !this._classes.has(c);}
                 if (force) { this.add(c); } else { this.remove(c); }
             },
             contains(c: string) { return this._classes.has(c); }
@@ -28,9 +28,9 @@ function makeElement(id?: string, className?: string): any {
         _titleText: '',
         _emptyBucket: null as any,
         querySelector(sel: string) {
-            if (sel === '.c-checkbox') return el._checkbox || null;
-            if (sel === '.tb-title') return { innerText: el._titleText || '' };
-            if (sel === '.empty-bucket') return el._emptyBucket || null;
+            if (sel === '.c-checkbox') {return el._checkbox || null;}
+            if (sel === '.tb-title') {return { innerText: el._titleText || '' };}
+            if (sel === '.empty-bucket') {return el._emptyBucket || null;}
             return null;
         },
         querySelectorAll() { return []; },
@@ -63,9 +63,9 @@ function createSandbox() {
         document: {
             getElementById(id: string) { return elements[id] || stubElement(); },
             querySelectorAll(sel: string) {
-                if (sel === '#commit-pool .commit-card') return pool.children;
-                if (sel === '.ticket-bucket') return Object.values(elements).filter((e: any) => (e.className || '').includes('ticket-bucket'));
-                if (sel === '.filter-btn') return [];
+                if (sel === '#commit-pool .commit-card') {return pool.children;}
+                if (sel === '.ticket-bucket') {return Object.values(elements).filter((e: any) => (e.className || '').includes('ticket-bucket'));}
+                if (sel === '.filter-btn') {return [];}
                 return [];
             },
             querySelector() { return null; },

@@ -268,7 +268,7 @@ out/                      # Compiled JavaScript output
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `ollama-code-review.model` | `kimi-k3:cloud` | Model selection |
+| `ollama-code-review.model` | `gemma4:31b-cloud` | Model selection |
 | `ollama-code-review.customModel` | `""` | Custom model name |
 | `ollama-code-review.claudeApiKey` | `""` | Anthropic API key for Claude models |
 | `ollama-code-review.glmApiKey` | `""` | Z.AI (BigModel/Zhipu) API key for GLM models |
@@ -388,7 +388,7 @@ The `diffFilter` setting is an object with these properties:
 ## Supported Models
 
 ### Cloud Models (No local setup required)
-- `kimi-k3:cloud` - Kimi cloud model (Default)
+- `gemma4:31b-cloud` - Gemma 4 cloud model (Default)
 - `qwen3-coder:480b-cloud` - Cloud coding model
 - `glm-4.7:cloud` - GLM cloud model (via configured endpoint)
 

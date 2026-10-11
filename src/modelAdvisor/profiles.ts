@@ -25,8 +25,8 @@ export const MODEL_PROFILES: ModelProfile[] = [
 		tier: 'balanced',
 		languageBonus: { ts: 0.15, tsx: 0.15 },
 	},
-	// Kimi
-	{ modelId: 'kimi-k3:cloud', providerName: 'kimi', tier: 'balanced' },
+	// Gemma
+	{ modelId: 'gemma4:31b-cloud', providerName: 'gemma', tier: 'balanced' },
 	{
 		modelId: 'qwen3-coder:480b-cloud',
 		providerName: 'qwen',

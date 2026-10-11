@@ -162,7 +162,7 @@ export async function getModelRecommendation(
 			available = !!(config.get<string>('minimaxApiKey') || process.env.MINIMAX_API_KEY);
 		} else if (profile.providerName === 'openai-compatible') {
 			available = !!(config.get<string>('openaiCompatible.endpoint') && config.get<string>('openaiCompatible.model'));
-		} else if (profile.providerName === 'kimi' || profile.providerName === 'qwen') {
+		} else if (profile.providerName === 'gemma' || profile.providerName === 'qwen') {
 			// Cloud models, always available
 			available = true;
 		}
@@ -196,8 +196,8 @@ export async function getModelRecommendation(
 
 	// Return top + alternatives (max 5)
 	const recommended = candidates[0] || {
-		modelId: 'kimi-k3:cloud',
-		providerName: 'kimi',
+		modelId: 'gemma4:31b-cloud',
+		providerName: 'gemma',
 		tier: 'balanced' as const,
 		score: 0.5,
 		reason: 'Default recommendation',
