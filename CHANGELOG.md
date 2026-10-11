@@ -1,3 +1,10 @@
+# [7.1.0](https://github.com/glorynguyen/ollama-code-review/compare/v7.0.0...v7.1.0) (2026-10-11)
+
+
+### Features
+
+* **model:** change default cloud model to gemma4:31b-cloud ([48ee252](https://github.com/glorynguyen/ollama-code-review/commit/48ee25265dbaef48320682fdf60027f3492aa691))
+
 # [7.0.0](https://github.com/glorynguyen/ollama-code-review/compare/v6.2.0...v7.0.0) (2026-10-11)
 
 
