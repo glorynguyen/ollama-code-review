@@ -196,7 +196,7 @@ export async function getModelRecommendation(
 
 	// Return top + alternatives (max 5)
 	const recommended = candidates[0] || {
-		modelId: 'kimi-k2.5:cloud',
+		modelId: 'kimi-k3:cloud',
 		providerName: 'kimi',
 		tier: 'balanced' as const,
 		score: 0.5,

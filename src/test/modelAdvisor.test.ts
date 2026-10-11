@@ -401,7 +401,7 @@ diff --git a/config.py b/config.py
 				}, createConfig({ endpoint: 'http://localhost:11434' }));
 
 				assert.deepStrictEqual(result.recommended, {
-					modelId: 'kimi-k2.5:cloud',
+					modelId: 'kimi-k3:cloud',
 					providerName: 'kimi',
 					tier: 'balanced',
 					score: 0.5,

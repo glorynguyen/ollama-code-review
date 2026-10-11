@@ -7,9 +7,9 @@ export function generateToolCallId(): string {
 }
 
 export function getOllamaModel(config: vscode.WorkspaceConfiguration): string {
-    let model = config.get<string>('model', 'kimi-k2.5:cloud');
+    let model = config.get<string>('model', 'kimi-k3:cloud');
     if (model === 'custom') {
-        model = config.get<string>('customModel') || 'kimi-k2.5:cloud';
+        model = config.get<string>('customModel') || 'kimi-k3:cloud';
     }
     return model;
 }

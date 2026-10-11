@@ -36,7 +36,7 @@ It leverages the power of local large language models to provide feedback on:
 On first install, the extension shows an **interactive Setup Guide** that walks you through:
 
 1. **Installing Ollama** (or choosing cloud models instead)
-2. **Pulling a recommended model** (e.g., `kimi-k2.5:cloud`)
+2. **Pulling a recommended model** (e.g., `kimi-k3:cloud`)
 3. **Getting started** with your first review
 
 You can reopen the guide at any time via the Command Palette: `Ollama Code Review: Open Setup Guide`.
@@ -1482,7 +1482,7 @@ The **OCR Browser Review** extension is a companion Chrome extension that allows
 
 This extension contributes the following settings to your VS Code `settings.json`:
 
-* `ollama-code-review.model`: Supports local Ollama models, cloud models (`kimi-k2.5:cloud`, `qwen3-coder:480b-cloud`, `glm-4.7:cloud`), Claude models (`claude-sonnet-4-20250514`, `claude-opus-4-20250514`, `claude-3-7-sonnet-20250219`), Gemini models (`gemini-2.5-flash`, `gemini-2.5-pro`), Mistral models (`mistral-large-latest`, `mistral-small-latest`, `codestral-latest`), MiniMax models (`MiniMax-M2.5`), GLM models (`glm-4.7-flash`), Hugging Face (`huggingface`), any OpenAI-compatible server (`openai-compatible`), or `custom`.
+* `ollama-code-review.model`: Supports local Ollama models, cloud models (`kimi-k3:cloud`, `qwen3-coder:480b-cloud`, `glm-4.7:cloud`), Claude models (`claude-sonnet-4-20250514`, `claude-opus-4-20250514`, `claude-3-7-sonnet-20250219`), Gemini models (`gemini-2.5-flash`, `gemini-2.5-pro`), Mistral models (`mistral-large-latest`, `mistral-small-latest`, `codestral-latest`), MiniMax models (`MiniMax-M2.5`), GLM models (`glm-4.7-flash`), Hugging Face (`huggingface`), any OpenAI-compatible server (`openai-compatible`), or `custom`.
 * `ollama-code-review.customModel`: Specify your own model name if you select "custom" in the model setting.
 * `ollama-code-review.autoSelectModel`: When `true`, the extension automatically switches to the best model before each review, based on task type, languages detected in the diff, and diff size. The recommendation engine scores all configured models and selects the highest scorer.
     * **Type**: `boolean`

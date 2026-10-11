@@ -47,7 +47,7 @@ Each known model is classified into a tier that drives default affinities:
 | Tier | Models | Strengths |
 |------|--------|-----------|
 | `flagship` | `claude-opus-4-*`, `gemini-2.5-pro`, `mistral-large-latest`, `qwen3-coder:480b-cloud` | Deep reasoning, security audits, large diffs |
-| `balanced` | `claude-sonnet-4-*`, `claude-3-7-sonnet-*`, `codestral-latest`, `kimi-k2.5:cloud` | Good all-rounder, moderate cost |
+| `balanced` | `claude-sonnet-4-*`, `claude-3-7-sonnet-*`, `codestral-latest`, `kimi-k3:cloud` | Good all-rounder, moderate cost |
 | `fast` | `gemini-2.5-flash`, `glm-4.7-flash`, `mistral-small-latest`, `MiniMax-M2.5` | Quick tasks, small diffs, commit messages |
 | `code-specialist` | `codestral-latest`, local Ollama `*coder*` models, `huggingface` (Qwen-Coder) | Code generation, tests, fixes |
 | `local` | Any Ollama model not matching above | Privacy, offline, variable capability |

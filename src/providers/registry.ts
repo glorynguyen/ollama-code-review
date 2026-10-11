@@ -21,7 +21,7 @@ export const CLOUD_MODELS_METADATA: ModelMetadata[] = [
 	{ id: 'v0-pro', label: 'v0 Pro', description: 'Powerful coding model (Vercel)' },
 	{ id: 'v0-max', label: 'v0 Max', description: 'Most capable model (Vercel)' },
 	{ id: 'v0-max-fast', label: 'v0 Max Fast', description: 'High-speed variant of v0 Max (Vercel)' },
-	{ id: 'kimi-k2.5:cloud', label: 'kimi-k2.5:cloud', description: 'Kimi cloud model (Default)' },
+	{ id: 'kimi-k3:cloud', label: 'kimi-k3:cloud', description: 'Kimi cloud model (Default)' },
 	{ id: 'qwen3-coder:480b-cloud', label: 'qwen3-coder:480b-cloud', description: 'Cloud coding model (Qwen)' },
 	{ id: 'glm-4.7:cloud', label: 'glm-4.7:cloud', description: 'GLM cloud model (Z.AI)' },
 	{ id: 'glm-4.7-flash', label: 'glm-4.7-flash', description: 'GLM 4.7 Flash - Free tier (Z.AI)' },

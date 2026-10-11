@@ -3460,7 +3460,7 @@ ${diff.slice(0, 12000)}
 				const config = vscode.workspace.getConfiguration('ollama-code-review');
 				const allModels = [
 					...V0_MODELS,
-					{ label: 'kimi-k2.5:cloud', description: 'Kimi cloud model' },
+					{ label: 'kimi-k3:cloud', description: 'Kimi cloud model' },
 					{ label: 'qwen3-coder:480b-cloud', description: 'Cloud coding model' },
 					{ label: 'glm-4.7:cloud', description: 'GLM cloud model' },
 					{ label: 'glm-4.7-flash', description: 'GLM 4.7 Flash (Z.AI)' },

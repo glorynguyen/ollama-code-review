@@ -510,19 +510,24 @@ suite('Release Module Test Suite', () => {
             assert.strictEqual(result[0].workItemNumber, '12345');
         });
 
-        test('processUniqueCommits sets isOverridden when all files already seen', async () => {
+        test('processUniqueCommits sets isOverridden when target already has every touched file', async () => {
             const service = new ReleaseService(workspaceRoot);
-            const c1: Commit = { hash: 'aabbccdd11223344556677889900aabbccdd1122', message: 'First', author: 'A', email: 'a@x.com', date: '2024-01-02T00:00:00+00:00' };
-            const c2: Commit = { hash: 'bbaaccddeeff00112233445566778899aabbccdd', message: 'Second', author: 'B', email: 'b@x.com', date: '2024-01-01T00:00:00+00:00' };
+            const pending: Commit = { hash: 'aabbccdd11223344556677889900aabbccdd1122', message: 'Pending', author: 'A', email: 'a@x.com', date: '2024-01-02T00:00:00+00:00' };
+            const onTarget: Commit = { hash: 'bbaaccddeeff00112233445566778899aabbccdd', message: 'On target', author: 'B', email: 'b@x.com', date: '2024-01-01T00:00:00+00:00' };
+            const simulatedTree = 'cccc000000000000000000000000000000000001';
 
             addSpawn(args => args[0] === 'show' && args.includes('-s'), { stdout: 'body' });
-            addSpawn(args => args[0] === 'show' && args.includes('--name-only') && args.includes(c1.hash), { stdout: 'src/f.ts' });
-            addSpawn(args => args[0] === 'show' && args.includes('--name-only') && args.includes(c2.hash), { stdout: 'src/f.ts' });
-            addSpawn(args => args[0] === 'diff', { stdout: 'diff output' });
+            addSpawn(args => args[0] === 'show' && args.includes('--name-only'), { stdout: 'src/f.ts' });
+            // `git diff --name-only main <hash>` lists files where target still differs from the commit
+            addSpawn(args => args[0] === 'diff' && args.includes('--name-only') && args.includes(pending.hash), { stdout: 'src/f.ts' });
+            addSpawn(args => args[0] === 'merge-tree' && args.includes(pending.hash), { stdout: simulatedTree + '\n' });
+            addSpawn(args => args[0] === 'diff' && args.includes(simulatedTree), { stdout: 'net diff' });
 
-            const result = await service.processUniqueCommits([c1, c2], 'main');
-            assert.strictEqual(result[0].isOverridden, false); // first sees new file
-            assert.strictEqual(result[1].isOverridden, true);  // second only touches seen file
+            const result = await service.processUniqueCommits([pending, onTarget], 'main');
+            assert.strictEqual(result[0].isOverridden, false);
+            assert.strictEqual(result[0].diff, 'net diff');
+            assert.strictEqual(result[1].isOverridden, true);
+            assert.strictEqual(result[1].diff, '');
         });
 
         test('processUniqueCommits skips invalid hashes', async () => {

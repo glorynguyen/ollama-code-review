@@ -597,7 +597,7 @@ jobs:
     steps:
       - uses: glorynguyen/ollama-code-review-action@v1
         with:
-          model: kimi-k2.5:cloud
+          model: kimi-k3:cloud
           profile: security
           fail-on-severity: critical
           post-comments: true
