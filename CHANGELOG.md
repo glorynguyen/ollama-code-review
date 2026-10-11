@@ -1,3 +1,17 @@
+# [7.0.0](https://github.com/glorynguyen/ollama-code-review/compare/v6.2.0...v7.0.0) (2026-10-11)
+
+
+### Features
+
+* **models:** default to kimi-k3:cloud ([4d3a102](https://github.com/glorynguyen/ollama-code-review/commit/4d3a102a5ecf81eef83f098506fc710649c9d849))
+
+
+### BREAKING CHANGES
+
+* **models:** kimi-k2.5:cloud is no longer an allowed value for the
+ollama-code-review.model setting. Users who set it explicitly must
+switch to kimi-k3:cloud or set it through the "custom" model option.
+
 # [6.2.0](https://github.com/glorynguyen/ollama-code-review/compare/v6.1.0...v6.2.0) (2026-08-19)
 
 
