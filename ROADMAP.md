@@ -1,6 +1,6 @@
 # 🗺️ Ollama Code Review — Feature Roadmap
 
-> **Current version:** v3.31.0 | **Last updated:** 2026-03-11
+> **Current version:** v7.1.0 | **Last updated:** 2026-10-18
 
 ---
 
@@ -48,23 +48,22 @@
 | —   | Structured Review with anchor validation | v3.29.0 |
 | —   | Multi-cloud model support (Claude, Gemini, Mistral, HF, MiniMax, GLM) | various |
 
+### Implemented features whose original proposals were stale
+
+The following items appeared below as proposed, but are present in the current code and user documentation. They are listed here without a `Since` release because the original roadmap did not record their shipping versions:
+
+| Feature | Current implementation |
+|---------|------------------------|
+| Review result caching and deduplication | Review cache settings and implementation (F-046) |
+| Task-aware model recommendation and auto-selection | Model advisor and `autoSelectModel` setting (F-037) |
+| Ask AI about a review finding | `askFinding` command (F-038) |
+| Share a review as a GitHub Gist | Gist export and `github.gistToken` setting (F-040) |
+
 ---
 
 ## 🚀 Proposed New Features
 
 ### Theme 1 — Developer Experience
-
-#### F-034 · Smart Review Caching & Diff-based Invalidation
-**Rationale:** Large diffs can re-trigger the same costly LLM call even though only a small patch changed since the last review. Caching the review result keyed to the diff hash would make re-reviews near-instant.
-
-**Implementation idea:**
-- Hash the diff + profile + model + rules content.
-- Store result in `globalStoragePath` (TTL: 1 hour, configurable).
-- Show a "⚡ Cached" badge in the review panel with a "Re-run" button.
-
-**Complexity:** Medium | **Impact:** High
-
----
 
 #### F-035 · Review Templates per File Type / Pattern
 **Rationale:** `.sql` files need a different prompt from `.tsx` components. Today the user has one review profile for everything.
@@ -90,31 +89,10 @@
 
 ### Theme 2 — AI Intelligence
 
-#### F-037 · Auto-detect & Suggest the Best Model for the Task
-**Rationale:** Users with multiple models available pick one ad-hoc. The extension could recommend the best model based on file language, diff size, and task type (review vs. commit message vs. diagram).
-
-**Implementation idea:**
-- Build a lightweight heuristic map: large TypeScript diff → `qwen3-coder`, security profile → `claude-opus`, small fix → `gemini-flash`.
-- Show a "Recommended: X" hint in the model picker.
-- Add a `ollama-code-review.autoSelectModel` boolean setting.
-
-**Complexity:** Medium | **Impact:** High
-
----
-
-#### F-038 · Conversational Review Follow-up in Sidebar Chat
-**Rationale:** The sidebar chat already exists (F-023) but it's general. A focused "drill into this finding" mode would let developers ask "why is this a security issue?" with full finding context pre-loaded.
-
-**Implementation idea:**
-- Add an "Ask AI" icon button on each finding in the Findings Explorer tree.
-- On click, open the sidebar chat with a system message pre-populated with the finding details and code snippet.
-
-**Complexity:** Low | **Impact:** High
-
----
-
 #### F-039 · Review Trend Alerts (Quality Regression Detection)
 **Rationale:** The review score history is stored (F-016). We could compute a rolling average and alert when the team's score drops below a configurable threshold.
+
+The extension already tracks per-file code-health changes. Keep this proposal only for aggregate review-score alerts and team notifications; update or drop it if that distinction is no longer useful.
 
 **Implementation idea:**
 - After each review, compare the new score against the 7-day rolling average.
@@ -127,19 +105,7 @@
 
 ### Theme 3 — Team Collaboration
 
-#### F-040 · Share Review as Permalink (Short Link via Gist)
-**Rationale:** Currently users can export a review but sharing it requires manually sending a file. Publishing to a GitHub Gist (the token is already configured) and copying a short link would be one click.
-
-**Implementation idea:**
-- Add a "Share 🔗" button in the review panel toolbar.
-- Upload the review markdown to a private/public Gist (user preference).
-- Copy the Gist URL to clipboard and show a toast.
-
-**Complexity:** Low | **Impact:** High
-
----
-
-#### F-041 · Team Review Scorecard (Aggregate Scores Across Team)
+#### F-053 · Team Review Scorecard (Aggregate Scores Across Team)
 **Rationale:** Individual scores exist. Surfacing an aggregated view of the team's review health (avg score per author, most common finding categories) would help tech leads identify coaching opportunities.
 
 **Implementation idea:**
@@ -152,7 +118,7 @@
 
 
 
-#### F-043 · Dependency Review (package.json / requirements.txt diff)
+#### F-052 · Dependency Review (package.json / requirements.txt diff) — Implemented (unreleased)
 **Rationale:** Adding or upgrading packages is a high-risk activity. When the staged diff touches dependency files, the extension could fetch CVE data for added/bumped packages and include it in the review.
 
 **Implementation idea:**
@@ -168,13 +134,8 @@
 
 | Priority | Feature | Effort | Impact |
 |----------|---------|--------|--------|
-| 🔴 P1 | F-042 Secret Scanner | Medium | Very High |
-| 🔴 P1 | F-038 Conversational Follow-up | Low | High |
-| 🟠 P2 | F-040 Share as Permalink | Low | High |
-| 🟠 P2 | F-037 Auto-select Model | Medium | High |
-| 🟠 P2 | F-043 Dependency Review | Medium | High |
-| 🟡 P3 | F-034 Review Caching | Medium | High |
+| 🟠 P2 | F-052 Dependency Review | Medium | High |
 | 🟡 P3 | F-036 @todo Finder | Low | Medium |
 | 🟡 P3 | F-035 File-type Templates | Low | Medium |
 | 🟢 P4 | F-039 Trend Alerts | Medium | Medium |
-| 🟢 P4 | F-041 Team Scorecard | High | Medium |
+| 🟢 P4 | F-053 Team Scorecard | High | Medium |

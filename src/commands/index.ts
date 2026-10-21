@@ -160,6 +160,12 @@ import {
 	type ValidatedStructuredReviewResult,
 } from '../reviewFindings';
 import { scanDiffForSecrets, toStructuredFindings, type SecretFinding } from '../secretScanner';
+import {
+	buildDependencyRiskPromptContext,
+	renderDependencyRiskMarkdown,
+	reviewDependencyRisks,
+	type DependencyRiskConfig,
+} from '../dependencyReview';
 import { getModelRecommendation, extractLanguagesFromDiff, bucketDiffSize } from '../modelAdvisor';
 import type { ModelAdvisorInput } from '../modelAdvisor';
 import { AutoReviewManager } from '../autoReview';
@@ -3749,6 +3755,31 @@ function mergeSecretFindingsIntoReview(
 	return { combinedReviewText: secretsMarkdown + reviewText, structuredReview: mergedReview };
 }
 
+/** F-052: Add deterministic OSV results to the model review without asking the model to rediscover them. */
+function mergeDependencyRiskFindingsIntoReview(
+	structuredReview: ValidatedStructuredReviewResult | undefined,
+	reviewText: string,
+	dependencyFindings: ValidatedStructuredReviewResult['findings'],
+): { combinedReviewText: string; structuredReview: ValidatedStructuredReviewResult | undefined } {
+	if (dependencyFindings.length === 0) {
+		return { combinedReviewText: reviewText, structuredReview };
+	}
+
+	const baseReview = structuredReview ?? {
+		schemaVersion: STRUCTURED_REVIEW_SCHEMA_VERSION,
+		summary: 'Dependency Risk Results',
+		findings: [],
+	} satisfies ValidatedStructuredReviewResult;
+	const mergedReview: ValidatedStructuredReviewResult = {
+		...baseReview,
+		findings: [...dependencyFindings, ...baseReview.findings],
+	};
+	return {
+		combinedReviewText: renderDependencyRiskMarkdown(dependencyFindings) + reviewText,
+		structuredReview: mergedReview,
+	};
+}
+
 function applyReviewNoiseFilter(
 	structuredReview: ValidatedStructuredReviewResult,
 	config: vscode.WorkspaceConfiguration,
@@ -3843,6 +3874,22 @@ async function runReview(
 		}
 	}
 
+	// F-052: inspect dependency manifests from the original diff. Lock files are
+	// normally filtered from AI context, but dependency risk detection still needs
+	// the complete manifest diff to retain exact line anchors.
+	const dependencyReviewConfig = vscode.workspace.getConfiguration('ollama-code-review')
+		.get<DependencyRiskConfig>('dependencyReview', {});
+	const dependencyRisk = await reviewDependencyRisks(diff, dependencyReviewConfig);
+	if (dependencyRisk.changes.length > 0) {
+		outputChannel.appendLine(
+			`[Dependency Review] Checked ${dependencyRisk.checkedCount} of ${dependencyRisk.changes.length} changed direct dependenc${dependencyRisk.changes.length === 1 ? 'y' : 'ies'}; found ${dependencyRisk.findings.length} advisories.`
+		);
+	}
+	if (dependencyRisk.failures > 0) {
+		outputChannel.appendLine(`[Dependency Review] OSV lookup failed for ${dependencyRisk.failures} dependenc${dependencyRisk.failures === 1 ? 'y' : 'ies'}; continuing without those results.`);
+	}
+	const dependencyRiskContext = buildDependencyRiskPromptContext(dependencyRisk.findings);
+
 	// F-022: Determine whether streaming is enabled and supported for the active model
 	const streamingConfig = vscode.workspace.getConfiguration('ollama-code-review');
 	const streamingEnabled = streamingConfig.get<boolean>('streaming.enabled', true);
@@ -3907,6 +3954,7 @@ async function runReview(
 				outputChannel,
 				promptMode: options.promptMode,
 				impactContext,
+				dependencyRiskContext,
 			});
 			await vscode.env.clipboard.writeText(prompt);
 			vscode.window.setStatusBarMessage('$(clippy) Review prompt copied to clipboard for MCP use', 5000);
@@ -3931,9 +3979,14 @@ async function runReview(
 					injectedSecrets = true;
 				}
 				reviewPanel.pushChunk(chunk);
-			}, impactContext);
+			}, impactContext, dependencyRiskContext);
 
-			const merged = mergeSecretFindingsIntoReview(reviewResult.structuredReview, reviewResult.reviewText, secretFindings);
+			const secretMerged = mergeSecretFindingsIntoReview(reviewResult.structuredReview, reviewResult.reviewText, secretFindings);
+			const merged = mergeDependencyRiskFindingsIntoReview(
+				secretMerged.structuredReview,
+				secretMerged.combinedReviewText,
+				dependencyRisk.findings,
+			);
 			const review = merged.combinedReviewText;
 			const structuredReview = merged.structuredReview ?? reviewResult.structuredReview;
 
@@ -3992,7 +4045,7 @@ async function runReview(
 
 			// F-031: Update Findings Explorer tree view
 			try {
-				if (findingsTreeProvider && (structuredReview?.findings || secretFindings.length > 0)) {
+				if (findingsTreeProvider && (structuredReview?.findings || secretFindings.length > 0 || dependencyRisk.findings.length > 0)) {
 					findingsTreeProvider.setFindings(review, filteredDiff);
 					void vscode.commands.executeCommand('setContext', 'ollama-code-review.hasFindings', findingsTreeProvider.count > 0)
 						.then(undefined, (err: unknown) => {
@@ -4033,8 +4086,13 @@ async function runReview(
 		cancellable: false
 	}, async (progress) => {
 		progress.report({ message: `Asking AI for a structured review (${filterResult.stats.includedFiles} files)...` });
-		const reviewResult = await getOllamaReview(filteredDiff, context, contextBundle, undefined, impactContext);
-		const merged = mergeSecretFindingsIntoReview(reviewResult.structuredReview, reviewResult.reviewText, secretFindings);
+		const reviewResult = await getOllamaReview(filteredDiff, context, contextBundle, undefined, impactContext, dependencyRiskContext);
+		const secretMerged = mergeSecretFindingsIntoReview(reviewResult.structuredReview, reviewResult.reviewText, secretFindings);
+		const merged = mergeDependencyRiskFindingsIntoReview(
+			secretMerged.structuredReview,
+			secretMerged.combinedReviewText,
+			dependencyRisk.findings,
+		);
 		const review = merged.combinedReviewText;
 		const structuredReview = merged.structuredReview ?? reviewResult.structuredReview;
 
@@ -4105,7 +4163,7 @@ async function runReview(
 
 		// F-031: Update Findings Explorer tree view
 		try {
-			if (findingsTreeProvider && (structuredReview?.findings || secretFindings.length > 0)) {
+			if (findingsTreeProvider && (structuredReview?.findings || secretFindings.length > 0 || dependencyRisk.findings.length > 0)) {
 				findingsTreeProvider.setFindings(review, filteredDiff);
 				void vscode.commands.executeCommand('setContext', 'ollama-code-review.hasFindings', findingsTreeProvider.count > 0)
 					.then(undefined, (err: unknown) => {
@@ -4534,6 +4592,7 @@ async function buildReviewPrompt({
 	outputChannel,
 	promptMode = 'default',
 	impactContext,
+	dependencyRiskContext,
 }: {
 	diff: string;
 	context?: vscode.ExtensionContext;
@@ -4541,6 +4600,7 @@ async function buildReviewPrompt({
 	outputChannel?: vscode.OutputChannel;
 	promptMode?: import('../reviewPromptBuilder').ReviewPromptMode;
 	impactContext?: string;
+	dependencyRiskContext?: string;
 }): Promise<string> {
 	const log = outputChannel ? (msg: string) => outputChannel.appendLine(msg) : () => {};
 	const config = vscode.workspace.getConfiguration('ollama-code-review');
@@ -4553,6 +4613,9 @@ async function buildReviewPrompt({
 		promptMode,
 		impactContext,
 	});
+	if (dependencyRiskContext) {
+		prompt += `\n\n${dependencyRiskContext}`;
+	}
 
 	const ragConfig = getRagConfig();
 	if (ragConfig.enabled && ragVectorStore && ragVectorStore.chunkCount > 0) {
@@ -4609,7 +4672,14 @@ async function buildReviewPrompt({
 	return prompt;
 }
 
-async function getOllamaReview(diff: string, context?: vscode.ExtensionContext, contextBundle?: ContextBundle, _onChunk?: (text: string) => void, impactContext?: string): Promise<ReviewGenerationResult> {
+async function getOllamaReview(
+	diff: string,
+	context?: vscode.ExtensionContext,
+	contextBundle?: ContextBundle,
+	_onChunk?: (text: string) => void,
+	impactContext?: string,
+	dependencyRiskContext?: string,
+): Promise<ReviewGenerationResult> {
 	const config = vscode.workspace.getConfiguration('ollama-code-review');
 	const model = getOllamaModel(config);
 	const endpoint = config.get<string>('endpoint', 'http://localhost:11434/api/generate');
@@ -4621,6 +4691,7 @@ async function getOllamaReview(diff: string, context?: vscode.ExtensionContext, 
 		contextBundle,
 		outputChannel,
 		impactContext,
+		dependencyRiskContext,
 	});
 
 	// Copy the full prompt (with all context) to clipboard so the user can paste it into other LLM chats immediately

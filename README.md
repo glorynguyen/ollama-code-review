@@ -1630,6 +1630,10 @@ This extension contributes the following settings to your VS Code `settings.json
 
 You can configure these by opening the Command Palette (`Ctrl+Shift+P`) and searching for `Preferences: Open User Settings (JSON)`.
 
+## Development
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for package manager ownership, install commands, CI checks, and release guidance. [TESTING.md](TESTING.md) documents test suite ownership and exclusions.
+
 ## Support the Project
 If you find this extension useful, please consider supporting its development!
 

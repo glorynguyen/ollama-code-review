@@ -15,6 +15,8 @@ This repository contains a TypeScript VS Code extension for AI-assisted code rev
 - `npm --prefix ./chrome-extension run build`: build the Chrome extension.
 - `npm --prefix ./packages/cli run build`: compile the CLI package.
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) for package manager ownership and locked install commands. The root extension uses Yarn; `packages/cli`, `chrome-extension`, and `docs-site` use their own npm lockfiles.
+
 ## Coding Style & Naming Conventions
 
 Use TypeScript and keep module boundaries narrow. Follow the existing four-space indentation style in `src/`. Terminate statements with semicolons and prefer strict equality. ESLint is configured in `eslint.config.mjs` with `@typescript-eslint`; import names should be `camelCase` or `PascalCase`. Use descriptive filenames that match the module purpose, such as `secretScanner.ts`, `reviewPromptBuilder.ts`, or `dependencyRegistry.ts`.

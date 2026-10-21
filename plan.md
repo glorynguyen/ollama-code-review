@@ -4,13 +4,22 @@
 
 Keep dependency installation reproducible, make pull request checks reflect the supported project surfaces, make test exclusions explicit, and keep release documentation accurate.
 
-## Current Baseline (2026-10-18)
+## Starting Baseline (2026-10-18)
 
 - The root package declares Yarn 1.22.22 and CI installs with `yarn install --frozen-lockfile`.
 - Root lockfiles currently include `yarn.lock`, `package-lock.json`, and `pnpm-lock.yaml`. The Chrome extension and docs site also have npm lockfiles; the Chrome extension additionally has a pnpm lockfile.
 - `.github/workflows/coverage.yml` runs `yarn run coverage`, which covers `test:unit`; it does not run the root contract or VS Code integration suites, nor the CLI and Chrome extension builds.
 - `test:unit` excludes a number of test files explicitly. Contract tests run a subset of those files; other exclusions need clear ownership and validation.
 - The extension package and changelog are at `7.1.0`, while `ROADMAP.md` identifies `v3.31.0` as current and is dated 2026-03-11.
+
+## Implementation Status (2026-10-18)
+
+- **Package managers:** documented Yarn for the root and npm for each nested package. Removed the unused root npm/pnpm lockfiles and Chrome pnpm lockfile; added the missing CLI npm lockfile.
+- **Pull request CI:** added `.github/workflows/ci.yml` for the full extension test command and the CLI, Chrome extension, and docs site builds. The existing coverage workflow remains focused on unit coverage.
+- **Test exclusions:** added `TESTING.md` with suite ownership and reasons. `aiActionsValidation.test.ts` is now included in the unit suite; contract and VS Code integration tests remain assigned to their existing runners.
+- **Roadmap:** updated the release metadata and removed implemented features from the proposal list.
+
+Repository branch protection is configured outside the source tree. To require these checks before merge, select the `VS Code extension checks`, `CLI build`, `Chrome extension build`, and `Documentation site build` statuses in the GitHub ruleset.
 
 ## Plan
 

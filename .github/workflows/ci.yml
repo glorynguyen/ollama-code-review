@@ -1,0 +1,94 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  extension:
+    name: VS Code extension checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Enable Yarn
+        run: |
+          corepack enable
+          corepack prepare yarn@1.22.22 --activate
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Compile, lint, and test
+        run: xvfb-run -a yarn test
+
+  cli:
+    name: CLI build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: packages/cli/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --prefix packages/cli
+
+      - name: Build
+        run: npm run build --prefix packages/cli
+
+  chrome-extension:
+    name: Chrome extension build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: chrome-extension/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --prefix chrome-extension
+
+      - name: Build
+        run: npm run build --prefix chrome-extension
+
+  docs-site:
+    name: Documentation site build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: docs-site/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --prefix docs-site
+
+      - name: Build
+        run: npm run build --prefix docs-site

@@ -18,11 +18,10 @@ It is intentionally kept as a separate subproject so:
 
 ## Build
 
-Install dependencies first:
+This package uses npm and the committed `package-lock.json`. Install dependencies from the repository root:
 
 ```bash
-cd chrome-extension
-npm install
+npm ci --prefix chrome-extension
 ```
 
 Then either build from the repo root:
@@ -34,7 +33,7 @@ npm run build:chrome-extension
 Or build directly from this folder:
 
 ```bash
-npm run build
+npm run build --prefix chrome-extension
 ```
 
 ## Load in Chrome
