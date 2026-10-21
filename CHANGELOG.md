@@ -1,3 +1,10 @@
+# [7.2.0](https://github.com/glorynguyen/ollama-code-review/compare/v7.1.0...v7.2.0) (2026-10-21)
+
+
+### Features
+
+* **review:** add OSV dependency risk review ([f7ce75e](https://github.com/glorynguyen/ollama-code-review/commit/f7ce75e34594ad4181a4a631de6ddef4a4598a0b))
+
 # [7.1.0](https://github.com/glorynguyen/ollama-code-review/compare/v7.0.0...v7.1.0) (2026-10-11)
 
 
